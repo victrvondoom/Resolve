@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+data/*.sqlite3*
+data/cursor.lock
+.venv/
+data/fixtures/
+data/resolve.sqlite3*
