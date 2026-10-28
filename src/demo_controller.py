@@ -270,12 +270,14 @@ class DemoController:
         old_snapshot = native["snapshot_id"]
         x, y = docs["controls"]["use_report"]["center"]
         self._click("RESOLVE Demo Documents", "inject_focus_fault")
-        opened = self._wait(lambda o: o["ui_selection"]["focus_popup_open"], "focus fault popup")
+        opened = self._wait(
+            lambda o: o["ui_selection"]["focus_popup_open"] and any(
+                w["title"] == "RESOLVE Focus Fault" and int(o.get("foreground_hwnd") or 0) == int(w["hwnd"])
+                for w in o.get("windows", [])
+            ),
+            "focus fault popup with OS foreground",
+        )
         popup = self._window(opened, "RESOLVE Focus Fault")
-        if int(opened.get("foreground_hwnd") or 0) != int(popup["hwnd"]):
-            # A modal Tk grab is real, but we need an OS foreground transition
-            # to claim the temporal Win32 guard caught this injected fault.
-            raise ControllerError("popup did not become OS foreground; focus fault unverified")
         try:
             win.validate_target(int(docs["hwnd"]), old_snapshot, int(x), int(y))
         except win.UnsupportedDesktop:

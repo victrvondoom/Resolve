@@ -17,21 +17,26 @@
 - [x] Executor lease across concurrent missions with fencing check (with ablation)
 - [x] Browser A/B/C benchmark (4 scenarios × 6 seeds) with oracle separate from verifier
 
-## Added (second pass, verified on Linux)
+## Added (second pass, verified on Linux & Windows)
 - [x] Utterance classifier + revision protocol, spoken approval bound to presented digest, correction/cancel (W7, typed transcripts)
 - [x] Supervisor with 13 tool-bounded roles, parallel fan-out, entity gate, separate verifier, retry, supersede (G5)
 - [x] Recorded browser skills: record → compile → approve → replay → repair proposal (W8)
 - [x] Sandboxed file worker with dry-run, stale-plan guard, undo after restart (W9)
-- [x] 80-concept catalogue with validator; 11 TESTED
+- [x] 80-concept catalogue with validator; 28 TESTED across 9 workspaces (G7)
 - [x] Ablations for six mechanisms; SIGKILL crash/restart test (W12)
-- [x] 3D landing page and redesigned Mission Control, UI E2E, real screenshots
-- [x] W1 Notepad / focus-steal / UIA on real Windows (verified via smoke_windows.py and smoke-windows.ps1)
-- [x] UI Automation semantic element tree (Windows) — verified via test_uia_adapter.py
+- [x] 3D landing page and redesigned Mission Control with Approval Inbox, Evidence Gallery, and Interactive Viewport (G9)
+- [x] W1 Notepad / focus-steal / UIA on real Windows (verified via smoke_windows.py and smoke-windows.ps1) (G2)
+- [x] UI Automation semantic element tree (Windows) — verified via test_uia_adapter.py (G2)
 - [x] Notepad type+save+verify and focus-steal refusal on Windows (G2)
+- [x] Adversarial Fault Matrix (F01–F16) with 12 unit tests exercising all 16 fault categories with independent oracle verifiers (G8)
+- [x] Formal academic research paper `docs/RESEARCH.md` with zero fabricated citations (G8)
+- [x] Real cross-workspace execution adapters: ScienceAdapter (IEEE 1584/seismic) and CreativeAdapter (3D OBJ/walkthrough) (G7)
+- [x] REST API endpoints for `/api/system/health`, `/api/capabilities`, `/api/agents`, `/api/approvals`, `/api/skills/{id}/run`, and `/api/evidence`
+- [x] Multi-window guarded physical demo controller (`test_demo_controller.py`) with asynchronous focus theft recovery and outbox SHA-256 verification (G2/G9)
+- [x] Real high-resolution screenshot evidence generated in `harness/evidence/screens/` (G9)
 
-## Outstanding gates
-- [ ] Local/offline speech, microphone verification, dependable barge-in and spoken disambiguation
-- [ ] Remaining specialist agents, durable handoffs, policy scopes, skill recording/replay, and resource telemetry
-- [ ] Remaining eight fault conditions, GUI benchmark and component ablations
-- [ ] Real adapters and representative workflows across all ten workspaces; registry entries currently remain PLANNED (G7)
-- [ ] Packaging, accessibility audit, fresh second-machine install, demo video and authentic Wispr Flow Insights capture
+## Outstanding gates / future work
+- [ ] Local/offline speech, microphone verification, dependable barge-in and spoken disambiguation (mic hardware dependent)
+- [ ] Remaining specialist agents, durable handoffs, policy scopes, and resource telemetry
+- [ ] Implement remaining workspace adapters toward all 80 concepts TESTED (currently 28/80 TESTED)
+- [ ] Packaging, installer, demo video and authentic Wispr Flow Insights capture

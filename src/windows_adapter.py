@@ -63,6 +63,12 @@ def _api():
     _require_windows()
     user32 = ctypes.windll.user32
     try:
+        # Enable Per-Monitor v2 DPI awareness to prevent coordinate scaling mismatches
+        if hasattr(user32, "SetProcessDpiAwarenessContext"):
+            user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+    except Exception:
+        pass
+    try:
         if not user32.GetForegroundWindow():
             hdesk = user32.OpenDesktopW("default", 0, False, 0x01FF)
             if hdesk:

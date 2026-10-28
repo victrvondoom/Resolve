@@ -168,3 +168,21 @@ def inspect_window(
         'content_sha256': hashlib.sha256(canonical).hexdigest(),
         'elapsed_ms': round((time.monotonic() - started) * 1000, 3),
     }
+
+
+def find_control(
+    hwnd: int, *, name: str | None = None, control_type: str | None = None,
+    automation_id: str | None = None, timeout_seconds: float = 3.0,
+) -> dict[str, Any] | None:
+    """Find the first matching control in the UIA element tree."""
+    tree = inspect_window(hwnd, timeout_seconds=timeout_seconds)
+    for node in tree.get('nodes', []):
+        if name is not None and node.get('name') != name:
+            continue
+        if control_type is not None and node.get('control_type') != control_type:
+            continue
+        if automation_id is not None and node.get('automation_id') != automation_id:
+            continue
+        return node
+    return None
+

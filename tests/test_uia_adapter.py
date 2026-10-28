@@ -60,6 +60,12 @@ class UIAAdapterTests(unittest.TestCase):
             self.assertIn('bounds', root)
             self.assertIn('enabled', root)
             self.assertIn('visible', root)
+            # Find the root node by its control type or index
+            found = uia_adapter.find_control(hwnd, control_type=root.get('control_type'))
+            self.assertIsNotNone(found)
+            self.assertEqual(found['index'], 0)
+            missing = uia_adapter.find_control(hwnd, name='NonExistentControlXYZ')
+            self.assertIsNone(missing)
         finally:
             process.terminate()
             try:

@@ -61,6 +61,8 @@ async function refresh() {
   if (!initialIntentLoaded) { $('#intent').value = state.missions.find(x => x.mission_id === 'mission_demo')?.original_request || ''; initialIntentLoaded = true; }
   lastConfirmedActionId = state.actions.find(x => x.operation === 'simulated_send_and_update_followup' && x.status === 'CONFIRMED')?.action_id || null;
   render();
+  loadApprovals().catch(() => {});
+  loadEvidence().catch(() => {});
   setHealth('healthy · ' + new Date().toLocaleTimeString(), true);
 }
 $('#reload').onclick = async () => { contactId = null; reportId = null; pending = null; $('#draftbox').textContent = 'Choose a contact and report to prepare a draft.'; $('#approve').disabled = true; $('#evidence').textContent = 'No verified effect yet.'; await refresh().catch(e => setHealth('offline: ' + e.message, false)); };
@@ -127,12 +129,223 @@ const oldApprove = $('#approve').onclick; $('#approve').onclick = async event =>
 const oldDiscover = $('#discover').onclick; $('#discover').onclick = async event => { await oldDiscover(event); if ($('#agentlog').textContent.includes('SUCCEEDED')) { const candidates = (state?.entities || []).filter(e => e.kind === 'contact' && e.display_name.toLowerCase().includes('alex')); speak('The contact and report agents finished. I found ' + candidates.length + ' Alex contacts: ' + candidates.map(e => e.context).join(' and ') + '. Say Resolve choose Northwind Alex to clarify the recipient.'); } };
 ['#contacts', '#reports'].forEach(selector => $(selector).addEventListener('change', () => { pending = null; $('#approve').disabled = true; $('#draftbox').textContent = 'Selection changed. Prepare a new draft before approval.'; }));
 
-const captureButton = document.createElement('button'); captureButton.id = 'capture'; captureButton.className = 'btn'; captureButton.textContent = 'Capture selected window'; $('#windows').after(captureButton);
-const frame = document.createElement('img'); frame.id = 'frame'; frame.alt = 'Actual captured pixels from the selected foreground window'; frame.hidden = true; $('#winlog').after(frame); let frameUrl = null;
-captureButton.onclick = async () => { try { const hwnd = $('#hwnd').value; if (!hwnd || !windowSnapshot) throw Error('Inspect and select a fresh foreground window first.'); const mission = state.missions.find(x => x.mission_id === 'mission_demo'); const capture = await api('/api/windows/capture', { mission_id: mission.mission_id, intent_revision: mission.intent_revision, hwnd: Number(hwnd), snapshot_id: windowSnapshot }); const response = await fetch('/api/evidence/' + encodeURIComponent(capture.image_name), { headers: { 'X-Resolve-Token': sessionToken } }); if (!response.ok) throw Error('Could not load captured evidence'); if (frameUrl) URL.revokeObjectURL(frameUrl); frameUrl = URL.createObjectURL(await response.blob()); frame.src = frameUrl; frame.hidden = false; $('#winlog').textContent = JSON.stringify(capture, null, 2); } catch (e) { $('#winlog').textContent = 'Capture unavailable: ' + e.message; } };
-const uiaButton = document.createElement('button'); uiaButton.id = 'uiaInspect'; uiaButton.className = 'btn'; uiaButton.textContent = 'Inspect UI elements'; captureButton.after(uiaButton);
-uiaButton.onclick = async () => { try { const hwnd = $('#hwnd').value; if (!hwnd || !windowSnapshot) throw Error('Inspect and select a fresh foreground window first.'); const mission = state.missions.find(x => x.mission_id === 'mission_demo'); const tree = await api('/api/uia/inspect', { mission_id: mission.mission_id, intent_revision: mission.intent_revision, hwnd: Number(hwnd), snapshot_id: windowSnapshot }); $('#winlog').textContent = JSON.stringify(tree, null, 2); } catch (e) { $('#winlog').textContent = 'UI Automation inspection unavailable: ' + e.message; } };
-api('/api/uia/availability').then(r => { if (!uiaButton.disabled) uiaButton.title = r.available ? 'Read-only UI Automation inspection available' : 'Optional UI Automation: ' + r.reason; }).catch(() => {});
+const screenCanvas = $('#screenCanvas'), canvasPlaceholder = $('#canvasPlaceholder'), crosshairInfo = $('#crosshairInfo');
+let currentCaptureImg = null, lastMarkerX = null, lastMarkerY = null;
+
+function drawCanvasWithMarker(img, mx, my) {
+  if (!screenCanvas || !img) return;
+  const ctx = screenCanvas.getContext('2d');
+  screenCanvas.width = img.naturalWidth || img.width;
+  screenCanvas.height = img.naturalHeight || img.height;
+  ctx.drawImage(img, 0, 0);
+  if (mx !== null && my !== null && Number.isFinite(mx) && Number.isFinite(my)) {
+    ctx.save();
+    ctx.strokeStyle = '#ff3366';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(mx, my, 12, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(mx - 18, my); ctx.lineTo(mx + 18, my);
+    ctx.moveTo(mx, my - 18); ctx.lineTo(mx, my + 18);
+    ctx.stroke();
+    ctx.fillStyle = '#ff3366';
+    ctx.beginPath();
+    ctx.arc(mx, my, 3, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+if ($('#capture')) {
+  $('#capture').onclick = async () => {
+    try {
+      const hwnd = $('#hwnd').value;
+      if (!hwnd || !windowSnapshot) throw Error('Inspect and select a fresh foreground window first.');
+      const mission = state.missions.find(x => x.mission_id === 'mission_demo');
+      const capture = await api('/api/windows/capture', { mission_id: mission.mission_id, intent_revision: mission.intent_revision, hwnd: Number(hwnd), snapshot_id: windowSnapshot });
+      const response = await fetch('/api/evidence/' + encodeURIComponent(capture.image_name), { headers: { 'X-Resolve-Token': sessionToken } });
+      if (!response.ok) throw Error('Could not load captured evidence image');
+      const blob = await response.blob();
+      const img = new Image();
+      img.onload = () => {
+        currentCaptureImg = img;
+        screenCanvas.style.display = 'block';
+        if (canvasPlaceholder) canvasPlaceholder.style.display = 'none';
+        lastMarkerX = null; lastMarkerY = null;
+        drawCanvasWithMarker(img, null, null);
+      };
+      img.src = URL.createObjectURL(blob);
+      $('#winlog').textContent = JSON.stringify(capture, null, 2);
+    } catch (e) {
+      $('#winlog').textContent = 'Capture unavailable: ' + e.message;
+    }
+  };
+}
+
+if (screenCanvas) {
+  screenCanvas.addEventListener('mousemove', e => {
+    if (!currentCaptureImg) return;
+    const rect = screenCanvas.getBoundingClientRect();
+    const scaleX = screenCanvas.width / rect.width;
+    const scaleY = screenCanvas.height / rect.height;
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+    if (crosshairInfo) {
+      crosshairInfo.style.display = 'block';
+      crosshairInfo.textContent = `Target: ${x}, ${y}`;
+    }
+  });
+  screenCanvas.addEventListener('mouseleave', () => {
+    if (crosshairInfo && lastMarkerX === null) crosshairInfo.style.display = 'none';
+  });
+  screenCanvas.addEventListener('click', e => {
+    if (!currentCaptureImg) return;
+    const rect = screenCanvas.getBoundingClientRect();
+    const scaleX = screenCanvas.width / rect.width;
+    const scaleY = screenCanvas.height / rect.height;
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+    $('#px').value = x;
+    $('#py').value = y;
+    lastMarkerX = x; lastMarkerY = y;
+    drawCanvasWithMarker(currentCaptureImg, x, y);
+    if (crosshairInfo) {
+      crosshairInfo.style.display = 'block';
+      crosshairInfo.textContent = `Aimed at (${x}, ${y})`;
+    }
+  });
+}
+
+if ($('#uiaInspect')) {
+  $('#uiaInspect').onclick = async () => {
+    try {
+      const hwnd = $('#hwnd').value;
+      if (!hwnd || !windowSnapshot) throw Error('Inspect and select a fresh foreground window first.');
+      const mission = state.missions.find(x => x.mission_id === 'mission_demo');
+      const tree = await api('/api/uia/inspect', { mission_id: mission.mission_id, intent_revision: mission.intent_revision, hwnd: Number(hwnd), snapshot_id: windowSnapshot });
+      $('#winlog').textContent = JSON.stringify(tree, null, 2);
+    } catch (e) {
+      $('#winlog').textContent = 'UI Automation inspection unavailable: ' + e.message;
+    }
+  };
+}
+api('/api/uia/availability').then(r => {
+  const btn = $('#uiaInspect');
+  if (btn && !btn.disabled) btn.title = r.available ? 'Read-only UI Automation inspection available' : 'Optional UI Automation: ' + r.reason;
+}).catch(() => {});
+
+/* ---------------- approval inbox ---------------- */
+async function loadApprovals() {
+  const container = $('#approvalsList');
+  const countBadge = $('#pendingApprovalsCount');
+  const navBadge = $('#approvalBadge');
+  if (!container) return;
+  try {
+    const r = await api('/api/approvals');
+    const items = r.approvals || [];
+    if (countBadge) countBadge.textContent = `${items.length} pending`;
+    if (navBadge) {
+      if (items.length > 0) {
+        navBadge.style.display = 'inline-flex';
+        navBadge.textContent = String(items.length);
+      } else {
+        navBadge.style.display = 'none';
+      }
+    }
+    if (!items.length) {
+      container.innerHTML = '<p class="muted">All clear. No actions currently require human approval.</p>';
+      return;
+    }
+    container.innerHTML = items.map(a => {
+      const d = a.arguments ? esc(JSON.stringify(a.arguments)) : '';
+      return `<div class="inbox-card highlight">
+        <div class="inbox-meta">
+          <span class="op"><b>${esc(a.operation)}</b></span>
+          ${chip(a.status)}
+          ${chip('Risk: ' + (a.risk_tier || 'consequential'), 'chip-warn')}
+          <span class="sid muted">${esc(a.action_id)} · rev ${esc(a.intent_revision)}</span>
+        </div>
+        <div class="small"><b>Target:</b> <code>${esc(a.target_entity_id || 'n/a')}</code></div>
+        <div class="small"><b>Payload:</b> <code>${d}</code></div>
+        <div class="row">
+          <button class="btn btn-primary btn-small" data-act-approve="${esc(a.action_id)}">Approve action</button>
+          <button class="btn btn-danger btn-small" data-act-reject="${esc(a.action_id)}">Reject action</button>
+        </div>
+      </div>`;
+    }).join('');
+    container.querySelectorAll('[data-act-approve]').forEach(b => {
+      b.onclick = async () => {
+        const aid = b.dataset.actApprove;
+        try {
+          const act = items.find(x => x.action_id === aid);
+          await api('/api/approvals/' + encodeURIComponent(aid) + '/decision', { decision: 'APPROVE', digest: act ? act.approval_digest || null : null });
+          await loadApprovals();
+          await refresh();
+        } catch (e) { alert('Approval failed: ' + e.message); }
+      };
+    });
+    container.querySelectorAll('[data-act-reject]').forEach(b => {
+      b.onclick = async () => {
+        const aid = b.dataset.actReject;
+        try {
+          await api('/api/approvals/' + encodeURIComponent(aid) + '/decision', { decision: 'REJECT', reason: 'Rejected from Mission Control inbox' });
+          await loadApprovals();
+          await refresh();
+        } catch (e) { alert('Rejection failed: ' + e.message); }
+      };
+    });
+  } catch (e) {
+    container.innerHTML = `<p class="msg err">Inbox unavailable: ${esc(errText(e))}</p>`;
+  }
+}
+if ($('#approvalsReload')) $('#approvalsReload').onclick = loadApprovals;
+
+/* ---------------- evidence & receipts ---------------- */
+async function loadEvidence() {
+  const gal = $('#evidenceGallery');
+  const countEl = $('#evidenceCount');
+  const outboxEl = $('#outboxRecords');
+  const followEl = $('#followupRecords');
+  if (!gal) return;
+  try {
+    const r = await api('/api/evidence');
+    const items = r.evidence || [];
+    if (countEl) countEl.textContent = `${items.length} files`;
+    if (!items.length) {
+      gal.innerHTML = '<p class="muted">No screen captures or evidence generated yet.</p>';
+    } else {
+      gal.innerHTML = items.slice(0, 16).map(e => `
+        <div class="evidence-card">
+          <img src="${esc(e.path)}" alt="${esc(e.name)}" loading="lazy">
+          <div class="ev-info">
+            <span class="ev-name" title="${esc(e.name)}">${esc(e.name)}</span>
+            <span class="muted small">${(e.size_bytes / 1024).toFixed(1)} KB · ${esc(e.source)}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+  } catch (e) {
+    gal.innerHTML = `<p class="msg err">Evidence gallery unavailable: ${esc(errText(e))}</p>`;
+  }
+  if (outboxEl && state && state.outbox) {
+    if (!state.outbox.length) outboxEl.innerHTML = '<p class="muted small">Outbox empty (no simulated sends yet).</p>';
+    else {
+      outboxEl.innerHTML = `<table><thead><tr><th>ID</th><th>Recipient</th><th>Attachment</th><th>Time</th></tr></thead><tbody>` +
+        state.outbox.map(o => `<tr><td><code>${esc(o.id)}</code></td><td>${esc(o.recipient_id)}</td><td><code>${esc(o.attachment_id)}</code></td><td class="muted small">${esc(o.sent_at || '')}</td></tr>`).join('') +
+        `</tbody></table>`;
+    }
+  }
+  if (followEl && state && state.followups) {
+    if (!state.followups.length) followEl.innerHTML = '<p class="muted small">No follow-ups recorded yet.</p>';
+    else {
+      followEl.innerHTML = `<table><thead><tr><th>Contact</th><th>Status</th><th>Updated</th></tr></thead><tbody>` +
+        state.followups.map(f => `<tr><td><code>${esc(f.contact_id)}</code></td><td>${chip(f.status)}</td><td class="muted small">${esc(f.updated_at || '')}</td></tr>`).join('') +
+        `</tbody></table>`;
+    }
+  }
+}
+if ($('#evidenceReload')) $('#evidenceReload').onclick = loadEvidence;
 
 async function loadSkills() { const listing = await api('/api/skills'); const active = listing.skills.filter(x => x.status === 'ACTIVE'); $('#skillList').innerHTML = '<option value="">Choose active skill…</option>' + active.map(x => `<option value="${esc(x.skill_id)}">${esc(x.spec.name)} · v${x.version}</option>`).join(''); const proposal = listing.skills.find(x => x.status === 'PENDING_APPROVAL'); if (proposal) { skillProposal = { skill: proposal.spec, review_digest: proposal.review_digest }; $('#skillActivate').disabled = false; $('#skilllog').textContent = 'Review pending skill and digest before activation:\n' + JSON.stringify(skillProposal, null, 2); } }
 $('#skillPropose').onclick = async () => { try { if (!lastConfirmedActionId) throw Error('Complete and verify a local simulator action first.'); skillProposal = await api('/api/skills/propose', { action_id: lastConfirmedActionId }); $('#skillActivate').disabled = false; $('#skilllog').textContent = 'Review this exact skill and digest before activation:\n' + JSON.stringify(skillProposal, null, 2); } catch (e) { $('#skilllog').textContent = 'Skill proposal refused: ' + e.message; } };

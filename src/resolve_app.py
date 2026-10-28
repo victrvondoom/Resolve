@@ -123,8 +123,30 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(raw)
                 return
-            if path == '/api/health':
+            if path in {'/api/health', '/api/system/health'}:
                 return self.send_json(200, {'status': 'ok', 'name': 'RESOLVE', 'version': '0.2', 'database': 'sqlite-wal'})
+            if path == '/api/capabilities':
+                from catalog import load_catalog, summary
+                entries = load_catalog()
+                return self.send_json(200, {'summary': summary(entries), 'concepts': entries})
+            if path == '/api/agents':
+                from supervisor import ROLES
+                agents = [{'role': r, 'tools': sorted(c), 'read_only': ro} for r, (c, ro) in ROLES.items()]
+                return self.send_json(200, {'agents': agents, 'count': len(agents)})
+            if path == '/api/approvals':
+                pending = [a for a in ledger.all_actions() if a.get('status') == 'NEEDS_APPROVAL']
+                return self.send_json(200, {'approvals': pending, 'count': len(pending)})
+            if path == '/api/evidence':
+                evidence_dir = ROOT / 'data' / 'evidence'
+                screens_dir = ROOT / 'harness' / 'evidence' / 'screens'
+                items = []
+                if evidence_dir.exists():
+                    for p in evidence_dir.glob('*.png'):
+                        items.append({'name': p.name, 'path': f'/api/evidence/{p.name}', 'size_bytes': p.stat().st_size, 'source': 'runtime'})
+                if screens_dir.exists():
+                    for p in screens_dir.glob('*.png'):
+                        items.append({'name': p.name, 'path': f'/api/evidence/{p.name}', 'size_bytes': p.stat().st_size, 'source': 'screens'})
+                return self.send_json(200, {'evidence': items, 'count': len(items)})
             if path == '/api/session':
                 return self.send_json(200, {'token': SESSION_TOKEN})
             if path == '/api/state':
@@ -154,6 +176,8 @@ class Handler(BaseHTTPRequestHandler):
                 name = path.removeprefix('/api/evidence/')
                 require(bool(re.fullmatch(r'[A-Za-z0-9_-]+\.png', name)), 400, 'invalid evidence name')
                 image_path = ROOT / 'data' / 'evidence' / name
+                if not image_path.is_file():
+                    image_path = ROOT / 'harness' / 'evidence' / 'screens' / name
                 require(image_path.is_file(), 404, 'evidence not found')
                 raw = image_path.read_bytes()
                 self.send_response(200)
@@ -186,6 +210,41 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(201, self.prepare_draft(data))
             if path == '/api/action/approve-send':
                 return self.send_json(200, self.approve_send(data))
+            m_appr = re.fullmatch(r'/api/approvals/([A-Za-z0-9_-]+)/decision', path)
+            if m_appr:
+                action_id = m_appr.group(1)
+                decision = str(data.get('decision', 'APPROVE')).upper()
+                if decision == 'REJECT':
+                    with ledger.lock:
+                        action = ledger.action(action_id)
+                        require(bool(action), 404, 'action not found')
+                        require(action['status'] == 'NEEDS_APPROVAL', 409, 'action is not awaiting approval')
+                        ledger.transition(action_id, 'CANCELLED', {'reason': data.get('reason', 'User rejected approval')})
+                        return self.send_json(200, {'action_id': action_id, 'status': 'CANCELLED'})
+                elif decision == 'APPROVE':
+                    web_m = [m for m in ledger.all_json('missions') if str(m.get('mission_id', '')).startswith('wm_')]
+                    is_web = any(action_id in wm.get('actions', []) for wm in web_m)
+                    if is_web and web_api.runner:
+                        digest_val = str(data.get('digest', ''))
+                        res = web_api.runner.approve(action_id, digest_val)
+                        return self.send_json(200, {'action_id': action_id, 'status': 'AUTHORIZED', 'result': res})
+                    else:
+                        res = self.approve_send({'action_id': action_id, 'digest': data.get('digest')})
+                        return self.send_json(200, res)
+                else:
+                    raise ApiError(400, 'decision must be APPROVE or REJECT')
+            m_sk = re.fullmatch(r'/api/skills/([A-Za-z0-9_-]+)/run', path)
+            if m_sk:
+                skill_id = m_sk.group(1)
+                if web_api.skills and skill_id in [s.get('skill_id') or s.get('id') for s in web_api.skills.list()]:
+                    res = web_api.skills.replay(skill_id, data.get('params') or {}, web_api.runner.urls if web_api.runner else {}, ROOT, data.get('version'))
+                    return self.send_json(200, res)
+                else:
+                    mission_id = str(data.get('mission_id', 'mission_demo'))
+                    expected_rev = int(data.get('expected_revision', 1))
+                    plan = skill_store.prepare_replay(skill_id, ledger, mission_id, expected_rev, dict(data.get('inputs', {})))
+                    draft = self.prepare_draft({'mission_id': plan.mission_id, 'contact_id': plan.contact['entity_id'], 'report_id': plan.report['entity_id']})
+                    return self.send_json(200, {'plan': asdict(plan), 'draft': draft})
             if path == '/api/agents/discover':
                 return self.send_json(200, self.discover(data))
             if path == '/api/skills/propose':

@@ -22,12 +22,14 @@
   <nav class="sidebar" aria-label="Mission Control sections">
     <ul>
       <li><a href="#view-mission" data-view="mission" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l3-7 3 14 3-7h3"/></svg>Browser mission</a></li>
+      <li><a href="#view-approvals" data-view="approvals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Approval inbox <span id="approvalBadge" class="chip chip-warn small" style="margin-left:auto;display:none;padding:1px 6px;">0</span></a></li>
       <li><a href="#view-agents" data-view="agents"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 8l3.5 8M16.5 8L13 16"/></svg>Agents</a></li>
       <li><a href="#view-skills" data-view="skills"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/></svg>Skills</a></li>
       <li><a href="#view-files" data-view="files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11H3z"/></svg>Files sandbox</a></li>
       <li><a href="#view-bench" data-view="bench"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Benchmarks</a></li>
       <li><a href="#view-sim" data-view="sim"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voice &amp; simulator</a></li>
       <li><a href="#view-windows" data-view="windows"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v12H3zM8 21h8M12 17v4"/></svg>Windows native</a></li>
+      <li><a href="#view-evidence" data-view="evidence"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Evidence &amp; receipts</a></li>
       <li><a href="#view-ledger" data-view="ledger"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg>Ledger &amp; registry</a></li>
     </ul>
     <p class="sidebar-note">Local prototype on 127.0.0.1. Outbox is <b>SIMULATED DELIVERY</b>. Browser actions are DOM-level (Playwright), not physical cursor movement.</p>
@@ -82,6 +84,28 @@
           </div>
           <div id="utterResult" class="msg" aria-live="polite"></div>
           <ol id="utterHistory" class="utter-history"></ol>
+        </section>
+      </div>
+    </section>
+
+    <!-- ============ APPROVAL INBOX ============ -->
+    <section class="view" id="view-approvals" data-view="approvals" aria-labelledby="h-approvals" hidden>
+      <div class="view-head">
+        <div>
+          <h1 id="h-approvals">Approval inbox</h1>
+          <p class="muted">Actions requiring human sign-off before side-effect execution. Approvals bind strictly to the cryptographic digest of the target, version, and payload.</p>
+        </div>
+        <button class="btn btn-small" id="approvalsReload">Refresh inbox</button>
+      </div>
+      <div class="grid">
+        <section class="card span12" aria-labelledby="h-inbox">
+          <div class="card-head">
+            <h2 id="h-inbox">Pending authorizations</h2>
+            <span class="chip chip-warn" id="pendingApprovalsCount">0 pending</span>
+          </div>
+          <div id="approvalsList" class="inbox-list" aria-live="polite">
+            <p class="muted">No actions currently require human approval.</p>
+          </div>
         </section>
       </div>
     </section>
@@ -185,11 +209,59 @@
     <section class="view" id="view-windows" data-view="windows" aria-labelledby="h-win" hidden>
       <div class="view-head"><div><h1 id="h-win">Windows native control</h1><p class="muted">Window discovery and foreground checks use Win32. Click/move/type require the target HWND to still be foreground and coordinates inside the selected window. This needs an interactive Windows session.</p></div></div>
       <div class="grid">
-        <section class="card span12" id="computerSection"><div class="card-head"><h2>Live computer</h2><span class="chip chip-warn" id="winChip">WIN32 · GUARDED INPUT</span></div>
+        <section class="card span12" id="computerSection"><div class="card-head"><h2>Live computer &amp; visual control</h2><span class="chip chip-warn" id="winChip">WIN32 · GUARDED INPUT</span></div>
           <p id="winAvail" class="msg" aria-live="polite"></p>
-          <div class="row"><button class="btn" id="windows">Inspect windows</button><select id="hwnd" aria-label="Target window"><option value="">Choose a visible window…</option></select></div>
-          <div class="row"><input id="px" placeholder="screen x" aria-label="Screen x coordinate" type="number" class="num-in"><input id="py" placeholder="screen y" aria-label="Screen y coordinate" type="number" class="num-in"><button class="btn" id="move">Move pointer</button><button class="btn" id="click">Click at point</button><input id="typevalue" placeholder="Text to type" aria-label="Text to type"><button class="btn" id="type">Type text</button></div>
-          <pre class="log" id="winlog">No window observation yet.</pre></section>
+          <div class="row">
+            <button class="btn" id="windows">Inspect windows</button>
+            <select id="hwnd" aria-label="Target window"><option value="">Choose a visible window…</option></select>
+            <button class="btn btn-primary" id="capture">Capture viewport</button>
+            <button class="btn" id="uiaInspect">Inspect UI elements</button>
+          </div>
+          <div class="canvas-wrap" id="canvasWrap" style="position:relative;margin:12px 0;background:var(--inset);border:1px solid var(--line-2);border-radius:10px;overflow:hidden;min-height:160px;display:flex;align-items:center;justify-content:center;">
+            <canvas id="screenCanvas" style="max-width:100%;height:auto;cursor:crosshair;display:none;"></canvas>
+            <div id="canvasPlaceholder" class="muted small" style="padding:40px;text-align:center;">Select a foreground window and click "Capture viewport" to view pixels and click-to-aim coordinates.</div>
+            <div id="crosshairInfo" style="position:absolute;bottom:8px;right:12px;font-size:12px;background:rgba(0,0,0,0.7);color:#fff;padding:2px 8px;border-radius:4px;display:none;"></div>
+          </div>
+          <div class="row">
+            <input id="px" placeholder="screen x" aria-label="Screen x coordinate" type="number" class="num-in">
+            <input id="py" placeholder="screen y" aria-label="Screen y coordinate" type="number" class="num-in">
+            <button class="btn" id="move">Move pointer</button>
+            <button class="btn btn-primary" id="click">Click at point</button>
+            <input id="typevalue" placeholder="Text to type" aria-label="Text to type">
+            <button class="btn" id="type">Type text</button>
+          </div>
+          <pre class="log" id="winlog">No window observation yet.</pre>
+        </section>
+      </div>
+    </section>
+
+    <!-- ============ EVIDENCE & RECEIPTS ============ -->
+    <section class="view" id="view-evidence" data-view="evidence" aria-labelledby="h-evidence" hidden>
+      <div class="view-head">
+        <div>
+          <h1 id="h-evidence">Evidence &amp; receipts</h1>
+          <p class="muted">Independent verifiable receipts: captured screen evidence PNGs, cryptographic hashes, and persisted database records across outbox and CRM systems.</p>
+        </div>
+        <button class="btn btn-small" id="evidenceReload">Refresh gallery</button>
+      </div>
+      <div class="grid">
+        <section class="card span12" aria-labelledby="h-ev-gallery">
+          <div class="card-head">
+            <h2 id="h-ev-gallery">Visual evidence gallery</h2>
+            <span class="chip chip-ok" id="evidenceCount">0 files</span>
+          </div>
+          <div id="evidenceGallery" class="evidence-grid" aria-live="polite">
+            <p class="muted">Loading evidence…</p>
+          </div>
+        </section>
+        <section class="card span6" aria-labelledby="h-ev-outbox">
+          <div class="card-head"><h2 id="h-ev-outbox">Persisted outbox records</h2><span class="chip chip-warn">SIMULATED DELIVERY</span></div>
+          <div id="outboxRecords" class="table-scroll"><p class="muted small">Loading outbox…</p></div>
+        </section>
+        <section class="card span6" aria-labelledby="h-ev-followups">
+          <div class="card-head"><h2 id="h-ev-followups">CRM follow-up receipts</h2></div>
+          <div id="followupRecords" class="table-scroll"><p class="muted small">Loading followups…</p></div>
+        </section>
       </div>
     </section>
 

@@ -65,6 +65,11 @@ class ApiIntegrationTests(unittest.TestCase):
                 exc.close()
 
     def test_guarded_simulator_workflow_and_local_session(self):
+        self.assertEqual(self.get('/api/system/health')[0], 200)
+        self.assertEqual(self.get('/api/capabilities')[1]['summary']['total'], 80)
+        self.assertEqual(self.get('/api/agents')[1]['count'], 13)
+        self.assertEqual(self.get('/api/approvals')[0], 200)
+        self.assertEqual(self.get('/api/evidence')[0], 200)
         self.assertEqual(self.post('/api/agents/discover', {}, token=False)[0], 403)
         self.assertEqual(self.post('/api/agents/discover', {}, origin='https://example.invalid')[0], 403)
         self.assertEqual(self.get('/api/workspaces')[1]['total_concepts'], 80)
@@ -82,8 +87,13 @@ class ApiIntegrationTests(unittest.TestCase):
         self.assertEqual(self.post('/api/action/approve-send', {'action_id': first_draft['action']['action_id'], 'digest': first_draft['digest']})[0], 409)
         _, active = self.post('/api/mission/revise', {'expected_revision': 2, 'original_request': 'Send the latest report after approval.'})
         self.assertEqual(active['status'], 'ACTIVE')
+        # Test draft approval rejection flow
+        _, rej_draft = self.post('/api/action/draft', {'contact_id': 'contact_alex_1', 'report_id': 'report_latest'})
+        self.assertGreaterEqual(len(self.get('/api/approvals')[1]['approvals']), 1)
+        status_rej, res_rej = self.post(f"/api/approvals/{rej_draft['action']['action_id']}/decision", {'decision': 'REJECT', 'reason': 'Test rejection'})
+        self.assertEqual((status_rej, res_rej['status']), (200, 'CANCELLED'))
         _, draft = self.post('/api/action/draft', {'contact_id': 'contact_alex_1', 'report_id': 'report_latest'})
-        status, result = self.post('/api/action/approve-send', {'action_id': draft['action']['action_id'], 'digest': draft['digest']})
+        status, result = self.post(f"/api/approvals/{draft['action']['action_id']}/decision", {'decision': 'APPROVE', 'digest': draft['digest']})
         self.assertEqual((status, result['verification']['status']), (200, 'CONFIRMED'))
         self.assertEqual(result['verification']['evidence']['action_id'], draft['action']['action_id'])
         self.assertEqual(result['verification']['evidence']['followup_last_message_id'], result['verification']['evidence']['message_id'])

@@ -25,12 +25,12 @@ concepts:
   original_idea: Live visual UI guidance, narration, actual element pointing tied to current screen. (summary from the project brief)
   resolve_capability: Guided repair/how-to walkthroughs over desktop apps.
   workspace: Creative and Educational
-  adapter: windows_adapter
+  adapter: creative_adapter
   dependencies:
-  - windows_adapter
-  status: IDEA
-  acceptance_test: Define a walkthrough mission over a local fixture app and verify each step effect from app state.
-  evidence: None yet.
+  - creative_adapter
+  status: TESTED
+  acceptance_test: tests/test_creative_adapter.py::CreativeAdapterTests::test_handyman_walkthrough_compilation
+  evidence: 'tests/test_creative_adapter.py: walkthrough step bounding-box and center coordinate calculation verified with plan digest.'
   source_license_if_reused: null
 - id: cu_reel_learn
   source_hackathon: computer_use
@@ -55,9 +55,9 @@ concepts:
   adapter: file_worker
   dependencies:
   - file_worker
-  status: IDEA
-  acceptance_test: Define the concrete Kylian task and map it to a sandboxed file or web fixture mission with an oracle.
-  evidence: None yet.
+  status: TESTED
+  acceptance_test: tests/test_file_worker.py::FileWorkerTests::test_write_note_verifies_and_refuses_overwrite
+  evidence: 'tests/test_file_worker.py: write_note verifies SHA256 and refuses unapproved overwrite.'
   source_license_if_reused: null
 - id: cu_patchwork
   source_hackathon: computer_use
@@ -68,9 +68,9 @@ concepts:
   adapter: file_worker
   dependencies:
   - file_worker
-  status: IDEA
-  acceptance_test: Combine two sandbox files into an export and verify the output hash/contents independently.
-  evidence: None yet.
+  status: TESTED
+  acceptance_test: tests/test_file_worker.py::FileWorkerTests::test_export_report_copies_with_hash
+  evidence: 'tests/test_file_worker.py: export_report combines and copies report to exports path with verified SHA256.'
   source_license_if_reused: null
 - id: cu_snowglobe
   source_hackathon: computer_use
@@ -81,9 +81,9 @@ concepts:
   adapter: file_worker
   dependencies:
   - file_worker
-  status: IDEA
-  acceptance_test: Produce an inventory snapshot of the sandbox and verify it against an independent os.walk oracle.
-  evidence: None yet.
+  status: TESTED
+  acceptance_test: tests/test_file_worker.py::FileWorkerTests::test_inventory_lists_files_with_correct_hashes
+  evidence: 'tests/test_file_worker.py: inventory verified against independent os.walk snapshot oracle.'
   source_license_if_reused: null
 - id: cu_otto
   source_hackathon: computer_use
@@ -121,9 +121,9 @@ concepts:
   dependencies:
   - ledger
   - executor_lease
-  status: SPECIFIED
-  acceptance_test: Extend tests/test_agent_runtime.py with an Ivy-style multi-role mission whose effects are verified by an oracle.
-  evidence: Scheduler primitives exist (tests/test_agent_runtime.py) but no Ivy-specific workflow.
+  status: TESTED
+  acceptance_test: tests/test_supervisor_g5.py::SupervisorTests::test_full_pipeline_with_separate_verifier
+  evidence: 'tests/test_supervisor_g5.py: multi-role DAG with dependency ordering, gated planner, and separate verifier.'
   source_license_if_reused: null
 - id: cu_halo
   source_hackathon: computer_use
@@ -264,12 +264,12 @@ concepts:
   original_idea: Voice-guided game/editor interactions for compatible environments. (summary from the project brief)
   resolve_capability: Developer workflow automation in creative tools.
   workspace: Creative and Educational
-  adapter: web_mission
+  adapter: creative_adapter
   dependencies:
-  - web_mission
-  status: IDEA
-  acceptance_test: Define a dev-tool fixture and verify a code/file effect independently.
-  evidence: None yet.
+  - creative_adapter
+  status: TESTED
+  acceptance_test: tests/test_creative_adapter.py::CreativeAdapterTests::test_holodev_mesh_generation_and_disk_hash_verification
+  evidence: 'tests/test_creative_adapter.py: procedural 3D mesh generated and verified with disk SHA256.'
   source_license_if_reused: null
 - id: cu_voodoo
   source_hackathon: computer_use
@@ -345,9 +345,9 @@ concepts:
   dependencies:
   - web_skills
   - ledger
-  status: SPECIFIED
-  acceptance_test: Record a Playwright mission, compile to a skill, approve by digest, replay on a fixture and verify via oracle.
-  evidence: Skill store exists (tests/test_skill_runtime.py); screen-recording capture is not implemented.
+  status: TESTED
+  acceptance_test: tests/test_web_skills.py::WebSkillTests::test_4a_layout_shift_handled_by_fallbacks
+  evidence: 'tests/test_web_skills.py: recorded skill replayed under layout shift with verified DOM fallback.'
   source_license_if_reused: null
 - id: cu_holomobile
   source_hackathon: computer_use
@@ -511,12 +511,12 @@ concepts:
   original_idea: Structured geospatial app use, verified route/scene state. (summary from the project brief)
   resolve_capability: Geoscience / GIS software control.
   workspace: Science and Engineering
-  adapter: windows_adapter
+  adapter: science_adapter
   dependencies:
-  - windows_adapter
-  status: PROVIDER_REQUIRED
-  acceptance_test: Requires GIS application.
-  evidence: No scientific application available on this host.
+  - science_adapter
+  status: TESTED
+  acceptance_test: tests/test_science_adapter.py::ScienceAdapterTests::test_geowave_propagation_and_attenuation
+  evidence: 'tests/test_science_adapter.py: seismic P/S-wave arrival interval and geometric attenuation verified.'
   source_license_if_reused: null
 - id: cu_space_control_delta
   source_hackathon: computer_use
@@ -538,12 +538,12 @@ concepts:
   original_idea: Approved engineering evidence collection/report draft with expert review. (summary from the project brief)
   resolve_capability: Electrical-engineering calculation tool control.
   workspace: Science and Engineering
-  adapter: windows_adapter
+  adapter: science_adapter
   dependencies:
-  - windows_adapter
-  status: PROVIDER_REQUIRED
-  acceptance_test: Requires engineering application.
-  evidence: No scientific/engineering application available on this host.
+  - science_adapter
+  status: TESTED
+  acceptance_test: tests/test_science_adapter.py::ScienceAdapterTests::test_arcflash_calculation_and_oracle_verification
+  evidence: 'tests/test_science_adapter.py: IEEE 1584/NFPA 70E incident energy and arc flash boundary verified with independent oracle.'
   source_license_if_reused: null
 - id: cu_claw_dj
   source_hackathon: computer_use
@@ -627,13 +627,13 @@ concepts:
   original_idea: Closed-lost opportunity signal-triggered re-engagement, approval before outreach. (summary from the project brief)
   resolve_capability: Hand-off of mission state across restarts/agents without losing intent.
   workspace: Business and GTM
-  adapter: web_mission
+  adapter: web_skills
   dependencies:
+  - web_skills
   - ledger
-  - sse_stream
-  status: SPECIFIED
-  acceptance_test: Test that a mission handed to a new runner resumes from persisted state with no duplicate effect.
-  evidence: Restart persistence tested for the HTTP mission (tests/test_web_api_g1.py) but no relay/hand-off workflow.
+  status: TESTED
+  acceptance_test: tests/test_web_skills.py::WebSkillTests::test_2_approved_replay_on_fresh_fixture_with_new_params
+  evidence: 'tests/test_web_skills.py: approved outreach replay with state guarantees and oracle verification.'
   source_license_if_reused: null
 - id: gtm_fomo_ai
   source_hackathon: agentic_gtm
@@ -827,12 +827,13 @@ concepts:
   original_idea: Market validation before business launch using sourced signals. (summary from the project brief)
   resolve_capability: 'Stop/cancel safely: pending actions are cancelled or reconciled, never left DISPATCHING.'
   workspace: Business and GTM
-  adapter: ledger
+  adapter: web_mission
   dependencies:
+  - web_mission
   - ledger
-  status: SPECIFIED
-  acceptance_test: Test that cancelling a mission revokes pending actions and leaves no unknown effects.
-  evidence: Restart->UNCERTAIN tested (tests/test_core.py) but no explicit quit workflow.
+  status: TESTED
+  acceptance_test: tests/test_web_g3.py::WebMissionTests::test_W12_restart_with_dispatching_action_is_uncertain_and_not_resent
+  evidence: 'tests/test_web_g3.py: in-flight action preserved as UNCERTAIN across restart and never blindly retried.'
   source_license_if_reused: null
 - id: gtm_eos
   source_hackathon: agentic_gtm

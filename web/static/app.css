@@ -167,3 +167,16 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .card-head > .row{min-width:0;max-width:100%}
 .action .op{overflow-wrap:anywhere;min-width:0}
 @media (max-width:600px){.action{grid-template-columns:minmax(0,1fr)}.action .chips{justify-content:flex-start}}
+
+/* evidence & approvals */
+.evidence-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-top:10px}
+.evidence-card{border:1px solid var(--line);border-radius:10px;background:var(--inset);overflow:hidden;display:flex;flex-direction:column;transition:border-color .15s}
+.evidence-card:hover{border-color:var(--accent)}
+.evidence-card img{width:100%;height:150px;object-fit:contain;background:#05070d;border-bottom:1px solid var(--line)}
+.evidence-card .ev-info{padding:10px 12px;font-size:12px;display:grid;gap:4px}
+.evidence-card .ev-name{font-weight:600;font-family:ui-monospace,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbox-list{display:grid;gap:12px;margin-top:8px}
+.inbox-card{border:1px solid var(--line-2);border-radius:12px;padding:14px;background:var(--inset);display:grid;gap:8px}
+.inbox-card.highlight{border-color:var(--amber);background:color-mix(in srgb,var(--amber) 5%,var(--inset))}
+.inbox-meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px}
+.canvas-wrap canvas{border:1px solid var(--line);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.3)}

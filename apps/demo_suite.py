@@ -354,6 +354,10 @@ class DemoSuite:
         self.popup_dismiss.pack(padx=17)
         self.popup.grab_set()
         self.popup.focus_force()
+        if os.name == "nt":
+            user32 = ctypes.windll.user32
+            user32.SetForegroundWindow.argtypes = [ctypes.c_void_p]
+            user32.SetForegroundWindow(self._hwnd(self.popup))
         self._observe()
 
     def dismiss_focus_fault(self):
