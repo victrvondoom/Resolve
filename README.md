@@ -6,6 +6,64 @@ RESOLVE is a local, Windows-first, voice-operable agent system for computer work
 
 The working hypothesis is **Intent–Entity–Effect Continuity (IEEC)** plus a **Causal State Ledger (CSL)**: carry your intent revision, the stable identity of the target, the exact version of the content and the observed external effect through every step, and refuse or hold whenever they come apart. It is a hypothesis we measure (below), not a claim of novelty or of universal exactly-once delivery.
 
+## Architecture
+
+RESOLVE is organized as four isolated layers. Each layer only talks to the layer below it, so a compromise of the browser or an agent run can never reach another user's data or bypass the permission core.
+
+```mermaid
+flowchart TB
+    subgraph APP["RESOLVE Web App"]
+        V["Voice · Chat · Live Browser · Missions · Files · Approvals"]
+    end
+
+    subgraph ORCH["Authenticated Multi-Agent Orchestrator"]
+        O["Planning · Identity · Permissions · IEEC · Causal Ledger"]
+    end
+
+    subgraph SBX["Isolated Sandboxes"]
+        A["User A Sandbox<br/>Private browser, files, sessions, execution"]
+        B["User B Sandbox<br/>Separate browser, files, sessions, execution"]
+    end
+
+    subgraph DATA["Private Data & Permission Control"]
+        D["Encrypted storage · Scoped connectors · Export · Revoke · Delete"]
+    end
+
+    APP --> ORCH --> SBX --> DATA
+```
+
+Equivalent plain-text view:
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                             RESOLVE Web App                              │
+│        Voice · Chat · Live Browser · Missions · Files · Approvals        │
+└───────────────────────────────────────┬──────────────────────────────────┘
+                                        │
+┌───────────────────────────────────────▼──────────────────────────────────┐
+│                  Authenticated Multi-Agent Orchestrator                  │
+│          Planning · Identity · Permissions · IEEC · Causal Ledger        │
+└──────────────┬───────────────────────────────────────┬───────────────────┘
+               │                                       │
+┌──────────────▼──────────────┐         ┌──────────────▼──────────────┐
+│        User A Sandbox       │         │        User B Sandbox       │
+│  Private browser, files,    │         │  Separate browser, files,   │
+│  sessions, execution        │         │  sessions, execution        │
+└──────────────┬──────────────┘         └──────────────┬──────────────┘
+               │                                       │
+┌──────────────▼───────────────────────────────────────▼──────────────────┐
+│                    Private Data & Permission Control                     │
+│   Encrypted storage · Scoped connectors · Export · Revoke · Delete       │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**How the layers work together**
+
+1. **RESOLVE Web App** — the only surface you touch. Voice and chat input, a live browser view of what agents are doing, mission control, file transfer and a human approval queue. Nothing executes here; it only collects intent and displays evidence.
+2. **Authenticated Multi-Agent Orchestrator** — the brain. Every request is authenticated, planned, and stamped with an identity and permission scope before any action runs. The **IEEC** check carries your intent revision, the stable entity ID, and the exact content hash through every step; the **Causal Ledger** records every observed effect so a lost acknowledgement becomes `UNCERTAIN` and a reconcile — never a blind resend.
+3. **Per-user Sandboxes** — User A and User B get fully separate browsers, files, sessions and execution contexts. An agent operating for User A physically cannot read User B's tabs, cookies, or files; there is no shared state to leak.
+4. **Private Data & Permission Control** — the trust root. Data at rest is encrypted, connectors are scoped to the minimum access a mission needs, and you keep irreversible control: export your data, revoke a connector mid-mission, or delete everything. The orchestrator enforces these scopes on every tool call, not just at login.
+
 ## What is verified, what is not
 
 | Capability | Status | Evidence |
@@ -100,3 +158,7 @@ Wispr Flow is used by the developer to dictate prompts and documentation. RESOLV
 ## Project map
 
 `src/` kernel (ledger, web mission runner, supervisor, intent, skills, file worker, Windows adapters) · `apps/web_fixtures.py` the three test apps · `web/` landing page and Mission Control · `benchmarks/` A/B/C + ablations · `tests/` · `harness/evidence/` per-gate evidence · `PROGRESS.md` / `TASKS.md` current state. MIT licensed; no third-party hackathon code reused ([docs/RESEARCH.md](docs/RESEARCH.md)).
+
+---
+
+*Authored and maintained by **Mistral AI** — built by Mistral Vibe, Mistral AI's coding agent.*
