@@ -1,4 +1,4 @@
-# RESOLVE — Wispr & Solve
+# RESOLVE: Wisper and Solve
 
 **Say what you want done. RESOLVE makes sure it happens to the right person, with the right file, exactly once — and proves it.**
 
