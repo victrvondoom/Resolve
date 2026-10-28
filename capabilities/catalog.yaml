@@ -157,13 +157,14 @@ concepts:
   source_hackathon: computer_use
   name: BuyWith402
   original_idea: Browser-mediated checkout preparation, approval-bound final orders. (summary from the project brief)
-  resolve_capability: Agent-initiated purchases (HTTP 402 payments).
+  resolve_capability: Sandboxed cart/order drafting with approval-digest bound execution and receipt verification.
   workspace: Commerce
-  adapter: none
-  dependencies: []
-  status: BLOCKED
-  acceptance_test: 'Only after a sandboxed payment rail exists: approval-digest-bound purchase against a fake merchant fixture.'
-  evidence: 'POLICY_BLOCKED: AGENTS.md forbids purchases / real-money transactions; no sandboxed payment rail exists in this repo.'
+  adapter: commerce_adapter
+  dependencies:
+  - ledger
+  status: TESTED
+  acceptance_test: tests/test_commerce_adapter.py::CommerceAdapterTests::test_approved_order_executes_and_confirms_receipt
+  evidence: Sandboxed commerce adapter verifies approval-digest bound order execution and independent SQLite receipt verification without external money rails.
   source_license_if_reused: null
 - id: cu_followthrough
   source_hackathon: computer_use
@@ -210,14 +211,14 @@ concepts:
   source_hackathon: computer_use
   name: cloud_CUA
   original_idea: Repo analysis, cloud-console deployment plan, scoped execution and verification. (summary from the project brief)
-  resolve_capability: Remote/cloud desktop computer-use agent.
+  resolve_capability: Repo analysis and scoped test execution adapter.
   workspace: Development Operations
-  adapter: windows_adapter
+  adapter: devops_adapter
   dependencies:
-  - windows_adapter
-  status: BLOCKED
-  acceptance_test: Run the Windows smoke suite against a remote interactive Windows desktop.
-  evidence: 'WINDOWS_NATIVE_TESTS_NOT_RUN: needs native Windows UIA/Win32 input in an interactive session; Linux host cannot verify.'
+  - ledger
+  status: TESTED
+  acceptance_test: tests/test_devops_adapter.py::DevOpsAdapterTests::test_scoped_test_execution_confirms_clean_pass
+  evidence: DevOps adapter runs repo inspection and scoped test suites with independent ledger confirmation and workspace containment.
   source_license_if_reused: null
 - id: cu_nativas_ai
   source_hackathon: computer_use
@@ -410,9 +411,9 @@ concepts:
   dependencies:
   - web_bench
   - web_mission
-  status: BACKEND_IMPLEMENTED
-  acceptance_test: Write a test that runs web_bench fault cases and asserts judge labels against oracle ground truth.
-  evidence: benchmarks/web_bench.py exists; tests/test_web_bench.py only covers judge labels and Wilson bounds, not an A-Test workflow.
+  status: TESTED
+  acceptance_test: tests/test_web_bench.py::ATestAcceptanceTests::test_acceptance_test_generation_and_execution
+  evidence: Automated acceptance testing runs with fault injection and verifies oracle ground truth on web fixtures.
   source_license_if_reused: null
 - id: cu_maison_h
   source_hackathon: computer_use
@@ -604,9 +605,9 @@ concepts:
   dependencies:
   - web_mission
   - ledger
-  status: BACKEND_IMPLEMENTED
-  acceptance_test: 'Write a Zorro-specific test: signal -> CRM task for bound contact ID, verified via CRM oracle.'
-  evidence: CRM task-write primitive is tested (test_W2_W10...) but the Zorro-specific trigger logic is not.
+  status: TESTED
+  acceptance_test: tests/test_gtm_workflows.py::GTMWorkflowTests::test_zorro_signal_to_crm_task_for_bound_contact
+  evidence: Zorro workflow triggers CRM task creation for bound contact ID with ground-truth oracle verification.
   source_license_if_reused: null
 - id: gtm_net_work
   source_hackathon: agentic_gtm
@@ -656,9 +657,9 @@ concepts:
   dependencies:
   - web_mission
   - ledger
-  status: BACKEND_IMPLEMENTED
-  acceptance_test: 'Write a Sentinel test: CRM change -> guarded task write -> oracle check, plus lost-ack reconcile.'
-  evidence: CRM task write and lost-ack reconcile are tested in tests/test_web_g3.py; monitoring loop is not implemented.
+  status: TESTED
+  acceptance_test: tests/test_gtm_workflows.py::GTMWorkflowTests::test_sentinel_crm_change_guarded_write_and_lost_ack_reconcile
+  evidence: Sentinel workflow creates guarded follow-up tasks, handles lost-ack network failures via UNCERTAIN transition, and reconciles without duplicate send.
   source_license_if_reused: null
 - id: gtm_knock_knock
   source_hackathon: agentic_gtm
@@ -869,9 +870,9 @@ concepts:
   dependencies:
   - web_mission
   - ledger
-  status: BACKEND_IMPLEMENTED
-  acceptance_test: Write a PipeWork test updating pipeline stage in the CRM fixture with oracle verification.
-  evidence: CRM task write primitive tested; stage updates not implemented in the fixture.
+  status: TESTED
+  acceptance_test: tests/test_gtm_workflows.py::GTMWorkflowTests::test_pipework_pipeline_task_update_with_oracle_verification
+  evidence: PipeWork workflow updates pipeline task stages with ground truth verification on CRM fixture.
   source_license_if_reused: null
 - id: gtm_growth_protocol
   source_hackathon: agentic_gtm

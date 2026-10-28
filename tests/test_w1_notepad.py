@@ -88,16 +88,32 @@ class W1NativeNotepad(unittest.TestCase):
             thief = []
 
             def steal():
-                thief.append(subprocess.Popen(['notepad.exe']))
+                thief_file = Path(d) / 'thief.txt'
+                thief_file.write_text('', encoding='utf-8')
+                from notepad_w1 import _launch_editor
+                p = _launch_editor('notepad.exe', thief_file)
+                thief.append(p)
                 import time
-                time.sleep(1.5)
+                deadline = time.monotonic() + 5.0
+                while time.monotonic() < deadline:
+                    for win in windows_adapter.list_windows()['windows']:
+                        if 'thief.txt' in win['title']:
+                            windows_adapter.focus_window(win['hwnd'])
+                            time.sleep(0.3)
+                            return
+                    time.sleep(0.1)
+
             try:
                 r = w1.run('MUST NOT APPEAR', before_type=steal)
                 self.assertIn(r['status'], {'FAILED', 'UNCERTAIN'})
                 self.assertNotIn('MUST NOT APPEAR', Path(r['path']).read_text(encoding='utf-8-sig', errors='replace'))
             finally:
                 for p in thief:
-                    p.terminate()
+                    try:
+                        p.terminate()
+                        p.wait(timeout=1.0)
+                    except Exception:
+                        pass
 
 
 if __name__ == '__main__':

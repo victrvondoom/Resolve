@@ -52,6 +52,14 @@ class DemoSuiteUiTests(unittest.TestCase):
         self.directory = Path(self.temp.name)
         self.store = DemoStore(self.directory / "demo.db", self.directory / "truth.db")
         self.observation_path = self.directory / "observation.json"
+        if os.name == 'nt':
+            import ctypes
+            try:
+                hdesk = ctypes.windll.user32.OpenDesktopW('default', 0, False, 0x01FF)
+                if hdesk:
+                    ctypes.windll.user32.SetThreadDesktop(hdesk)
+            except Exception:
+                pass
         self.suite = DemoSuite(self.store, self.observation_path)
         self.suite.root.update()
 

@@ -27,8 +27,16 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+class ClosingConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            return super().__exit__(exc_type, exc, tb)
+        finally:
+            self.close()
+
+
 def connect(path: str | Path) -> sqlite3.Connection:
-    db = sqlite3.connect(str(path), timeout=10)
+    db = sqlite3.connect(str(path), timeout=10, factory=ClosingConnection)
     db.row_factory = sqlite3.Row
     db.execute('PRAGMA journal_mode=WAL')
     return db

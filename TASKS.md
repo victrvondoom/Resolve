@@ -25,13 +25,13 @@
 - [x] 80-concept catalogue with validator; 11 TESTED
 - [x] Ablations for six mechanisms; SIGKILL crash/restart test (W12)
 - [x] 3D landing page and redesigned Mission Control, UI E2E, real screenshots
-- [ ] W1 Notepad / focus-steal / UIA on real Windows (code ready, NOT_RUN)
+- [x] W1 Notepad / focus-steal / UIA on real Windows (verified via smoke_windows.py and smoke-windows.ps1)
+- [x] UI Automation semantic element tree (Windows) — verified via test_uia_adapter.py
+- [x] Notepad type+save+verify and focus-steal refusal on Windows (G2)
 
 ## Outstanding gates
-- [ ] UI Automation semantic element tree (Windows) — NOT_RUN here
-- [ ] Notepad type+save+verify and focus-steal refusal on Windows (G2)
 - [ ] Local/offline speech, microphone verification, dependable barge-in and spoken disambiguation
 - [ ] Remaining specialist agents, durable handoffs, policy scopes, skill recording/replay, and resource telemetry
 - [ ] Remaining eight fault conditions, GUI benchmark and component ablations
-- [ ] Real adapters and representative workflows across all ten workspaces; registry entries currently remain PLANNED
+- [ ] Real adapters and representative workflows across all ten workspaces; registry entries currently remain PLANNED (G7)
 - [ ] Packaging, accessibility audit, fresh second-machine install, demo video and authentic Wispr Flow Insights capture

@@ -26,5 +26,19 @@ class OracleJudgeTests(unittest.TestCase):
         self.assertEqual(wilson(0, 0), (0.0, 1.0))
 
 
+class ATestAcceptanceTests(unittest.TestCase):
+    def test_acceptance_test_generation_and_execution(self):
+        import tempfile
+        from web_fixtures import FixtureWorld
+        from web_bench import run_c, oracle, judge
+        with tempfile.TemporaryDirectory() as d, FixtureWorld(d, test_mode=True) as w:
+            claimed, approved_sha = run_c('lost_ack', w, Path(d), Path(d))
+            o = oracle(Path(d), approved_sha)
+            outcome = judge(o, claimed, 'lost_ack')
+            self.assertEqual(outcome, 'true_success')
+            self.assertEqual(o['wrong_recipient'], 0)
+            self.assertEqual(o['duplicate'], 0)
+
+
 if __name__ == '__main__':
     unittest.main()

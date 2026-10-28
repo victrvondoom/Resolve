@@ -217,9 +217,14 @@ class WebApi:
         if op == 'seed':  # demo convenience: a few files incl. a content duplicate, inside the sandbox only
             root = self.files.root
             (root / 'reports').mkdir(exist_ok=True)
-            (root / 'reports' / 'q3-ops-final.txt').write_text('Q3 Operations Report v4\n')
-            (root / 'reports' / 'q3-ops-final (copy).txt').write_text('Q3 Operations Report v4\n')
+            p_orig = root / 'reports' / 'q3-ops-final.txt'
+            p_copy = root / 'reports' / 'q3-ops-final (copy).txt'
+            p_orig.write_text('Q3 Operations Report v4\n')
+            p_copy.write_text('Q3 Operations Report v4\n')
             (root / 'reports' / 'q3-sales.txt').write_text('Q3 Sales Report v2\n')
+            now_t = time.time()
+            os.utime(p_orig, (now_t - 10, now_t - 10))
+            os.utime(p_copy, (now_t, now_t))
             return 201, self.files.inventory()
         return 404, {'error': 'unknown files route'}
 

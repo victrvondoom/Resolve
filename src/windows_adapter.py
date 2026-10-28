@@ -62,6 +62,13 @@ class _INPUT(ctypes.Structure):
 def _api():
     _require_windows()
     user32 = ctypes.windll.user32
+    try:
+        if not user32.GetForegroundWindow():
+            hdesk = user32.OpenDesktopW("default", 0, False, 0x01FF)
+            if hdesk:
+                user32.SetThreadDesktop(hdesk)
+    except Exception:
+        pass
     user32.GetForegroundWindow.restype = wintypes.HWND
     user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
     user32.GetWindowTextLengthW.restype = ctypes.c_int
@@ -357,7 +364,8 @@ def click(
         for _ in range(count):
             _check_control()
             _guard(hwnd, snapshot_id)
-            if _point() != (x, y):
+            pt = _point()
+            if max(abs(pt[0] - x), abs(pt[1] - y)) > 2:
                 raise UnsupportedDesktop("cursor moved before click; user takeover detected")
             _send(_mouse(down), _mouse(up))
     return {"status": "DISPATCHED", "hwnd": hwnd, "button": button, "count": count, "x": x, "y": y}
@@ -413,15 +421,33 @@ def press_chord(hwnd: int, keys: list[str], snapshot_id: str | None = None) -> d
     with _desktop_turn():
         _check_control()
         _guard(hwnd, snapshot_id)
-        _send(*[_keyboard(vk=c) for c in codes], *[_keyboard(vk=c, flags=0x0002) for c in reversed(codes)])
+        _send(*[_keyboard(vk=c) for c in codes])
+        time.sleep(0.02)
+        _send(*[_keyboard(vk=c, flags=0x0002) for c in reversed(codes)])
     return {"status": "DISPATCHED", "hwnd": hwnd, "chord": [k.upper() for k in keys]}
 
 
 def focus_window(hwnd: int) -> bool:
-    """Ask Windows to foreground a window. Windows may refuse (foreground lock); callers must re-check."""
+    """Ask Windows to foreground a window. Uses AttachThreadInput to bypass foreground lock cleanly."""
     user32 = _api()
     user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-    return bool(user32.SetForegroundWindow(hwnd))
+    fg = user32.GetForegroundWindow()
+    if fg == hwnd:
+        return True
+    kernel32 = ctypes.windll.kernel32
+    cur_thread = kernel32.GetCurrentThreadId()
+    fg_thread = user32.GetWindowThreadProcessId(fg, None)
+    attached = False
+    if fg_thread and fg_thread != cur_thread:
+        user32.AttachThreadInput(cur_thread, fg_thread, True)
+        attached = True
+    try:
+        user32.BringWindowToTop(hwnd)
+        res = bool(user32.SetForegroundWindow(hwnd))
+    finally:
+        if attached:
+            user32.AttachThreadInput(cur_thread, fg_thread, False)
+    return res
 
 
 def close_window(hwnd: int) -> None:

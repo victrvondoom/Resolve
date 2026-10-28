@@ -23,6 +23,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
 
 
 @unittest.skipUnless(os.name == 'nt' and os.getenv('RESOLVE_GUI_TEST') == '1', 'set RESOLVE_GUI_TEST=1 for physical input')
@@ -37,7 +38,10 @@ class ApiGuiTest(unittest.TestCase):
             env['RESOLVE_PORT'] = str(port)
             env['RESOLVE_DB'] = str(Path(temp) / 'gui.sqlite3')
             flags = subprocess.CREATE_NO_WINDOW
-            server = subprocess.Popen([sys.executable, str(ROOT / 'src' / 'resolve_app.py')], cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=flags)
+            si = subprocess.STARTUPINFO()
+            if os.name == 'nt':
+                si.lpDesktop = 'WinSta0\\default'
+            server = subprocess.Popen([sys.executable, str(ROOT / 'src' / 'resolve_app.py')], cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=flags, startupinfo=si)
 
             def get(path):
                 with urllib.request.urlopen(base + path, timeout=3) as response:
@@ -57,6 +61,10 @@ class ApiGuiTest(unittest.TestCase):
                     except Exception:
                         time.sleep(.1)
                 token = get('/api/session')['token']
+                user32 = ctypes.windll.user32
+                hdesk = user32.OpenDesktopW('default', 0, False, 0x01FF)
+                if hdesk:
+                    user32.SetThreadDesktop(hdesk)
                 root = tk.Tk()
                 root.title('RESOLVE API Controlled Input Test')
                 root.geometry('500x220+100+100')
@@ -73,8 +81,8 @@ class ApiGuiTest(unittest.TestCase):
                 user32.GetAncestor.argtypes = [ctypes.c_void_p, ctypes.c_uint]
                 user32.GetAncestor.restype = ctypes.c_void_p
                 hwnd = int(user32.GetAncestor(root.winfo_id(), 2))
-                user32.SetForegroundWindow.argtypes = [ctypes.c_void_p]
-                user32.SetForegroundWindow(hwnd)
+                import windows_adapter
+                windows_adapter.focus_window(hwnd)
                 print('Focus the RESOLVE API Controlled Input Test window within 10 seconds if needed.')
                 for _ in range(200):
                     root.update()
@@ -112,11 +120,19 @@ class ApiGuiTest(unittest.TestCase):
                     root.update()
                 self.assertEqual(root.focus_get(), entry)
                 typed = post('/api/windows/type', payload(text='Resolve API 42'))
-                root.update()
+                for _ in range(50):
+                    root.update()
+                    if entry.get() == 'Resolve API 42':
+                        break
+                    time.sleep(.02)
                 self.assertEqual(typed['status'], 'UNCERTAIN')  # Input dispatched; business effect has no independent verifier.
                 self.assertEqual(entry.get(), 'Resolve API 42')
                 post('/api/windows/click', payload(x=button_x, y=button_y))
-                root.update()
+                for _ in range(50):
+                    root.update()
+                    if clicked.get() == 1:
+                        break
+                    time.sleep(.02)
                 self.assertEqual(clicked.get(), 1)
                 if importlib.util.find_spec('PIL') is not None:
                     capture = post('/api/windows/capture', payload())

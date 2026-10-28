@@ -49,6 +49,11 @@ class WindowsPhysicalInputTest(unittest.TestCase):
         import ctypes
         import tkinter as tk
 
+        user32 = ctypes.windll.user32
+        hdesk = user32.OpenDesktopW("default", 0, False, 0x01FF)
+        if hdesk:
+            user32.SetThreadDesktop(hdesk)
+
         root = tk.Tk()
         root.title("RESOLVE Controlled Input Test")
         root.geometry("500x220+100+100")
@@ -67,8 +72,7 @@ class WindowsPhysicalInputTest(unittest.TestCase):
             user32.GetAncestor.argtypes = [ctypes.c_void_p, ctypes.c_uint]
             user32.GetAncestor.restype = ctypes.c_void_p
             hwnd = int(user32.GetAncestor(root.winfo_id(), 2))
-            user32.SetForegroundWindow.argtypes = [ctypes.c_void_p]
-            user32.SetForegroundWindow(hwnd)
+            adapter.focus_window(hwnd)
             print("Focus the RESOLVE Controlled Input Test window within 10 seconds if Windows does not foreground it automatically.")
             for _ in range(200):
                 root.update()
@@ -92,37 +96,44 @@ class WindowsPhysicalInputTest(unittest.TestCase):
             root.update()
             adapter.move_pointer(hwnd, entry_x, entry_y, snapshot, smooth=False)
             adapter.click(hwnd, entry_x, entry_y, snapshot)
-            for _ in range(20):
+            for _ in range(50):
                 root.update()
                 if root.focus_get() == entry:
                     break
-                time.sleep(0.01)
+                time.sleep(0.02)
             if root.focus_get() != entry:
                 # Focusing an empty test field is idempotent; a second click can
                 # be necessary after Windows finishes activating a new window.
+                adapter.focus_window(hwnd)
+                time.sleep(0.1)
+                root.update()
                 state = adapter.list_windows()
                 snapshot = next(w["snapshot_id"] for w in state["windows"] if w["hwnd"] == hwnd)
                 adapter.click(hwnd, entry_x, entry_y, snapshot)
-                for _ in range(20):
+                for _ in range(50):
                     root.update()
                     if root.focus_get() == entry:
                         break
-                    time.sleep(0.01)
+                    time.sleep(0.02)
             self.assertEqual(root.focus_get(), entry, "real click did not focus the test entry")
+            state = adapter.list_windows()
+            snapshot = next(w["snapshot_id"] for w in state["windows"] if w["hwnd"] == hwnd)
             adapter.type_text(hwnd, "Resolve 42", snapshot)
-            for _ in range(20):
+            for _ in range(50):
                 root.update()
                 if entry.get() == "Resolve 42":
                     break
-                time.sleep(0.01)
+                time.sleep(0.02)
             self.assertEqual(entry.get(), "Resolve 42")
             self.assertEqual(clicked.get(), 0, "entry interaction unexpectedly activated button")
             state = adapter.list_windows()
             snapshot = next(w["snapshot_id"] for w in state["windows"] if w["hwnd"] == hwnd)
             adapter.click(hwnd, button_x, button_y, snapshot)
-            for _ in range(20):
+            for _ in range(50):
                 root.update()
-                time.sleep(0.01)
+                if clicked.get() == 1:
+                    break
+                time.sleep(0.02)
             self.assertEqual(clicked.get(), 1)
             try:
                 import PIL  # noqa: F401 - screenshot evidence is optional

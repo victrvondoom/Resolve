@@ -10,8 +10,8 @@ Baseline before edits: `python -m unittest discover -s tests` → 45 run, **3 im
 | Intent revisions | Ledger.revise_mission (keyword rules, demo mission only) | test_core | tested, narrow | generic mission model absent | web_mission.correct (done for web missions) |
 | Approval digest | resolve_app.prepare_draft | test_api_integration | tested | — | extended to exact recipient+sha256 (done) |
 | Agents / DAG / lease | src/agent_runtime.py | test_agent_runtime | tested; 2 read-only specialists only | 13 roles absent | G5 |
-| Win32 input / capture / E-stop | src/windows_adapter.py | opt-in tests | Windows-only; **NOT_RUN here** | no Windows host | scripts/smoke-windows.ps1 |
-| UIA | src/uia_adapter.py | test_uia_adapter | Windows-only; NOT_RUN | no Windows host | G2 |
+| Win32 input / capture / E-stop | src/windows_adapter.py | test_windows_adapter, test_api_gui, smoke_windows | **VERIFIED on Windows 11** | — | G2 PASS |
+| UIA element tree | src/uia_adapter.py | test_uia_adapter | **VERIFIED on Windows 11** | — | G2 PASS |
 | Tk demo apps | apps/demo_suite.py | tests (skip w/o tkinter) | Windows/desktop-only | not browser-operable | browser fixtures (done) |
 | Browser automation | absent | — | absent → **implemented** | — | apps/web_fixtures.py + src/web_mission.py |
 | Streaming events | absent (polling UI) | — | absent → **implemented** SSE `/api/stream` | — | done |

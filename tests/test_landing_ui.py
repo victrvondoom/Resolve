@@ -38,7 +38,10 @@ class LandingAndAppUI(unittest.TestCase):
         page.on('pageerror', lambda e: errors.append(f'pageerror: {e}'))
         page.on('console', lambda m: errors.append(f'console.{m.type}: {m.text} @ {m.location.get("url")}') if m.type == 'error' else None)
         page.goto(f'http://127.0.0.1:{self.srv.port}{path}')
-        page.wait_for_load_state('networkidle')
+        if path == '/':
+            page.wait_for_load_state('networkidle')
+        else:
+            page.wait_for_load_state('domcontentloaded')
         self.addCleanup(ctx.close)
         return page, errors
 

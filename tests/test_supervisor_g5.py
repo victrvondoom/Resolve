@@ -47,7 +47,8 @@ class SupervisorTests(unittest.TestCase):
         self.assertIn('NEEDS_CLARIFICATION', t['Planner']['error'])
         self.assertEqual(t['SafetyApproval']['status'], 'BLOCKED')
         self.assertEqual(self.runner.get(m['mission_id'])['actions'], [])
-        self.assertFalse(t['OSObserver']['result']['available'])  # honest on Linux
+        import windows_adapter
+        self.assertEqual(t['OSObserver']['result']['available'], bool(windows_adapter.IS_WINDOWS))
         self.assertEqual(t['EntityResolver']['result']['tools_granted'], ['crm.read'])
 
     def test_full_pipeline_with_separate_verifier(self):

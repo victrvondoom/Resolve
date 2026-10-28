@@ -127,6 +127,14 @@ def _tokens(s: str | None) -> set[str]:
     return set(re.findall(r'[a-z0-9]+', (s or '').lower()))
 
 
+class ClosingConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            return super().__exit__(exc_type, exc, tb)
+        finally:
+            self.close()
+
+
 class SkillLibrary:
     def __init__(self, db_path: str | Path, headless: bool = True):
         self.db_path = Path(db_path)
@@ -147,7 +155,7 @@ CREATE TABLE IF NOT EXISTS web_skill_runs(
 """)
 
     def _db(self) -> sqlite3.Connection:
-        db = sqlite3.connect(str(self.db_path), timeout=10)
+        db = sqlite3.connect(str(self.db_path), timeout=10, factory=ClosingConnection)
         db.row_factory = sqlite3.Row
         db.execute('PRAGMA journal_mode=WAL')
         return db
@@ -179,7 +187,7 @@ CREATE TABLE IF NOT EXISTS web_skill_runs(
     @staticmethod
     def _ro(fixture_root: Path, app: str) -> sqlite3.Connection:
         p = Path(fixture_root) / f'{app}.sqlite3'
-        db = sqlite3.connect(f'file:{p}?mode=ro', uri=True, timeout=10)
+        db = sqlite3.connect(f'file:{p}?mode=ro', uri=True, timeout=10, factory=ClosingConnection)
         db.row_factory = sqlite3.Row
         return db
 

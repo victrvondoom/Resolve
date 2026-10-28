@@ -520,6 +520,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--control", type=Path, default=None,
                         help="activation command path (defaults beside observation file)")
     args = parser.parse_args(argv)
+    if os.name == 'nt':
+        try:
+            hdesk = ctypes.windll.user32.OpenDesktopW('default', 0, False, 0x01FF)
+            if hdesk:
+                ctypes.windll.user32.SetThreadDesktop(hdesk)
+        except Exception:
+            pass
     suite = DemoSuite(DemoStore(args.db, args.truth), args.observation, args.control)
     print(f"RESOLVE demo CRM/Documents/Outbox ready; observation={args.observation}", flush=True)
     suite.run()

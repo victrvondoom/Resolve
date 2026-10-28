@@ -7,6 +7,13 @@ if os.name != 'nt':
     print('WINDOWS_NATIVE_TESTS_NOT_RUN: host is not Windows')
     sys.exit(3)
 import ctypes
+try:
+    if not ctypes.windll.user32.GetForegroundWindow():
+        hdesk = ctypes.windll.user32.OpenDesktopW('default', 0, False, 0x01FF)
+        if hdesk:
+            ctypes.windll.user32.SetThreadDesktop(hdesk)
+except Exception:
+    pass
 if not ctypes.windll.user32.GetForegroundWindow():
     print('WINDOWS_NATIVE_TESTS_NOT_RUN: no interactive desktop (no foreground window)')
     sys.exit(3)

@@ -27,8 +27,12 @@ class ApiFlowTests(unittest.TestCase):
             try:
                 st, status = srv.req('GET', '/api/web/status')
                 self.assertEqual(st, 200)
-                self.assertFalse(status['windows_native']['available'])
-                self.assertIn('WINDOWS_NATIVE_TESTS_NOT_RUN', status['windows_native']['reason'])
+                import windows_adapter
+                if windows_adapter.IS_WINDOWS:
+                    self.assertTrue(status['windows_native']['available'])
+                else:
+                    self.assertFalse(status['windows_native']['available'])
+                    self.assertIn('WINDOWS_NATIVE_TESTS_NOT_RUN', status['windows_native']['reason'])
                 self.assertEqual(srv.req('POST', '/api/web/utterances', {'text': CMD, 'partial': True})[0], 409)
                 st, out = srv.req('POST', '/api/web/utterances', {'text': CMD})
                 self.assertEqual((st, out['classification']['kind']), (201, 'NEW_GOAL'))
