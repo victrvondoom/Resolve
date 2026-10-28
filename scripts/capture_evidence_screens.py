@@ -58,6 +58,24 @@ def capture_all():
             time.sleep(1)
             page.screenshot(path=str(out_dir / 'app_desktop_windows_dark.png'))
 
+            # 5b. Cloud computer view
+            print("Capturing cloud computer...")
+            page.click('a[data-view="cloud"]')
+            time.sleep(1)
+            page.screenshot(path=str(out_dir / 'app_desktop_cloud_dark.png'))
+
+            # 5c. Connected apps view
+            print("Capturing connected apps...")
+            page.click('a[data-view="connectors"]')
+            time.sleep(1)
+            page.screenshot(path=str(out_dir / 'app_desktop_connectors_dark.png'))
+
+            # 5d. Privacy & data view
+            print("Capturing privacy & data...")
+            page.click('a[data-view="privacy"]')
+            time.sleep(1)
+            page.screenshot(path=str(out_dir / 'app_desktop_privacy_dark.png'))
+
             # 6. Agents view
             print("Capturing agents view...")
             page.click('a[data-view="agents"]')

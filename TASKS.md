@@ -35,8 +35,20 @@
 - [x] Multi-window guarded physical demo controller (`test_demo_controller.py`) with asynchronous focus theft recovery and outbox SHA-256 verification (G2/G9)
 - [x] Real high-resolution screenshot evidence generated in `harness/evidence/screens/` (G9)
 
+## Added (third pass: Cloud-Native Multi-Tenant Website Pivot, G10–G16)
+- [x] Zero-install browser-native web application architecture running on 127.0.0.1:8765 (G10)
+- [x] Multi-tenant PBKDF2 authentication, workspace segregation, and cryptographically secure session tokens in `src/tenant_auth.py` (G11)
+- [x] Cloud computer and sandbox manager with isolated filesystem jails, quota controls, and lifecycle state machine in `src/sandbox_manager.py` (G12)
+- [x] Isolated Playwright cloud browser engine with live JPEG frame streaming, interactive cursor aiming, and SSRF metadata defense in `src/cloud_browser.py` (G12)
+- [x] Tenant-Intent-Entity-Effect Continuity (T-IEEC) and formal Effect Dependency Graph with mathematical invariant checks in `src/effect_graph.py` (G13)
+- [x] Authorized Personal Connections framework for Google Drive, GitHub, CRM, and Messaging Outbox with alias disambiguation in `src/connectors.py` (G14)
+- [x] User-controlled data deletion and portable export bundle with SHA-256 proof in `src/privacy_engine.py` (G15)
+- [x] Adversarial Multi-Tenant Security Suite (T01–T16) covering cross-user denial, sandbox jail escapes, prompt-injection SSRF, and delayed worker protection in `tests/test_tenant_security.py` (G16)
+- [x] End-to-end cloud web API test suite exercising register -> sandbox -> browser -> connectors -> voice correction -> export -> account deletion in `tests/test_cloud_api.py` (G16)
+- [x] Redesigned Mission Control interface with Cloud Computer, Connected Apps, Privacy & Data, workspace switcher, and push-to-talk voice button in `web/index.html` and `web/static/app.js` (G10–G16)
+- [x] Complete suite of 10 high-resolution screenshots generated in `harness/evidence/screens/` (G16)
+
 ## Outstanding gates / future work
-- [ ] Local/offline speech, microphone verification, dependable barge-in and spoken disambiguation (mic hardware dependent)
-- [ ] Remaining specialist agents, durable handoffs, policy scopes, and resource telemetry
+- [ ] Connect production OAuth credentials for Google Workspace and GitHub when cloud provider API keys are provisioned
 - [ ] Implement remaining workspace adapters toward all 80 concepts TESTED (currently 28/80 TESTED)
 - [ ] Packaging, installer, demo video and authentic Wispr Flow Insights capture

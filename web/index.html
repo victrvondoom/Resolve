@@ -10,7 +10,11 @@
 <a class="skip" href="#main">Skip to content</a>
 <header class="topbar">
   <a class="brand" href="/" aria-label="RESOLVE home page"><img src="/static/mark.svg" alt="" width="26" height="26"><span>RESOLVE</span><small>Mission Control</small></a>
-  <div class="topbar-status" role="status" aria-live="polite"><span class="chip chip-muted" id="healthChip"><span class="led" aria-hidden="true"></span><span id="health">connecting…</span></span></div>
+  <div class="topbar-status" role="status" aria-live="polite">
+    <span class="chip chip-muted" id="healthChip"><span class="led" aria-hidden="true"></span><span id="health">connecting…</span></span>
+    <select id="workspaceSwitcher" aria-label="Select workspace" class="num-in" style="font-size:12px;padding:3px 8px;margin-left:8px;display:none;"></select>
+    <button id="userAccountPill" class="btn btn-small" title="Manage account" style="margin-left:8px;"><span id="userEmailBadge">demo@resolve.local</span></button>
+  </div>
   <div class="topbar-actions">
     <button id="estop" class="btn btn-danger" title="Cancel pending agent tasks and revoke the cursor lease">Emergency stop</button>
     <button id="resume" class="btn" title="Clear the emergency stop so agents and input can run again">Resume control</button>
@@ -22,6 +26,8 @@
   <nav class="sidebar" aria-label="Mission Control sections">
     <ul>
       <li><a href="#view-mission" data-view="mission" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l3-7 3 14 3-7h3"/></svg>Browser mission</a></li>
+      <li><a href="#view-cloud" data-view="cloud"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Cloud computer <span class="chip chip-ok small" style="margin-left:auto;padding:1px 6px;">LIVE</span></a></li>
+      <li><a href="#view-connectors" data-view="connectors"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M11 18H8a2 2 0 0 1-2-2V9"/></svg>Connected apps</a></li>
       <li><a href="#view-approvals" data-view="approvals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Approval inbox <span id="approvalBadge" class="chip chip-warn small" style="margin-left:auto;display:none;padding:1px 6px;">0</span></a></li>
       <li><a href="#view-agents" data-view="agents"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 8l3.5 8M16.5 8L13 16"/></svg>Agents</a></li>
       <li><a href="#view-skills" data-view="skills"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/></svg>Skills</a></li>
@@ -30,6 +36,7 @@
       <li><a href="#view-sim" data-view="sim"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voice &amp; simulator</a></li>
       <li><a href="#view-windows" data-view="windows"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v12H3zM8 21h8M12 17v4"/></svg>Windows native</a></li>
       <li><a href="#view-evidence" data-view="evidence"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Evidence &amp; receipts</a></li>
+      <li><a href="#view-privacy" data-view="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Privacy &amp; data</a></li>
       <li><a href="#view-ledger" data-view="ledger"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg>Ledger &amp; registry</a></li>
     </ul>
     <p class="sidebar-note">Local prototype on 127.0.0.1. Outbox is <b>SIMULATED DELIVERY</b>. Browser actions are DOM-level (Playwright), not physical cursor movement.</p>
@@ -45,6 +52,14 @@
         <section class="card span8 hero-card" id="webmission" aria-labelledby="h-wm">
           <div class="card-head"><h2 id="h-wm">Run a mission</h2><span class="chip chip-warn" id="wmbadge">FIXTURE APPS · DOM-LEVEL (NOT PHYSICAL CURSOR)</span></div>
           <p class="muted small">Drives three separate local fixture apps (CRM, reports, outbox: SIMULATED DELIVERY) through Playwright and verifies each effect straight from their databases.</p>
+          <div class="row" style="margin-bottom:8px;gap:8px;">
+            <button class="btn btn-primary" id="voiceMicBtn" title="Push-to-talk voice input">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="vertical-align:middle;margin-right:4px;"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              Push to talk
+            </button>
+            <span id="voiceStatusBadge" class="chip chip-muted small">MIC READY</span>
+          </div>
+          <p id="voiceNarration" class="msg" style="display:none;font-style:italic;color:var(--accent);margin-bottom:8px;"></p>
           <label class="label" for="wmcmd">Mission command</label>
           <textarea id="wmcmd">Prepare a follow-up for Jordan Lee using the latest report, update the CRM and send it after I approve.</textarea>
           <ol class="stepper" aria-label="Mission steps">
@@ -261,6 +276,130 @@
         <section class="card span6" aria-labelledby="h-ev-followups">
           <div class="card-head"><h2 id="h-ev-followups">CRM follow-up receipts</h2></div>
           <div id="followupRecords" class="table-scroll"><p class="muted small">Loading followups…</p></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ============ CLOUD COMPUTER ============ -->
+    <section class="view" id="view-cloud" data-view="cloud" aria-labelledby="h-cloud" hidden>
+      <div class="view-head">
+        <div>
+          <h1 id="h-cloud">Cloud computer</h1>
+          <p class="muted">Dedicated per-tenant cloud browser sandbox (Playwright). Streamed live visual frames with interactive human takeover, pause, and stopping controls.</p>
+        </div>
+        <div class="row">
+          <span class="chip chip-ok" id="cloudStatusBadge">SANDBOX READY</span>
+          <button class="btn btn-small" id="cloudNewSandboxBtn">New sandbox</button>
+        </div>
+      </div>
+      <div class="grid">
+        <section class="card span12" aria-labelledby="h-cloud-viewport">
+          <div class="card-head">
+            <h2 id="h-cloud-viewport">Remote browser session</h2>
+            <div class="row" style="margin:0;gap:8px;">
+              <input id="cloudUrlInput" placeholder="https://example.com" value="https://news.ycombinator.com" style="min-width:320px;font-size:12px;">
+              <button class="btn btn-primary btn-small" id="cloudNavigateBtn">Navigate</button>
+              <button class="btn btn-small" id="cloudPauseBtn">Pause</button>
+              <button class="btn btn-small" id="cloudResumeBtn">Resume</button>
+              <button class="btn btn-danger btn-small" id="cloudDestroyBtn">Destroy</button>
+            </div>
+          </div>
+          <div class="cloud-viewport-wrap" id="cloudViewportWrap" style="position:relative;margin:12px 0;background:#0d1117;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;min-height:360px;display:flex;align-items:center;justify-content:center;">
+            <img id="cloudScreenFrame" alt="Live cloud browser frame" style="max-width:100%;height:auto;cursor:crosshair;display:none;">
+            <div id="cloudPlaceholder" class="muted small" style="padding:60px;text-align:center;">Provisioning isolated browser session… Click "Navigate" or enter a URL above.</div>
+            <div id="cloudCursorMarker" style="position:absolute;width:12px;height:12px;border:2px solid #ff4757;border-radius:50%;pointer-events:none;transform:translate(-50%,-50%);display:none;"></div>
+            <div id="cloudMetaInfo" style="position:absolute;bottom:8px;right:12px;font-size:11px;background:rgba(0,0,0,0.8);color:#fff;padding:2px 8px;border-radius:4px;display:none;"></div>
+          </div>
+          <div class="row">
+            <input id="cloudTypeInput" placeholder="Type text into active page" style="flex:1;">
+            <button class="btn" id="cloudTypeBtn">Send keys</button>
+            <button class="btn" id="cloudExtractBtn">Extract text</button>
+          </div>
+          <pre class="log" id="cloudTextLog" style="max-height:140px;">No text extracted yet.</pre>
+        </section>
+      </div>
+    </section>
+
+    <!-- ============ CONNECTED APPS ============ -->
+    <section class="view" id="view-connectors" data-view="connectors" aria-labelledby="h-connectors" hidden>
+      <div class="view-head">
+        <div>
+          <h1 id="h-connectors">Connected personal integrations</h1>
+          <p class="muted">Authorized third-party integrations with scoped permissions. Credentials are encrypted and isolated strictly to your private workspace.</p>
+        </div>
+        <button class="btn btn-small" id="connectorsReload">Refresh connections</button>
+      </div>
+      <div class="grid" id="connectorsGrid">
+        <section class="card span4">
+          <div class="card-head"><h2>Google Drive</h2><span class="chip chip-ok" id="status-google_drive">CONNECTED</span></div>
+          <p class="muted small">Cloud documents and project reports. Scopes: <code>drive.readonly</code>, <code>drive.file</code>.</p>
+          <div class="row" style="margin-top:16px;">
+            <button class="btn btn-small" id="btnBrowseDrive">Browse files</button>
+            <button class="btn btn-danger btn-small" id="btnToggleDrive">Disconnect</button>
+          </div>
+        </section>
+        <section class="card span4">
+          <div class="card-head"><h2>GitHub</h2><span class="chip chip-muted" id="status-github">DISCONNECTED</span></div>
+          <p class="muted small">Code repositories and pull requests. Scopes: <code>repo:read</code>, <code>repo:status</code>.</p>
+          <div class="row" style="margin-top:16px;">
+            <button class="btn btn-primary btn-small" id="btnToggleGithub">Connect GitHub</button>
+          </div>
+        </section>
+        <section class="card span4">
+          <div class="card-head"><h2>CRM &amp; Contacts</h2><span class="chip chip-ok" id="status-crm">CONNECTED</span></div>
+          <p class="muted small">Customer directory with stable ID alias resolution. Scopes: <code>crm:read</code>, <code>crm:write</code>.</p>
+          <div class="row" style="margin-top:16px;">
+            <button class="btn btn-small" id="btnBrowseCRM">Inspect directory</button>
+            <button class="btn btn-danger btn-small" id="btnToggleCRM">Disconnect</button>
+          </div>
+        </section>
+        <section class="card span12" aria-labelledby="h-conn-res">
+          <div class="card-head"><h2 id="h-conn-res">Authorized resources viewer</h2></div>
+          <pre class="log" id="connectorResourceLog">Select "Browse files" or "Inspect directory" above to view authorized resources.</pre>
+        </section>
+      </div>
+    </section>
+
+    <!-- ============ PRIVACY & DATA ============ -->
+    <section class="view" id="view-privacy" data-view="privacy" aria-labelledby="h-privacy" hidden>
+      <div class="view-head">
+        <div>
+          <h1 id="h-privacy">Privacy, data ownership &amp; deletion</h1>
+          <p class="muted">Complete user sovereignty: view stored metadata, download an export bundle with cryptographic checksum, or permanently delete personal data and accounts.</p>
+        </div>
+        <button class="btn btn-small" id="privacyReload">Refresh summary</button>
+      </div>
+      <div class="grid">
+        <section class="card span6" aria-labelledby="h-priv-summary">
+          <div class="card-head"><h2 id="h-priv-summary">Storage &amp; footprint</h2><span class="chip chip-ok" id="privStorageBadge">0.0 MB</span></div>
+          <ul class="stats-list" style="list-style:none;padding:0;margin:12px 0;">
+            <li class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-2);"><span>Active Sandboxes</span><strong id="privActiveSandboxes">0</strong></li>
+            <li class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-2);"><span>Connected Integrations</span><strong id="privConnectedCount">0</strong></li>
+            <li class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-2);"><span>Disk Space Allocated</span><strong id="privStorageBytes">0 KB</strong></li>
+          </ul>
+          <div class="row" style="margin-top:16px;">
+            <button class="btn btn-primary" id="privExportBtn">Export all my data (JSON)</button>
+          </div>
+        </section>
+
+        <section class="card span6" aria-labelledby="h-priv-retention">
+          <div class="card-head"><h2 id="h-priv-retention">Retention policy disclosures</h2></div>
+          <div class="small muted" style="line-height:1.6;">
+            <p><strong>Active Data:</strong> Stored locally/in your cloud container until explicitly deleted by you.</p>
+            <p><strong>Sandbox Browser Profiles:</strong> Destroyed immediately when sandbox is terminated.</p>
+            <p><strong>Session Tokens:</strong> Cryptographically generated; expire in 7 days or upon logout.</p>
+            <p><strong>System Backups:</strong> Offsite disaster snapshots retain encrypted tombstone metadata for up to 30 days before immutable purge.</p>
+          </div>
+        </section>
+
+        <section class="card span12 danger-card" style="border:1px solid #ff4757;border-radius:10px;" aria-labelledby="h-priv-danger">
+          <div class="card-head"><h2 id="h-priv-danger" style="color:#ff4757;">Danger zone: permanent data destruction</h2></div>
+          <p class="small muted">These actions immediately destroy running sandboxes, delete database rows, wipe storage namespaces, and revoke credentials. This cannot be undone.</p>
+          <div class="row" style="gap:16px;margin-top:12px;">
+            <button class="btn btn-danger" id="privDeleteWorkspaceBtn">Delete active workspace</button>
+            <button class="btn btn-danger" id="privDeleteAccountBtn">Permanently delete my account</button>
+          </div>
+          <pre class="log" id="deletionReceiptLog" style="margin-top:12px;">No deletion requested yet.</pre>
         </section>
       </div>
     </section>

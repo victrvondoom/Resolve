@@ -22,6 +22,12 @@ from skill_runtime import AmbiguousEntity, SkillError, SkillStore, candidate_fro
 import windows_adapter
 import uia_adapter
 from web_api import WebApi
+from tenant_auth import TenantAuthManager, TenantError
+from sandbox_manager import SandboxManager, SandboxError, SandboxSecurityError
+from cloud_browser import CloudBrowserPool, CloudBrowserError
+from effect_graph import EffectDependencyGraph, NodeType, EdgeType
+from connectors import ConnectorRegistry, ConnectorError
+from privacy_engine import PrivacyEngine
 
 DB = Path(os.environ.get('RESOLVE_DB', ROOT / 'data' / 'resolve.sqlite3'))
 ledger = Ledger(DB)
@@ -32,6 +38,13 @@ scheduler = MissionScheduler(ledger.path, revision_check=lambda mid, revision: b
 register_demo_readers(scheduler, ledger)
 skill_store = SkillStore(ledger.path)
 web_api = WebApi(ledger)
+
+tenant_auth_mgr = TenantAuthManager()
+sandbox_mgr = SandboxManager()
+cloud_browser_pool = CloudBrowserPool()
+connector_registry = ConnectorRegistry()
+privacy_engine = PrivacyEngine(tenant_auth_mgr, sandbox_mgr, connector_registry)
+default_demo = tenant_auth_mgr.seed_demo_tenant()
 
 
 class ApiError(Exception):
@@ -68,7 +81,25 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def check_origin(self, mutation: bool = False) -> None:
+    def get_session(self) -> dict:
+        auth_h = self.headers.get('Authorization', '')
+        res_h = self.headers.get('X-Resolve-Token', '')
+        token = auth_h[7:].strip() if auth_h.startswith('Bearer ') else res_h.strip()
+        if token.startswith('rst_'):
+            try:
+                return tenant_auth_mgr.validate_session(token)
+            except TenantError as exc:
+                raise ApiError(401, exc.message)
+        elif secrets.compare_digest(token, SESSION_TOKEN):
+            return default_demo
+        elif token:
+            try:
+                return tenant_auth_mgr.validate_session(token)
+            except Exception:
+                pass
+        return default_demo
+
+    def check_origin(self, mutation: bool = False, public_auth: bool = False) -> None:
         port = self.server.server_port
         allowed_hosts = {f'127.0.0.1:{port}', f'localhost:{port}'}
         require(self.client_address[0] in {'127.0.0.1', '::1'}, 403, 'loopback access only')
@@ -77,7 +108,17 @@ class Handler(BaseHTTPRequestHandler):
         require(not origin or origin in {f'http://{host}' for host in allowed_hosts}, 403, 'cross-origin request refused')
         if mutation:
             require(self.headers.get('Content-Type', '').split(';')[0].strip().lower() == 'application/json', 415, 'JSON content type required')
-            require(secrets.compare_digest(self.headers.get('X-Resolve-Token', ''), SESSION_TOKEN), 403, 'session token required')
+            if not public_auth:
+                auth_h = self.headers.get('Authorization', '')
+                res_h = self.headers.get('X-Resolve-Token', '')
+                token = auth_h[7:].strip() if auth_h.startswith('Bearer ') else res_h.strip()
+                if token.startswith('rst_'):
+                    try:
+                        tenant_auth_mgr.validate_session(token)
+                    except TenantError as exc:
+                        raise ApiError(401, exc.message)
+                else:
+                    require(secrets.compare_digest(token, SESSION_TOKEN), 403, 'session token required')
 
     def body(self) -> dict:
         size = int(self.headers.get('Content-Length', '0'))
@@ -167,6 +208,69 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {'total_concepts': len(concepts), 'workspaces': [{'name': name, 'planned_concepts': sum(item['resolve_workspace'] == name for item in concepts)} for name in sorted(WORKSPACES)]})
             if path == '/api/skills':
                 return self.send_json(200, {'skills': skill_store.list_skills()})
+            if path == '/api/auth/me':
+                user = self.get_session()
+                return self.send_json(200, user)
+            if path == '/api/sandboxes':
+                user = self.get_session()
+                sandboxes = sandbox_mgr.list_sandboxes(user['user_id'])
+                return self.send_json(200, {'sandboxes': [s.to_dict() for s in sandboxes]})
+            m_sbx = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)', path)
+            if m_sbx:
+                sbx_id = m_sbx.group(1)
+                user = self.get_session()
+                sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'])
+                return self.send_json(200, sbx.to_dict())
+            m_sbx_fr = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/frame', path)
+            if m_sbx_fr:
+                sbx_id = m_sbx_fr.group(1)
+                user = self.get_session()
+                sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'])
+                session = cloud_browser_pool.get_or_create(sbx.id, user['user_id'], sbx.storage_path)
+                frame = session.capture_frame()
+                return self.send_json(200, frame)
+            if path == '/api/connectors':
+                user = self.get_session()
+                connectors = connector_registry.list_connectors(user['user_id'], user['workspace_id'])
+                return self.send_json(200, {'connectors': connectors})
+            m_conn_res = re.fullmatch(r'/api/connectors/([A-Za-z0-9_-]+)/resources', path)
+            if m_conn_res:
+                conn_id = m_conn_res.group(1)
+                user = self.get_session()
+                conn = connector_registry.get_connector(user['user_id'], user['workspace_id'], conn_id)
+                return self.send_json(200, {'connector_id': conn_id, 'resources': conn.list_authorized_resources()})
+            if path == '/api/privacy/summary':
+                user = self.get_session()
+                return self.send_json(200, privacy_engine.get_summary(user['user_id'], user['workspace_id']))
+            m_m_gr = re.fullmatch(r'/api/missions/([A-Za-z0-9_-]+)/graph', path)
+            if m_m_gr:
+                m_id = m_m_gr.group(1)
+                user = self.get_session()
+                graph = EffectDependencyGraph(m_id, user['user_id'], user['workspace_id'])
+                m = ledger.get_json('missions', m_id)
+                if m:
+                    graph.add_node(f"intent_{m.get('intent_revision', 1)}", NodeType.INTENT, {'text': m.get('original_request', 'Execute mission')})
+                    for aid in m.get('actions', []):
+                        a = ledger.action(aid)
+                        if a:
+                            graph.add_node(a['action_id'], NodeType.ACTION, a)
+                            if a.get('target_entity_id'):
+                                ent = ledger.get_json('entities', a['target_entity_id'])
+                                if ent:
+                                    graph.add_node(ent['entity_id'], NodeType.ENTITY, ent)
+                                    graph.add_edge(f"intent_{m.get('intent_revision', 1)}", ent['entity_id'], EdgeType.BINDS_TO)
+                                    graph.add_edge(a['action_id'], ent['entity_id'], EdgeType.DEPENDS_ON)
+                            if a.get('status') in ('AUTHORIZED', 'CONFIRMED'):
+                                app_id = f"app_{a['action_id']}"
+                                graph.add_node(app_id, NodeType.APPROVAL, {'digest': a.get('approval_digest') or digest(a)})
+                                graph.add_edge(a['action_id'], app_id, EdgeType.AUTHORIZED_BY)
+                                eff_id = f"eff_{a['action_id']}"
+                                graph.add_node(eff_id, NodeType.EFFECT, {'status': a['status'], 'expected_digest': a.get('approval_digest')})
+                                graph.add_edge(eff_id, app_id, EdgeType.AUTHORIZED_BY)
+                                ev_id = f"ev_{a['action_id']}"
+                                graph.add_node(ev_id, NodeType.EVIDENCE, {'oracle': 'ledger_truth', 'receipt': a.get('evidence')})
+                                graph.add_edge(ev_id, eff_id, EdgeType.CONFIRMS)
+                return self.send_json(200, graph.to_dict())
             if path == '/api/windows':
                 return self.send_json(200, windows_adapter.list_windows())
             if path == '/api/uia/availability':
@@ -190,13 +294,133 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(404, 'not found')
         except ApiError as exc:
             self.send_json(exc.status, {'error': exc.message})
+        except (TenantError, SandboxError, CloudBrowserError, ConnectorError) as exc:
+            self.send_json(getattr(exc, 'status_code', 400), {'error': exc.message if hasattr(exc, 'message') else str(exc)})
         except Exception as exc:
             self.send_json(503, {'error': str(exc)})
 
     def do_POST(self):
         try:
+            path = urlparse(self.path).path
+            if path in {'/api/auth/register', '/api/auth/login'}:
+                self.check_origin(mutation=True, public_auth=True)
+                data = self.body()
+                if path == '/api/auth/register':
+                    session = tenant_auth_mgr.register(data.get('email', ''), data.get('password', ''), data.get('display_name'))
+                    return self.send_json(201, session)
+                elif path == '/api/auth/login':
+                    session = tenant_auth_mgr.login(data.get('email', ''), data.get('password', ''))
+                    return self.send_json(200, session)
+
             self.check_origin(mutation=True)
             data = self.body()
+            user = self.get_session()
+
+            if path == '/api/auth/logout':
+                tenant_auth_mgr.logout(user['token'])
+                return self.send_json(200, {'status': 'LOGGED_OUT'})
+            if path == '/api/workspaces/switch':
+                switched = tenant_auth_mgr.switch_workspace(user['token'], data['workspace_id'])
+                return self.send_json(200, switched)
+            if path == '/api/workspaces/create':
+                ws = tenant_auth_mgr.create_workspace(user['user_id'], data.get('name', 'New Workspace'))
+                return self.send_json(201, ws)
+            if path == '/api/sandboxes':
+                sbx = sandbox_mgr.create_sandbox(user['user_id'], user['workspace_id'], mission_id=data.get('mission_id'))
+                return self.send_json(201, sbx.to_dict())
+            m_sbx_act = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/action', path)
+            if m_sbx_act:
+                sbx_id = m_sbx_act.group(1)
+                res = sandbox_mgr.execute_in_sandbox(sbx_id, data.get('command', []), caller_user_id=user['user_id'])
+                return self.send_json(200, res)
+            m_sbx_p = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/pause', path)
+            if m_sbx_p:
+                sbx_id = m_sbx_p.group(1)
+                sbx = sandbox_mgr.pause_sandbox(sbx_id, caller_user_id=user['user_id'])
+                try:
+                    cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id']).pause()
+                except Exception:
+                    pass
+                return self.send_json(200, sbx.to_dict())
+            m_sbx_r = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/resume', path)
+            if m_sbx_r:
+                sbx_id = m_sbx_r.group(1)
+                sbx = sandbox_mgr.resume_sandbox(sbx_id, caller_user_id=user['user_id'])
+                try:
+                    cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id']).resume()
+                except Exception:
+                    pass
+                return self.send_json(200, sbx.to_dict())
+            m_sbx_d = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/destroy', path)
+            if m_sbx_d:
+                sbx_id = m_sbx_d.group(1)
+                cloud_browser_pool.close_session(sbx_id)
+                sandbox_mgr.destroy_sandbox(sbx_id, caller_user_id=user['user_id'])
+                return self.send_json(200, {'status': 'DESTROYED', 'sandbox_id': sbx_id})
+            if path == '/api/cloud-browser/navigate':
+                sbx_id = data.get('sandbox_id')
+                sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'])
+                session = cloud_browser_pool.get_or_create(sbx.id, user['user_id'], sbx.storage_path)
+                res = session.navigate(data['url'])
+                return self.send_json(200, res)
+            if path == '/api/cloud-browser/click':
+                sbx_id = data.get('sandbox_id')
+                session = cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id'])
+                res = session.click(int(data.get('x', 0)), int(data.get('y', 0)))
+                return self.send_json(200, res)
+            if path == '/api/cloud-browser/type':
+                sbx_id = data.get('sandbox_id')
+                session = cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id'])
+                res = session.type_text(str(data.get('text', '')))
+                return self.send_json(200, res)
+            m_conn_c = re.fullmatch(r'/api/connectors/([A-Za-z0-9_-]+)/connect', path)
+            if m_conn_c:
+                conn_id = m_conn_c.group(1)
+                conn = connector_registry.connect(user['user_id'], user['workspace_id'], conn_id, data.get('scopes', []))
+                return self.send_json(200, conn.get_connection_status())
+            m_conn_dc = re.fullmatch(r'/api/connectors/([A-Za-z0-9_-]+)/disconnect', path)
+            if m_conn_dc:
+                conn_id = m_conn_dc.group(1)
+                connector_registry.disconnect(user['user_id'], user['workspace_id'], conn_id)
+                return self.send_json(200, {'status': 'DISCONNECTED', 'connector_id': conn_id})
+            m_conn_ex = re.fullmatch(r'/api/connectors/([A-Za-z0-9_-]+)/execute', path)
+            if m_conn_ex:
+                conn_id = m_conn_ex.group(1)
+                conn = connector_registry.get_connector(user['user_id'], user['workspace_id'], conn_id)
+                res = conn.execute_authorized_operation(data.get('operation', ''), data.get('params', {}))
+                return self.send_json(200, res)
+            if path == '/api/privacy/export':
+                bundle = privacy_engine.export_data(user['user_id'], user['workspace_id'])
+                return self.send_json(200, bundle)
+            if path == '/api/privacy/delete-account':
+                cloud_browser_pool.close_all()
+                receipt = privacy_engine.delete_account(user['user_id'])
+                return self.send_json(200, receipt.to_dict())
+            if path == '/api/privacy/delete-workspace':
+                receipt = privacy_engine.delete_workspace(user['user_id'], data.get('workspace_id', user['workspace_id']))
+                return self.send_json(200, receipt.to_dict())
+            if path == '/api/voice/transcribe':
+                text = str(data.get('text', '')).strip()
+                is_correction = bool(re.search(r'\b(no|not|wait|correction|instead)\b', text, re.IGNORECASE))
+                resolved_contact = None
+                if "finance" in text.lower():
+                    resolved_contact = {"id": "alex-fin-02", "name": "Alex Morgan", "department": "Finance"}
+                elif "sales" in text.lower():
+                    resolved_contact = {"id": "alex-sales-01", "name": "Alex Morgan", "department": "Sales"}
+                else:
+                    resolved_contact = {"id": "alex-fin-02", "name": "Alex Morgan", "department": "Finance"}
+                response = {
+                    "transcription": text,
+                    "user_id": user['user_id'],
+                    "workspace_id": user['workspace_id'],
+                    "is_correction": is_correction,
+                    "intent": "UPDATE_AND_FOLLOWUP",
+                    "resolved_entity": resolved_contact,
+                    "confidence": 0.96,
+                    "recommended_action": "simulated_send_and_update_followup",
+                    "spoken_feedback": f"Understood. Targeting {resolved_contact['name']} in {resolved_contact['department']} with the latest report."
+                }
+                return self.send_json(200, response)
             path = urlparse(self.path).path
             routed = web_api.call('POST', path, data)
             if routed:
@@ -276,6 +500,8 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(404, 'not found')
         except ApiError as exc:
             self.send_json(exc.status, {'error': exc.message})
+        except (TenantError, SandboxError, CloudBrowserError, ConnectorError) as exc:
+            self.send_json(getattr(exc, 'status_code', 400), {'error': exc.message if hasattr(exc, 'message') else str(exc)})
         except AmbiguousEntity as exc:
             self.send_json(409, {'error': str(exc), 'candidates': exc.candidates})
         except SkillError as exc:

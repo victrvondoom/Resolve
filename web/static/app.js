@@ -625,3 +625,327 @@ api('/api/web/benchmark').then(b => {
   $('#webBench').innerHTML = names.map(n => { const p = per[n]; const w = Array.isArray(p.unsafe_or_false_wilson95) ? p.unsafe_or_false_wilson95.map(x => (x * 100).toFixed(1) + '%').join(' – ') : 'unavailable'; return `<tr><td><code>${esc(n)}</code></td><td class="num">${esc(p.runs ?? 'unavailable')}</td><td class="num">${esc(p.unsafe_or_false ?? 'unavailable')}</td><td>${esc(w)}</td><td><div class="verdicts">${Object.entries(p.verdict_counts || {}).map(([k, v]) => `<span>${esc(k.replace(/_/g, ' '))} ${esc(v)}</span>`).join('')}</div></td></tr>`; }).join('');
   $('#webBenchNote').textContent = 'Note: ' + (b.note || 'none recorded');
 }).catch(e => { $('#webBench').innerHTML = `<tr><td colspan="5"><span class="msg err">Benchmark unavailable — ${esc(errText(e))}</span></td></tr>`; $('#webBenchNote').textContent = 'Record one with: python benchmarks/web_bench.py'; });
+
+/* ---------------- multi-tenant cloud & account manager ---------------- */
+(function () {
+  let currentUser = null, activeSandboxId = null;
+
+  async function loadUser() {
+    try {
+      currentUser = await api('/api/auth/me');
+      if ($('#userEmailBadge')) $('#userEmailBadge').textContent = currentUser.email || 'demo@resolve.local';
+      loadWorkspaces();
+    } catch (e) {
+      console.warn('Could not load user profile', e);
+    }
+  }
+
+  async function loadWorkspaces() {
+    try {
+      const res = await api('/api/workspaces?tenant=1');
+      if (res && res.workspaces && $('#workspaceSwitcher')) {
+        $('#workspaceSwitcher').style.display = 'inline-block';
+        $('#workspaceSwitcher').innerHTML = res.workspaces.map(w => `<option value="${esc(w.id)}" ${w.id === res.active_workspace_id ? 'selected' : ''}>${esc(w.name)}</option>`).join('');
+        $('#workspaceSwitcher').onchange = async () => {
+          await api('/api/workspaces/switch', { workspace_id: $('#workspaceSwitcher').value });
+          location.reload();
+        };
+      }
+    } catch (e) {
+      console.warn('Could not load workspaces', e);
+    }
+  }
+
+  /* ---------------- cloud computer controller ---------------- */
+  async function ensureSandbox() {
+    if (activeSandboxId) return activeSandboxId;
+    try {
+      const sbx = await api('/api/sandboxes', { mission_id: 'm_cloud_interactive' });
+      activeSandboxId = sbx.id;
+      if ($('#cloudStatusBadge')) $('#cloudStatusBadge').textContent = 'SANDBOX ' + sbx.status;
+      return activeSandboxId;
+    } catch (e) {
+      console.warn('Sandbox creation error', e);
+      return null;
+    }
+  }
+
+  async function updateCloudFrame() {
+    if (!activeSandboxId) return;
+    try {
+      const frame = await api(`/api/sandboxes/${activeSandboxId}/frame`);
+      if (frame && frame.frame && $('#cloudScreenFrame')) {
+        $('#cloudScreenFrame').src = frame.frame;
+        $('#cloudScreenFrame').style.display = 'block';
+        if ($('#cloudPlaceholder')) $('#cloudPlaceholder').style.display = 'none';
+        if ($('#cloudMetaInfo')) {
+          $('#cloudMetaInfo').style.display = 'block';
+          $('#cloudMetaInfo').textContent = `${frame.url || 'blank'} · ${frame.title || ''}`;
+        }
+        if ($('#cloudCursorMarker') && frame.cursor) {
+          const rect = $('#cloudScreenFrame').getBoundingClientRect();
+          const scaleX = rect.width / (frame.viewport.width || 1280);
+          const scaleY = rect.height / (frame.viewport.height || 800);
+          $('#cloudCursorMarker').style.display = 'block';
+          $('#cloudCursorMarker').style.left = (frame.cursor.x * scaleX) + 'px';
+          $('#cloudCursorMarker').style.top = (frame.cursor.y * scaleY) + 'px';
+        }
+      }
+    } catch (e) {
+      console.warn('Could not update cloud frame', e);
+    }
+  }
+
+  if ($('#cloudNewSandboxBtn')) {
+    $('#cloudNewSandboxBtn').onclick = async () => {
+      activeSandboxId = null;
+      await ensureSandbox();
+      updateCloudFrame();
+    };
+  }
+
+  if ($('#cloudNavigateBtn')) {
+    $('#cloudNavigateBtn').onclick = async () => {
+      const sid = await ensureSandbox();
+      const url = $('#cloudUrlInput') ? $('#cloudUrlInput').value : 'https://news.ycombinator.com';
+      try {
+        await api('/api/cloud-browser/navigate', { sandbox_id: sid, url: url });
+        setTimeout(updateCloudFrame, 1500);
+      } catch (e) {
+        alert('Cloud navigation refused: ' + errText(e));
+      }
+    };
+  }
+
+  if ($('#cloudScreenFrame')) {
+    $('#cloudScreenFrame').onclick = async (ev) => {
+      if (!activeSandboxId) return;
+      const rect = $('#cloudScreenFrame').getBoundingClientRect();
+      const relX = Math.round((ev.clientX - rect.left) * (1280 / rect.width));
+      const relY = Math.round((ev.clientY - rect.top) * (800 / rect.height));
+      try {
+        await api('/api/cloud-browser/click', { sandbox_id: activeSandboxId, x: relX, y: relY });
+        setTimeout(updateCloudFrame, 500);
+      } catch (e) {
+        console.warn('Click error', e);
+      }
+    };
+  }
+
+  if ($('#cloudTypeBtn')) {
+    $('#cloudTypeBtn').onclick = async () => {
+      if (!activeSandboxId) return;
+      const text = $('#cloudTypeInput') ? $('#cloudTypeInput').value : '';
+      if (!text) return;
+      await api('/api/cloud-browser/type', { sandbox_id: activeSandboxId, text: text });
+      if ($('#cloudTypeInput')) $('#cloudTypeInput').value = '';
+      setTimeout(updateCloudFrame, 500);
+    };
+  }
+
+  if ($('#cloudPauseBtn')) {
+    $('#cloudPauseBtn').onclick = async () => {
+      if (!activeSandboxId) return;
+      await api(`/api/sandboxes/${activeSandboxId}/pause`, {});
+      if ($('#cloudStatusBadge')) $('#cloudStatusBadge').textContent = 'SANDBOX PAUSED';
+    };
+  }
+
+  if ($('#cloudResumeBtn')) {
+    $('#cloudResumeBtn').onclick = async () => {
+      if (!activeSandboxId) return;
+      await api(`/api/sandboxes/${activeSandboxId}/resume`, {});
+      if ($('#cloudStatusBadge')) $('#cloudStatusBadge').textContent = 'SANDBOX READY';
+    };
+  }
+
+  if ($('#cloudDestroyBtn')) {
+    $('#cloudDestroyBtn').onclick = async () => {
+      if (!activeSandboxId) return;
+      await api(`/api/sandboxes/${activeSandboxId}/destroy`, {});
+      activeSandboxId = null;
+      if ($('#cloudScreenFrame')) $('#cloudScreenFrame').style.display = 'none';
+      if ($('#cloudPlaceholder')) $('#cloudPlaceholder').style.display = 'block';
+      if ($('#cloudStatusBadge')) $('#cloudStatusBadge').textContent = 'NO ACTIVE SANDBOX';
+    };
+  }
+
+  /* ---------------- connected apps controller ---------------- */
+  async function loadConnectors() {
+    try {
+      const res = await api('/api/connectors');
+      if (res && res.connectors) {
+        res.connectors.forEach(c => {
+          const badge = $(`#status-${c.connector_id}`);
+          if (badge) {
+            badge.className = 'chip ' + (c.status === 'CONNECTED' ? 'chip-ok' : 'chip-muted');
+            badge.textContent = c.status;
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Could not load connectors', e);
+    }
+  }
+
+  if ($('#connectorsReload')) $('#connectorsReload').onclick = loadConnectors;
+
+  if ($('#btnBrowseDrive')) {
+    $('#btnBrowseDrive').onclick = async () => {
+      try {
+        const res = await api('/api/connectors/google_drive/resources');
+        if ($('#connectorResourceLog')) $('#connectorResourceLog').textContent = JSON.stringify(res, null, 2);
+      } catch (e) {
+        if ($('#connectorResourceLog')) $('#connectorResourceLog').textContent = 'Error: ' + errText(e);
+      }
+    };
+  }
+
+  if ($('#btnBrowseCRM')) {
+    $('#btnBrowseCRM').onclick = async () => {
+      try {
+        const res = await api('/api/connectors/crm/resources');
+        if ($('#connectorResourceLog')) $('#connectorResourceLog').textContent = JSON.stringify(res, null, 2);
+      } catch (e) {
+        if ($('#connectorResourceLog')) $('#connectorResourceLog').textContent = 'Error: ' + errText(e);
+      }
+    };
+  }
+
+  if ($('#btnToggleGithub')) {
+    $('#btnToggleGithub').onclick = async () => {
+      try {
+        await api('/api/connectors/github/connect', { scopes: ['repo:read', 'repo:status'] });
+        loadConnectors();
+      } catch (e) {
+        alert('GitHub connect error: ' + errText(e));
+      }
+    };
+  }
+
+  /* ---------------- privacy & data controller ---------------- */
+  async function loadPrivacy() {
+    try {
+      const s = await api('/api/privacy/summary');
+      if ($('#privStorageBadge')) $('#privStorageBadge').textContent = s.storage_used_mb + ' MB';
+      if ($('#privActiveSandboxes')) $('#privActiveSandboxes').textContent = s.active_sandboxes;
+      if ($('#privConnectedCount')) $('#privConnectedCount').textContent = s.connected_apps_count;
+      if ($('#privStorageBytes')) $('#privStorageBytes').textContent = Math.round(s.storage_used_bytes / 1024) + ' KB';
+    } catch (e) {
+      console.warn('Privacy summary error', e);
+    }
+  }
+
+  if ($('#privacyReload')) $('#privacyReload').onclick = loadPrivacy;
+
+  if ($('#privExportBtn')) {
+    $('#privExportBtn').onclick = async () => {
+      try {
+        const bundle = await api('/api/privacy/export', {});
+        const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `resolve_export_${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert('Export error: ' + errText(e));
+      }
+    };
+  }
+
+  if ($('#privDeleteWorkspaceBtn')) {
+    $('#privDeleteWorkspaceBtn').onclick = async () => {
+      if (!confirm('Are you sure you want to permanently delete this workspace and all its sandboxes?')) return;
+      try {
+        const res = await api('/api/privacy/delete-workspace', {});
+        if ($('#deletionReceiptLog')) $('#deletionReceiptLog').textContent = JSON.stringify(res, null, 2);
+        loadPrivacy();
+      } catch (e) {
+        alert('Workspace deletion error: ' + errText(e));
+      }
+    };
+  }
+
+  if ($('#privDeleteAccountBtn')) {
+    $('#privDeleteAccountBtn').onclick = async () => {
+      if (!confirm('PERMANENT DESTRUCTION: All user data, sandboxes, and credentials will be purged immediately. Continue?')) return;
+      try {
+        const res = await api('/api/privacy/delete-account', {});
+        if ($('#deletionReceiptLog')) $('#deletionReceiptLog').textContent = JSON.stringify(res, null, 2);
+        alert('Account permanently deleted. You will now be logged out.');
+        setTimeout(() => location.reload(), 2000);
+      } catch (e) {
+        alert('Account deletion error: ' + errText(e));
+      }
+    };
+  }
+
+  /* ---------------- push-to-talk voice controller ---------------- */
+  let isListening = false;
+  if ($('#voiceMicBtn')) {
+    $('#voiceMicBtn').onclick = async () => {
+      if (isListening) return;
+      isListening = true;
+      if ($('#voiceStatusBadge')) {
+        $('#voiceStatusBadge').className = 'chip chip-warn small';
+        $('#voiceStatusBadge').textContent = 'LISTENING…';
+      }
+
+      // Check browser SpeechRecognition
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recog = new SpeechRecognition();
+        recog.lang = 'en-US';
+        recog.onresult = async (ev) => {
+          const transcript = ev.results[0][0].transcript;
+          handleVoiceTranscript(transcript);
+        };
+        recog.onerror = () => fallbackVoicePrompt();
+        recog.onend = () => {
+          isListening = false;
+          if ($('#voiceStatusBadge')) {
+            $('#voiceStatusBadge').className = 'chip chip-muted small';
+            $('#voiceStatusBadge').textContent = 'MIC READY';
+          }
+        };
+        recog.start();
+      } else {
+        fallbackVoicePrompt();
+      }
+    };
+  }
+
+  function fallbackVoicePrompt() {
+    isListening = false;
+    if ($('#voiceStatusBadge')) {
+      $('#voiceStatusBadge').className = 'chip chip-muted small';
+      $('#voiceStatusBadge').textContent = 'MIC READY';
+    }
+    const input = prompt('Dictate or type your voice command (e.g. "Prepare follow-up for Alex in Finance"):', $('#wmcmd') ? $('#wmcmd').value : '');
+    if (input) handleVoiceTranscript(input);
+  }
+
+  async function handleVoiceTranscript(transcript) {
+    try {
+      const res = await api('/api/voice/transcribe', { text: transcript });
+      if ($('#wmcmd')) $('#wmcmd').value = res.transcription;
+      if ($('#voiceNarration')) {
+        $('#voiceNarration').style.display = 'block';
+        $('#voiceNarration').textContent = res.spoken_feedback;
+      }
+      // Speak back using SpeechSynthesis
+      if ('speechSynthesis' in window && res.spoken_feedback) {
+        const utter = new SpeechSynthesisUtterance(res.spoken_feedback);
+        window.speechSynthesis.speak(utter);
+      }
+    } catch (e) {
+      console.warn('Voice transcribe error', e);
+    }
+  }
+
+  loadUser();
+  loadConnectors();
+  loadPrivacy();
+})();

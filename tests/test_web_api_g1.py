@@ -30,7 +30,16 @@ class Server:
         self.tmp, self.port, self.proc, self.token = tmp, port, None, None
 
     def start(self):
-        env = dict(os.environ, RESOLVE_DB=str(Path(self.tmp) / 'r.sqlite3'), RESOLVE_PORT=str(self.port), RESOLVE_FIXTURE_DIR=str(Path(self.tmp) / 'fx'))
+        env = dict(
+            os.environ,
+            RESOLVE_DB=str(Path(self.tmp) / 'r.sqlite3'),
+            RESOLVE_PORT=str(self.port),
+            RESOLVE_FIXTURE_DIR=str(Path(self.tmp) / 'fx'),
+            RESOLVE_TENANTS_DB=str(Path(self.tmp) / 'tenants.sqlite3'),
+            RESOLVE_SANDBOXES_DIR=str(Path(self.tmp) / 'sandboxes'),
+            RESOLVE_SANDBOXES_DB=str(Path(self.tmp) / 'sandboxes.sqlite3'),
+            RESOLVE_CONNECTORS_DB=str(Path(self.tmp) / 'connectors.sqlite3')
+        )
         self.proc = subprocess.Popen([sys.executable, str(ROOT / 'src' / 'resolve_app.py')], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         for _ in range(100):
             try:
@@ -44,10 +53,12 @@ class Server:
         self.proc.terminate()
         self.proc.wait(10)
 
-    def req(self, method, path, body=None):
+    def req(self, method, path, body=None, headers=None):
         data = json.dumps(body).encode() if body is not None else None
-        r = urllib.request.Request(f'http://127.0.0.1:{self.port}{path}', data=data, method=method,
-                                   headers={'Content-Type': 'application/json', 'X-Resolve-Token': self.token or ''})
+        h = {'Content-Type': 'application/json', 'X-Resolve-Token': self.token or ''}
+        if headers:
+            h.update(headers)
+        r = urllib.request.Request(f'http://127.0.0.1:{self.port}{path}', data=data, method=method, headers=h)
         try:
             with urllib.request.urlopen(r, timeout=60) as resp:
                 return resp.status, json.loads(resp.read())
