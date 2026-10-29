@@ -5,6 +5,7 @@
 <title>Mission Control — RESOLVE</title>
 <link rel="icon" href="/static/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/cream.css">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -25,8 +26,9 @@
 <div class="shell" id="dashboard">
   <nav class="sidebar" aria-label="Mission Control sections">
     <ul>
-      <li><a href="#view-mission" data-view="mission" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l3-7 3 14 3-7h3"/></svg>Browser mission</a></li>
-      <li><a href="#view-cloud" data-view="cloud"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Cloud computer <span class="chip chip-ok small" style="margin-left:auto;padding:1px 6px;">LIVE</span></a></li>
+      <li><a href="#view-flagship" data-view="flagship"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.8 5.5 21l2-7.5L2 9h7z"/></svg>Flagship mission</a></li>
+      <li><a href="#view-mission" data-view="mission"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l3-7 3 14 3-7h3"/></svg>Browser mission</a></li>
+      <li><a href="#view-cloud" data-view="cloud"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Cloud computer</a></li>
       <li><a href="#view-connectors" data-view="connectors"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M11 18H8a2 2 0 0 1-2-2V9"/></svg>Connected apps</a></li>
       <li><a href="#view-approvals" data-view="approvals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Approval inbox <span id="approvalBadge" class="chip chip-warn small" style="margin-left:auto;display:none;padding:1px 6px;">0</span></a></li>
       <li><a href="#view-agents" data-view="agents"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 8l3.5 8M16.5 8L13 16"/></svg>Agents</a></li>
@@ -44,8 +46,54 @@
   </nav>
 
   <main id="main" tabindex="-1">
+    <!-- ============ FLAGSHIP: BRIEF -> VERIFIED PDF ============ -->
+    <section class="view" id="view-flagship" data-view="flagship" aria-labelledby="h-flagship" hidden>
+      <div class="view-head"><div><h1 id="h-flagship">Flagship mission</h1>
+        <p class="muted">Speak or type one goal. Two workers read your brief and analyze a bundled sample project at the same time, a planner proposes a corrected architecture, you approve the exact plan, and a verifier re-reads the generated PDF before anything is marked confirmed.</p></div></div>
+      <div class="grid">
+        <section class="card span6 hero-card" aria-labelledby="h-fm-1">
+          <div class="card-head"><h2 id="h-fm-1">1. Your instruction</h2><span id="fmMicBadge" class="chip chip-muted small" role="status">CHECKING MIC…</span></div>
+          <label class="label" for="fmIntent">Instruction (editable; nothing is sent until you press Start)</label>
+          <textarea id="fmIntent" rows="3">Resolve, inspect my project brief, analyze the implementation issues, create a corrected architecture, generate a polished report and prepare it for print.</textarea>
+          <div class="row" style="gap:8px;margin:8px 0">
+            <button class="btn" id="fmMic" disabled title="Checking microphone and speech engine…">Push to talk</button>
+            <button class="btn" id="fmSample" title="Creates the bundled sample project brief as a PDF in your private workspace">Load sample brief</button>
+          </div>
+          <p id="fmMicNote" class="msg" style="display:none" aria-live="polite"></p>
+          <label class="label" for="fmDoc">Source brief (bound by document id + SHA-256, never by name)</label>
+          <select id="fmDoc"><option value="">No PDFs yet — load the sample brief or upload one in Documents</option></select>
+          <p class="muted small">Project under analysis: <code>sample_project</code> (bundled, parsed statically, never executed).</p>
+          <div class="row" style="gap:8px"><button class="btn btn-primary" id="fmStart">Start mission</button><button class="btn" id="fmCancel" disabled title="No running mission">Cancel</button></div>
+          <p id="fmStatus" class="msg" role="status" aria-live="polite"></p>
+        </section>
+        <section class="card span6" aria-labelledby="h-fm-2">
+          <div class="card-head"><h2 id="h-fm-2">2. Workers (from recorded events)</h2><span id="fmState" class="chip chip-muted">NO MISSION</span></div>
+          <ol id="fmNodes" class="fm-nodes" aria-label="Worker tasks"><li class="muted">Start a mission to see real worker execution.</li></ol>
+          <details><summary class="small muted">Event log</summary><pre id="fmEvents" class="fm-log" tabindex="0">—</pre></details>
+        </section>
+        <section class="card span12" id="fmPlanCard" aria-labelledby="h-fm-3" hidden>
+          <div class="card-head"><h2 id="h-fm-3">3. Plan awaiting your approval</h2><span class="chip chip-warn">DRAFT · rule-based, not an LLM</span></div>
+          <p class="muted small" id="fmPlanMeta"></p>
+          <div class="fm-split">
+            <div><h3 class="fm-h">Issues with evidence</h3><div class="tablewrap"><table class="fm-table"><thead><tr><th>ID</th><th>Severity</th><th>Where</th><th>Violates</th></tr></thead><tbody id="fmIssues"></tbody></table></div></div>
+            <div><h3 class="fm-h">Corrected architecture</h3><div id="fmDiagram" class="fm-diagram" role="img" aria-label="Architecture diagram"></div><details><summary class="small muted">Mermaid source</summary><pre id="fmMermaid" class="fm-log" tabindex="0"></pre></details></div>
+          </div>
+          <div class="row" style="gap:8px;margin-top:10px"><button class="btn btn-primary" id="fmApprove">Approve this exact plan</button><button class="btn" id="fmRevise" title="Re-runs analysis with your edited instruction; any earlier approval becomes invalid">Revise instruction &amp; re-plan</button></div>
+        </section>
+        <section class="card span12" id="fmResultCard" aria-labelledby="h-fm-4" hidden>
+          <div class="card-head"><h2 id="h-fm-4">4. Verified result</h2><span id="fmResultChip" class="chip chip-muted"></span></div>
+          <ul id="fmChecks" class="fm-checks"></ul>
+          <p class="small"><b>Output SHA-256</b> <code id="fmHash"></code></p>
+          <p class="small"><b>Provenance</b> <span id="fmProv"></span></p>
+          <div class="row" style="gap:8px;margin:8px 0"><button class="btn btn-primary" id="fmDownload">Download PDF</button><button class="btn" id="fmPrint">Print…</button><button class="btn btn-danger" id="fmDelete">Delete mission &amp; PDF</button></div>
+          <iframe id="fmPreview" class="doc-preview" title="Generated PDF preview"></iframe>
+          <p class="muted small" id="fmPrintNote">“Print…” opens your browser's print dialog. RESOLVE cannot confirm that a physical printer completed a job.</p>
+        </section>
+      </div>
+    </section>
+
     <!-- ============ BROWSER MISSION ============ -->
-    <section class="view" id="view-mission" data-view="mission" aria-labelledby="h-mission">
+    <section class="view" id="view-mission" data-view="mission" aria-labelledby="h-mission" hidden>
       <div class="view-head">
         <div><h1 id="h-mission">Browser mission</h1><p class="muted">The signature workflow: resolve the right contact, pin the report version, approve the exact send, and reconcile a lost acknowledgement — verified in each fixture app's own database.</p></div>
       </div>
@@ -58,7 +106,7 @@
               <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="vertical-align:middle;margin-right:4px;"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
               Push to talk
             </button>
-            <span id="voiceStatusBadge" class="chip chip-muted small">MIC READY</span>
+            <span id="voiceStatusBadge" class="chip chip-muted small" role="status">CHECKING MIC…</span>
           </div>
           <p id="voiceNarration" class="msg" style="display:none;font-style:italic;color:var(--accent);margin-bottom:8px;"></p>
           <label class="label" for="wmcmd">Mission command</label>
@@ -219,7 +267,7 @@
           </div>
           <button class="btn btn-primary" id="docTransform">Create transformed PDF</button>
           <p id="docStatus" class="msg" role="status" aria-live="polite">Select a document to begin.</p>
-          <div class="doc-preview-head"><h2>PDF preview</h2><div class="doc-actions"><button class="btn" id="docDownload" disabled>Download</button><button class="btn" id="docPrint" disabled>Print…</button></div></div>
+          <div class="doc-preview-head"><h2>PDF preview</h2><div class="doc-actions"><button class="btn" id="docDownload" disabled title="Select a document to download">Download</button><button class="btn" id="docPrint" disabled title="Select a document to print">Print…</button></div></div>
           <iframe id="docPreview" class="doc-preview" title="Selected PDF preview"></iframe>
           <p class="muted small">“Print…” opens your browser's print dialog. RESOLVE cannot confirm that a physical printer completed a job.</p>
         </section>
@@ -455,6 +503,17 @@
     <footer class="foot muted small">No external messages are sent; the outbox is SIMULATED DELIVERY. Native input requires an interactive Windows session (WINDOWS_NATIVE_TESTS_NOT_RUN on Linux build hosts). Data is stored in the local SQLite database.</footer>
   </main>
 </div>
+<dialog id="authDialog" aria-labelledby="authTitle">
+  <form method="dialog" id="authForm" class="auth-form">
+    <h2 id="authTitle">Sign in to RESOLVE</h2>
+    <p class="muted small">Your documents and missions are private to your account. Judges: use “Create demo account” (disposable, deletable from Privacy &amp; data).</p>
+    <label class="label" for="authEmail">Email</label><input id="authEmail" type="email" autocomplete="username" required>
+    <label class="label" for="authPassword">Password (10+ characters)</label><input id="authPassword" type="password" autocomplete="current-password" minlength="10" required>
+    <p id="authMsg" class="msg" role="alert"></p>
+    <div class="row" style="gap:8px"><button class="btn btn-primary" id="authLogin" type="button">Sign in</button><button class="btn" id="authRegister" type="button">Create account</button><button class="btn" id="authDemo" type="button">Create demo account</button></div>
+  </form>
+</dialog>
+<script src="/static/flagship.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

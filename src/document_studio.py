@@ -217,6 +217,26 @@ class DocumentStudio:
                           operation="report")
 
     @synchronized
+    def save_generated(self, user_id: str, workspace_id: str, data: bytes, name: str,
+                       source_ids: str = "", operation: str = "generated"):
+        """Persist a PDF produced by a mission, recording the source document ids (provenance)."""
+        return self._save(user_id, workspace_id, data, name, source_ids=source_ids, operation=operation)
+
+    @synchronized
+    def extract_text(self, user_id: str, workspace_id: str, document_id: str) -> str:
+        reader = PdfReader(io.BytesIO(self.read_pdf(user_id, workspace_id, document_id)), strict=True)
+        return "\n".join((page.extract_text() or "") for page in reader.pages)
+
+    @synchronized
+    def delete_document(self, user_id: str, workspace_id: str, document_id: str) -> bool:
+        self.get_document(user_id, workspace_id, document_id)  # 404 unless owned by this tenant
+        (self.files_dir / f"{document_id}.pdf").unlink(missing_ok=True)
+        with self._db() as db:
+            db.execute("DELETE FROM documents WHERE id=? AND user_id=? AND workspace_id=?",
+                       (document_id, user_id, workspace_id))
+        return True
+
+    @synchronized
     def delete_workspace(self, user_id: str, workspace_id: str) -> int:
         """Purge PDF artifacts for one tenant workspace; return removed count."""
         with self._db() as db:
@@ -237,3 +257,4 @@ class DocumentStudio:
                 (self.files_dir / f"{doc_id}.pdf").unlink(missing_ok=True)
             db.execute("DELETE FROM documents WHERE user_id=?", (user_id,))
         return len(ids)
+

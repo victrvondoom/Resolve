@@ -31,6 +31,9 @@ from effect_graph import EffectDependencyGraph, NodeType, EdgeType
 from connectors import ConnectorRegistry, ConnectorError
 from privacy_engine import PrivacyEngine
 from document_studio import DocumentStudio, DocumentError
+from brief_mission import BriefMissionStore, MissionError
+from voice_engine import VoiceEngine, VoiceError
+from server_security import ServerSecurity, RateLimiter, SECURITY_HEADERS, ConfigError
 
 DB = Path(os.environ.get('RESOLVE_DB', ROOT / 'data' / 'resolve.sqlite3'))
 ledger = Ledger(DB)
@@ -49,6 +52,24 @@ connector_registry = ConnectorRegistry()
 privacy_engine = PrivacyEngine(tenant_auth_mgr, sandbox_mgr, connector_registry)
 document_studio = DocumentStudio(Path(os.environ.get('RESOLVE_DOCUMENTS_DIR', ROOT / 'data' / 'documents')))
 default_demo = tenant_auth_mgr.seed_demo_tenant()
+brief_missions = BriefMissionStore(Path(os.environ.get('RESOLVE_MISSIONS_DB', document_studio.base_dir / 'missions.sqlite3')), document_studio)
+privacy_engine.mission_store = brief_missions
+privacy_engine.browser_pool = cloud_browser_pool
+SECURITY = ServerSecurity.from_env()
+rate_limiter = RateLimiter()
+voice_engine = VoiceEngine()
+# Routes backed by the single shared demo ledger (not tenant-scoped): demo mode only.
+LEGACY_GLOBAL_PREFIXES = ('/api/state', '/api/stream', '/api/web/', '/api/approvals', '/api/evidence', '/api/mission', '/api/missions/',
+                          '/api/benchmark', '/api/skills', '/api/windows', '/api/uia', '/api/session', '/api/action/', '/api/resolve', '/api/resume',
+                          '/api/emergency-stop', '/api/agents/discover')
+
+
+def browser_for(sbx, user):
+    """Cloud browser access. Production requires an explicitly declared isolated runtime: a Playwright context
+    inside the web process is not tenant-grade isolation, so it is refused rather than silently offered."""
+    if SECURITY.production and not SECURITY.cloud_browser_enabled:
+        raise ApiError(503, 'cloud browser is disabled on this deployment: no isolated per-tenant runtime is configured (RESOLVE_CLOUD_BROWSER_ISOLATION)')
+    return cloud_browser_pool.get_or_create(sbx.id, user['user_id'], sbx.storage_path)
 
 
 class ApiError(Exception):
@@ -73,6 +94,11 @@ def latest_report(ledger: Ledger, context: str) -> dict:
 class Handler(BaseHTTPRequestHandler):
     server_version = 'RESOLVE/0.2'
 
+    def end_headers(self):
+        for k, v in SECURITY_HEADERS.items():
+            self.send_header(k, v)
+        super().end_headers()
+
     def log_message(self, fmt, *args):
         print('%s - %s' % (self.address_string(), fmt % args))
 
@@ -94,22 +120,28 @@ class Handler(BaseHTTPRequestHandler):
                 return tenant_auth_mgr.validate_session(token)
             except TenantError as exc:
                 raise ApiError(401, exc.message)
-        elif secrets.compare_digest(token, SESSION_TOKEN):
+        elif not SECURITY.production and secrets.compare_digest(token, SESSION_TOKEN):
             return default_demo
         elif token:
             try:
                 return tenant_auth_mgr.validate_session(token)
             except Exception:
                 pass
+        if SECURITY.production:
+            raise ApiError(401, 'authentication required')
         return default_demo
 
     def check_origin(self, mutation: bool = False, public_auth: bool = False) -> None:
         port = self.server.server_port
-        allowed_hosts = {f'127.0.0.1:{port}', f'localhost:{port}'}
-        require(self.client_address[0] in {'127.0.0.1', '::1'}, 403, 'loopback access only')
-        require(self.headers.get('Host') in allowed_hosts, 403, 'invalid Host header')
+        if not SECURITY.production:
+            require(self.client_address[0] in {'127.0.0.1', '::1'}, 403, 'loopback access only')
+        require(SECURITY.host_allowed(self.headers.get('Host'), port), 403, 'invalid Host header')
         origin = self.headers.get('Origin')
-        require(not origin or origin in {f'http://{host}' for host in allowed_hosts}, 403, 'cross-origin request refused')
+        if origin:
+            host = self.headers.get('Host')
+            require(origin in {f'http://{host}', f'https://{host}'}, 403, 'cross-origin request refused')
+        if self.path.split('?')[0].startswith(LEGACY_GLOBAL_PREFIXES) and SECURITY.production:
+            raise ApiError(404, 'route disabled in production: backed by the shared demo ledger, not tenant-scoped')
         if mutation:
             require(self.headers.get('Content-Type', '').split(';')[0].strip().lower() == 'application/json', 415, 'JSON content type required')
             if not public_auth:
@@ -122,6 +154,7 @@ class Handler(BaseHTTPRequestHandler):
                     except TenantError as exc:
                         raise ApiError(401, exc.message)
                 else:
+                    require(not SECURITY.production, 401, 'authentication required')
                     require(secrets.compare_digest(token, SESSION_TOKEN), 403, 'session token required')
 
     def body(self, max_size: int = 32768) -> dict:
@@ -136,7 +169,7 @@ class Handler(BaseHTTPRequestHandler):
         auth = self.headers.get('Authorization', '')
         token = auth[7:].strip() if auth.startswith('Bearer ') else self.headers.get('X-Resolve-Token', '').strip()
         require(bool(token), 401, 'session token required')
-        if secrets.compare_digest(token, SESSION_TOKEN):
+        if not SECURITY.production and secrets.compare_digest(token, SESSION_TOKEN):
             return default_demo
         try:
             return tenant_auth_mgr.validate_session(token)
@@ -145,6 +178,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         try:
+            if urlparse(self.path).path in {'/api/health', '/api/system/health'}:  # platform probes use arbitrary Host headers; nothing sensitive
+                return self.send_json(200, {'status': 'ok', 'name': 'RESOLVE', 'version': '0.2', 'database': 'sqlite-wal', 'mode': SECURITY.mode})
             self.check_origin()
             parsed = urlparse(self.path)
             path = parsed.path
@@ -204,7 +239,7 @@ class Handler(BaseHTTPRequestHandler):
                     for p in screens_dir.glob('*.png'):
                         items.append({'name': p.name, 'path': f'/api/evidence/{p.name}', 'size_bytes': p.stat().st_size, 'source': 'screens'})
                 return self.send_json(200, {'evidence': items, 'count': len(items)})
-            if path == '/api/session':
+            if path == '/api/session' and not SECURITY.production:
                 return self.send_json(200, {'token': SESSION_TOKEN})
             if path == '/api/state':
                 return self.send_json(200, {'missions': ledger.all_json('missions'), 'entities': ledger.all_json('entities'), 'actions': ledger.all_actions(), 'events': ledger.events(), 'task_events': scheduler.events(), 'outbox': ledger.outbox(), 'followups': ledger.followups()})
@@ -246,19 +281,19 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/sandboxes':
                 user = self.get_session()
                 sandboxes = sandbox_mgr.list_sandboxes(user['user_id'])
-                return self.send_json(200, {'sandboxes': [s.to_dict() for s in sandboxes]})
+                return self.send_json(200, {'sandboxes': [s.public_dict() for s in sandboxes]})
             m_sbx = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)', path)
             if m_sbx:
                 sbx_id = m_sbx.group(1)
                 user = self.get_session()
                 sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'])
-                return self.send_json(200, sbx.to_dict())
+                return self.send_json(200, sbx.public_dict())
             m_sbx_fr = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/frame', path)
             if m_sbx_fr:
                 sbx_id = m_sbx_fr.group(1)
                 user = self.get_session()
                 sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'])
-                session = cloud_browser_pool.get_or_create(sbx.id, user['user_id'], sbx.storage_path)
+                session = browser_for(sbx, user)
                 frame = session.capture_frame()
                 return self.send_json(200, frame)
             if path == '/api/connectors':
@@ -271,6 +306,16 @@ class Handler(BaseHTTPRequestHandler):
                 user = self.get_session()
                 conn = connector_registry.get_connector(user['user_id'], user['workspace_id'], conn_id)
                 return self.send_json(200, {'connector_id': conn_id, 'resources': conn.list_authorized_resources()})
+            if path == '/api/brief-missions':
+                user = self.document_user()
+                return self.send_json(200, {'missions': brief_missions.list(user['user_id'], user['workspace_id'])})
+            m_bm = re.fullmatch(r'/api/brief-missions/([A-Za-z0-9_-]+)', path)
+            if m_bm:
+                user = self.document_user()
+                return self.send_json(200, brief_missions.get(m_bm.group(1), user['user_id'], user['workspace_id']))
+            if path == '/api/voice/health':
+                self.get_session()
+                return self.send_json(200, voice_engine.health())
             if path == '/api/privacy/summary':
                 user = self.get_session()
                 return self.send_json(200, privacy_engine.get_summary(user['user_id'], user['workspace_id']))
@@ -326,6 +371,10 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(404, 'not found')
         except ApiError as exc:
             self.send_json(exc.status, {'error': exc.message})
+        except MissionError as exc:
+            self.send_json(exc.status_code, {'error': exc.message, **({'candidates': exc.candidates} if exc.candidates else {})})
+        except VoiceError as exc:
+            self.send_json(exc.status_code, {'error': exc.message, 'code': exc.code})
         except (TenantError, SandboxError, CloudBrowserError, ConnectorError, DocumentError) as exc:
             self.send_json(getattr(exc, 'status_code', 400), {'error': exc.message if hasattr(exc, 'message') else str(exc)})
         except Exception as exc:
@@ -336,6 +385,7 @@ class Handler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path
             if path in {'/api/auth/register', '/api/auth/login'}:
                 self.check_origin(mutation=True, public_auth=True)
+                require(rate_limiter.allow('auth', self.client_address[0], SECURITY.auth_rate_per_min), 429, 'too many authentication attempts; retry later')
                 data = self.body()
                 if path == '/api/auth/register':
                     session = tenant_auth_mgr.register(data.get('email', ''), data.get('password', ''), data.get('display_name'))
@@ -345,7 +395,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(200, session)
 
             self.check_origin(mutation=True)
-            data = self.body(max_size=7 * 1024 * 1024 if path == '/api/documents/upload' else 32768)
+            data = self.body(max_size=7 * 1024 * 1024 if path == '/api/documents/upload' else 3 * 1024 * 1024 if path == '/api/voice/transcribe-audio' else 32768)
             user = self.get_session()
 
             if path == '/api/documents/upload':
@@ -361,6 +411,31 @@ class Handler(BaseHTTPRequestHandler):
                     str(data.get('operation', '')), data.get('document_ids', []),
                     data.get('expected_sha256', {}), degrees=data.get('degrees'), pages=data.get('pages'))
                 return self.send_json(201, {'document': doc})
+            if path == '/api/documents/sample-brief':
+                return self.send_json(201, {'document': brief_missions.seed_sample_brief(user['user_id'], user['workspace_id'])})
+            m_dd = re.fullmatch(r'/api/documents/([A-Za-z0-9_-]+)/delete', path)
+            if m_dd:
+                document_studio.delete_document(user['user_id'], user['workspace_id'], m_dd.group(1))
+                return self.send_json(200, {'deleted': m_dd.group(1)})
+            if path == '/api/brief-missions':
+                require(rate_limiter.allow('mission', user['user_id'], 10), 429, 'too many missions started; retry shortly')
+                mission = brief_missions.start(user['user_id'], user['workspace_id'], str(data.get('intent_text', '')),
+                    document_id=data.get('document_id'), document_name=data.get('document_name'),
+                    expected_sha256=data.get('expected_sha256'), project=str(data.get('project', 'sample_project')))
+                return self.send_json(202, mission)
+            m_bma = re.fullmatch(r'/api/brief-missions/([A-Za-z0-9_-]+)/(approve|cancel|revise|print-event|delete)', path)
+            if m_bma:
+                mid, action = m_bma.groups()
+                uid, wid = user['user_id'], user['workspace_id']
+                if action == 'approve':
+                    return self.send_json(200, brief_missions.approve(mid, uid, wid, str(data.get('plan_digest', ''))))
+                if action == 'cancel':
+                    return self.send_json(200, brief_missions.cancel(mid, uid, wid))
+                if action == 'revise':
+                    return self.send_json(200, brief_missions.revise(mid, uid, wid, str(data.get('intent_text', ''))))
+                if action == 'print-event':
+                    return self.send_json(200, brief_missions.record_print_dialog(mid, uid, wid))
+                return self.send_json(200, brief_missions.delete(mid, uid, wid, delete_output=data.get('delete_output', True) is not False))
             if path == '/api/documents/report':
                 doc = document_studio.create_report(user['user_id'], user['workspace_id'],
                     str(data.get('title', 'Report')), str(data.get('text', '')))
@@ -377,7 +452,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(201, ws)
             if path == '/api/sandboxes':
                 sbx = sandbox_mgr.create_sandbox(user['user_id'], user['workspace_id'], mission_id=data.get('mission_id'))
-                return self.send_json(201, sbx.to_dict())
+                return self.send_json(201, sbx.public_dict())
             m_sbx_act = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/action', path)
             if m_sbx_act:
                 sbx_id = m_sbx_act.group(1)
@@ -391,7 +466,7 @@ class Handler(BaseHTTPRequestHandler):
                     cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id']).pause()
                 except Exception:
                     pass
-                return self.send_json(200, sbx.to_dict())
+                return self.send_json(200, sbx.public_dict())
             m_sbx_r = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/resume', path)
             if m_sbx_r:
                 sbx_id = m_sbx_r.group(1)
@@ -400,7 +475,7 @@ class Handler(BaseHTTPRequestHandler):
                     cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id']).resume()
                 except Exception:
                     pass
-                return self.send_json(200, sbx.to_dict())
+                return self.send_json(200, sbx.public_dict())
             m_sbx_d = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/destroy', path)
             if m_sbx_d:
                 sbx_id = m_sbx_d.group(1)
@@ -410,7 +485,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/cloud-browser/navigate':
                 sbx_id = data.get('sandbox_id')
                 sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'])
-                session = cloud_browser_pool.get_or_create(sbx.id, user['user_id'], sbx.storage_path)
+                session = browser_for(sbx, user)
                 res = session.navigate(data['url'])
                 return self.send_json(200, res)
             if path == '/api/cloud-browser/click':
@@ -449,6 +524,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/privacy/delete-workspace':
                 receipt = privacy_engine.delete_workspace(user['user_id'], data.get('workspace_id', user['workspace_id']))
                 return self.send_json(200, receipt.to_dict())
+            if path == '/api/voice/transcribe-audio':
+                require(rate_limiter.allow('stt', user['user_id'], 20), 429, 'too many transcription requests')
+                result = voice_engine.transcribe_b64(str(data.get('audio_base64', '')), data.get('consent') is True, str(data.get('language', 'en-US')))
+                return self.send_json(200, result)
             if path == '/api/voice/transcribe':
                 text = str(data.get('text', '')).strip()
                 require(bool(text), 400, 'text is required; audio transcription is not configured')
@@ -551,6 +630,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/uia/inspect':
                 return self.send_json(200, self.inspect_uia(data))
             raise ApiError(404, 'not found')
+        except VoiceError as exc:
+            self.send_json(exc.status_code, {'error': exc.message, 'code': exc.code})
+        except MissionError as exc:
+            self.send_json(exc.status_code, {'error': exc.message, **({'candidates': exc.candidates} if exc.candidates else {})})
         except ApiError as exc:
             self.send_json(exc.status, {'error': exc.message})
         except (TenantError, SandboxError, CloudBrowserError, ConnectorError, DocumentError) as exc:
@@ -697,7 +780,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    address = ('127.0.0.1', int(os.environ.get('RESOLVE_PORT', '8765')))
+    try:
+        SECURITY.validate_startup()
+    except ConfigError as exc:
+        raise SystemExit(f'refusing to start: {exc}')
+    address = (SECURITY.bind_host, int(os.environ.get('RESOLVE_PORT', '8765')))
     server = ThreadingHTTPServer(address, Handler)
     print(f'RESOLVE local server at http://{address[0]}:{address[1]}  database={DB}')
     try:

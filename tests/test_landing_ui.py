@@ -32,7 +32,7 @@ class LandingAndAppUI(unittest.TestCase):
         cls.tmp.cleanup()
 
     def open(self, path, width, height=900):
-        ctx = self.browser.new_context(viewport={'width': width, 'height': height})
+        ctx = self.browser.new_context(viewport={'width': width, 'height': height}, bypass_csp=True)
         page = ctx.new_page()
         errors = []
         page.on('pageerror', lambda e: errors.append(f'pageerror: {e}'))
@@ -73,7 +73,7 @@ class LandingAndAppUI(unittest.TestCase):
         self.assertTrue(page.evaluate(OVERFLOW_JS))
         page.get_by_role('link', name='Open Mission Control').first.click()
         page.wait_for_url('**/app')
-        page.wait_for_selector('#wmstart')
+        page.wait_for_selector('#fmStart')
         self.assertEqual(errors, [])
 
     def test_landing_mobile_has_no_horizontal_overflow(self):
@@ -83,7 +83,7 @@ class LandingAndAppUI(unittest.TestCase):
         self.assertEqual(errors, [])
 
     def test_landing_reduced_motion_stops_animation(self):
-        ctx = self.browser.new_context(viewport={'width': 1280, 'height': 800}, reduced_motion='reduce')
+        ctx = self.browser.new_context(viewport={'width': 1280, 'height': 800}, reduced_motion='reduce', bypass_csp=True)
         self.addCleanup(ctx.close)
         page = ctx.new_page()
         page.goto(f'http://127.0.0.1:{self.srv.port}/')

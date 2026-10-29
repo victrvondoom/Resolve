@@ -57,6 +57,12 @@ class SandboxRecord:
     def to_dict(self) -> dict:
         return asdict(self)
 
+    def public_dict(self) -> dict:
+        """API-safe view: never reveals the server filesystem path."""
+        d = asdict(self)
+        d.pop('storage_path', None)
+        return d
+
 
 class SandboxManager:
     def __init__(self, base_dir: Path | str | None = None, db_path: Path | str | None = None):
