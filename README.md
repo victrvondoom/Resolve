@@ -162,3 +162,5 @@ Wispr Flow is used by the developer to dictate prompts and documentation. RESOLV
 ---
 
 *Authored and maintained by **Mistral AI** — built by Mistral Vibe, Mistral AI's coding agent.*
+
+RESOLVE
