@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>RESOLVE — Wispr &amp; Solve</title>
-<meta name="description" content="RESOLVE: voice-operated, multi-agent automation that keeps intent, entity, version and effect bound together, and independently verifies every effect.">
+<meta name="description" content="RESOLVE: speak one goal; parallel workers read your brief and analyze your code, you approve the exact plan, and an independent verifier checks the PDF it produces.">
 <link rel="icon" href="/static/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/landing.css">
 </head>
@@ -17,64 +17,58 @@
       <ul class="nav-links">
         <li><a href="#problem">Problem</a></li>
         <li><a href="#how">How it works</a></li>
-        <li><a href="#benchmark">Benchmark</a></li>
+        <li><a href="#try">Try it</a></li>
         <li><a href="#status">Status</a></li>
       </ul>
     </nav>
-    <a class="btn btn-small" href="/app">Mission Control</a>
+    <a class="btn btn-small btn-primary" href="/app">Mission Control</a>
   </div>
 </header>
 
 <main id="main">
   <section class="hero" aria-labelledby="hero-title">
-    <canvas id="scene" class="scene" role="img" aria-label="Animated 3D graph: intent nodes connected to entity, version and effect nodes, all anchored to a ring representing the causal state ledger." data-renderer="pending"></canvas>
+    <canvas id="scene" class="scene" role="img" aria-label="Animated graph: intent nodes linked to entity, version and effect nodes, anchored to a ring that stands for the causal state ledger." data-renderer="pending"></canvas>
     <div class="hero-shade" aria-hidden="true"></div>
     <div class="wrap hero-inner">
-      <p class="eyebrow"><span class="dot" aria-hidden="true"></span> Local-first research prototype · no API keys</p>
+      <p class="eyebrow"><span class="dot" aria-hidden="true"></span> Voice-first work, independently verified</p>
       <h1 id="hero-title">Say what you mean.<br><span class="grad">Prove what happened.</span></h1>
-      <p class="lede">RESOLVE turns a spoken request into computer actions without losing the thread: the <em>intent</em> stays bound to the exact <em>entity</em>, the exact <em>version</em>, and an <em>effect</em> that a separate verifier checks outside the code that produced it.</p>
+      <p class="lede">Speak one goal. RESOLVE reads your project brief and analyzes your code <em>in parallel</em>, proposes a corrected architecture that <em>you approve</em>, then writes a PDF report and <em>independently verifies</em> it was built from the exact brief and code versions you chose.</p>
       <div class="cta-row">
-        <a class="btn btn-primary" id="cta" href="/app">Open Mission Control <span aria-hidden="true">→</span></a>
-        <a class="btn btn-ghost" href="#how">See the pipeline</a>
+        <a class="btn btn-primary btn-lg" id="cta" href="/app">Open Mission Control <span aria-hidden="true">→</span></a>
+        <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
       </div>
       <dl class="hero-meta">
         <div><dt>Server</dt><dd id="health-chip" class="chip chip-muted">checking…</dd></div>
-        <div><dt>Browser actions</dt><dd>Playwright · DOM-level</dd></div>
-        <div><dt>Delivery</dt><dd>Simulated outbox</dd></div>
+        <div><dt>Mode</dt><dd id="meta-mode">checking…</dd></div>
+        <div><dt>Speech</dt><dd id="meta-speech">checking…</dd></div>
       </dl>
+      <p class="legend" aria-hidden="true"><span class="k k-intent"></span>intent <span class="k k-entity"></span>entity <span class="k k-version"></span>version <span class="k k-effect"></span>effect <span class="k k-ledger"></span>ledger</p>
     </div>
-    <p class="legend wrap" aria-hidden="true"><span class="k k-intent"></span>intent <span class="k k-entity"></span>entity <span class="k k-version"></span>version <span class="k k-effect"></span>effect <span class="k k-ledger"></span>ledger</p>
   </section>
 
   <section id="problem" class="band" aria-labelledby="problem-title">
     <div class="wrap">
       <p class="eyebrow">The failure it fixes</p>
-      <h2 id="problem-title">Automation usually breaks quietly, between the words and the effect.</h2>
-      <p class="section-lede">One request: <q>Prepare a follow-up for Jordan Lee using the latest report, update the CRM and send it after I approve.</q> Three ordinary things go wrong.</p>
+      <h2 id="problem-title">An agent can do every step right and still deliver the wrong thing.</h2>
+      <p class="section-lede">Most automation checks that each action <q>succeeded</q>. Few check that the result belongs to the document, the version and the decision you actually meant.</p>
       <div class="cards three">
         <article class="card">
-          <div class="card-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="8" cy="8" r="3.2"/><circle cx="16" cy="8" r="3.2"/><path d="M2.5 19c.8-3.2 3-5 5.5-5s4.7 1.8 5.5 5M10.5 19c.8-3.2 3-5 5.5-5s4.7 1.8 5.5 5"/></svg>
-          </div>
-          <h3>Two Jordan Lees</h3>
-          <p>The CRM has two contacts with the same display name. A naive agent writes to whichever row comes first.</p>
-          <p class="fix"><b>RESOLVE:</b> stops with <code>NEEDS_CLARIFICATION</code>, shows stable IDs and context, and binds the choice by ID, never by name.</p>
+          <div class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M6 2.8h8l4 4v14.4H6z"/><path d="M14 2.8v4h4M9 12h6M9 15.5h4"/></svg></div>
+          <h3>Two files called final_report.pdf</h3>
+          <p>Names collide and files get replaced. A naive agent grabs whichever matches first.</p>
+          <p class="fix"><b>RESOLVE</b> binds your brief and your code by stable id and SHA-256, asks when names are ambiguous, and refuses a source that changed after you chose it.</p>
         </article>
         <article class="card">
-          <div class="card-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="22" height="22"><path d="M6 2.8h8l4 4v14.4H6z"/><path d="M14 2.8v4h4M9 12h6M9 15.5h4"/></svg>
-          </div>
-          <h3>The report changed after approval</h3>
-          <p>You approved one file. Before the send, someone edits it. Most pipelines attach whatever is on disk now.</p>
-          <p class="fix"><b>RESOLVE:</b> approval is bound to a digest of recipient, content, attachment SHA-256 and intent revision. A changed file no longer matches, so the send is refused.</p>
+          <div class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 12.5l4 4L19 6.5"/><path d="M4 20h16"/></svg></div>
+          <h3>The plan changed after you approved it</h3>
+          <p>You said yes to one plan. Then the instruction was revised, or the design was edited.</p>
+          <p class="fix"><b>RESOLVE</b> binds your approval to the exact plan digest. Any change produces a new digest, and the old approval no longer applies.</p>
         </article>
         <article class="card">
-          <div class="card-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 12h5l2-5 4 10 2-5h5"/></svg>
-          </div>
-          <h3>The acknowledgement got lost</h3>
-          <p>The send goes through but the response never arrives. A stateless agent retries, and the email goes out twice.</p>
-          <p class="fix"><b>RESOLVE:</b> persists <code>DISPATCHING</code> first, marks the outcome <code>UNCERTAIN</code>, and reconciles by reading the outbox. It does not retry blindly.</p>
+          <div class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5M8.5 11l1.8 1.8L14 9.2"/></svg></div>
+          <h3>The report cites the wrong source</h3>
+          <p>A generator can write a beautiful report about the wrong version of your code.</p>
+          <p class="fix"><b>RESOLVE</b> re-reads the stored PDF with a separate verifier. It must cite the bound brief and project hashes and every issue, or nothing is confirmed.</p>
         </article>
       </div>
     </div>
@@ -83,24 +77,40 @@
   <section id="how" class="band band-alt" aria-labelledby="how-title">
     <div class="wrap">
       <p class="eyebrow">How it works</p>
-      <h2 id="how-title">Intent–Entity–Effect Continuity, recorded in a Causal State Ledger</h2>
-      <p class="section-lede"><b>Hypothesis (IEEC):</b> an agent is safe to trust with consequential actions only if every action carries an unbroken chain from the user's current intent revision to a stable entity, a pinned version, and an effect that is checked independently. The <b>Causal State Ledger</b> persists each link and every state transition in SQLite, so the chain survives restarts and can be streamed live.</p>
+      <h2 id="how-title">From one spoken goal to a verified, printable report</h2>
+      <p class="section-lede"><b>Intent–Entity–Effect Continuity:</b> every result must carry an unbroken chain from your current intent revision to stable inputs, an approved plan and an output that a separate check confirms. Each link is recorded, so the chain survives restarts.</p>
       <ol class="pipeline">
-        <li><span class="step">1</span><h3>Capture intent</h3><p>Typed or dictated text becomes a mission with a numbered intent revision. Speech is reviewed before it is submitted.</p></li>
-        <li><span class="step">2</span><h3>Resolve entities</h3><p>Candidates are found by name, then bound by stable ID. Ambiguity stops the run and asks you.</p></li>
-        <li><span class="step">3</span><h3>Pin versions</h3><p>The latest report is chosen by modification time and pinned by SHA-256, not by file name.</p></li>
-        <li><span class="step">4</span><h3>Approve the exact action</h3><p>You approve a digest of the action. Change any part of it and the approval no longer applies.</p></li>
-        <li><span class="step">5</span><h3>Act through a real tool</h3><p>An executor holding a lease drives the fixture apps through Playwright. <code>DISPATCHING</code> is written before any side effect.</p></li>
-        <li><span class="step">6</span><h3>Verify independently</h3><p>A verifier reads the app's own database to confirm the effect, or reconciles an <code>UNCERTAIN</code> outcome read-only.</p></li>
+        <li><span class="step">1</span><h3>Say it</h3><p>Use the in-page microphone, or dictate with Wispr Flow into the instruction box. You review the text before anything runs.</p></li>
+        <li><span class="step">2</span><h3>Bind the inputs</h3><p>Your brief PDF and your code (the sample, or your own .zip) are pinned by id and SHA-256.</p></li>
+        <li><span class="step">3</span><h3>Two workers, in parallel</h3><p>One reads the brief's requirements while another analyzes the code. Their recorded timestamps show the overlap.</p></li>
+        <li><span class="step">4</span><h3>Approve the exact plan</h3><p>Issues cite file:line and the requirement they break. Edit the proposed architecture, then approve its digest.</p></li>
+        <li><span class="step">5</span><h3>Write the report</h3><p>A composer writes the PDF with the issues, the architecture, a task graph and a test strategy.</p></li>
+        <li><span class="step">6</span><h3>Verify independently</h3><p>A separate verifier re-reads and re-hashes the stored PDF before the mission is marked confirmed.</p></li>
       </ol>
     </div>
   </section>
 
-  <section id="benchmark" class="band" aria-labelledby="bench-title">
+  <section id="try" class="band" aria-labelledby="try-title">
+    <div class="wrap try-grid">
+      <div>
+        <p class="eyebrow">Try it in a minute</p>
+        <h2 id="try-title">No install. No API keys.</h2>
+        <p class="section-lede">Open Mission Control and create a disposable demo account. Everything you make stays private to that account, and you can delete it all from <b>Privacy &amp; data</b>.</p>
+        <a class="btn btn-primary btn-lg" href="/app">Start a mission <span aria-hidden="true">→</span></a>
+      </div>
+      <ol class="try-steps">
+        <li><b>Create a demo account</b><span>One click. A random password is generated for you.</span></li>
+        <li><b>Load the sample brief</b><span>Or upload your own PDF brief and your project as a .zip.</span></li>
+        <li><b>Start, approve, download</b><span>Watch the workers, approve the exact plan, and get a verified PDF.</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="benchmark" class="band band-alt" aria-labelledby="bench-title">
     <div class="wrap">
       <p class="eyebrow">Measured, not claimed</p>
       <h2 id="bench-title">Controlled fixture benchmark</h2>
-      <p class="section-lede">Loaded live from <code>GET /api/web/benchmark</code>, the recorded output of <code>python benchmarks/web_bench.py</code>. Four constructed scenarios (ambiguous name, report edited after approval, lost acknowledgement, misleading toast) run against three policies.</p>
+      <p class="section-lede">From the original browser fixture missions (CRM, reports and a simulated outbox): four constructed scenarios run against three policies. Loaded live from <code>GET /api/web/benchmark</code>, the recorded output of <code>python benchmarks/web_bench.py</code>.</p>
       <div class="table-card">
         <div class="table-scroll" tabindex="0" role="region" aria-labelledby="bench-title">
           <table id="bench-table" data-state="loading">
@@ -114,36 +124,36 @@
     </div>
   </section>
 
-  <section id="status" class="band band-alt" aria-labelledby="status-title">
+  <section id="status" class="band" aria-labelledby="status-title">
     <div class="wrap">
       <p class="eyebrow">Honest status</p>
       <h2 id="status-title">What is verified, and what is not</h2>
-      <p class="section-lede">“Verified” means real input, a typed contract, a real tool, an effect observed outside the generating code, an independent verifier, and an automated test that can fail.</p>
+      <p class="section-lede">“Verified” means real input, a real tool, an effect observed outside the code that produced it, an independent check, and an automated test that can fail.</p>
       <div class="status-grid">
-        <article class="status-card ok"><span class="chip chip-ok">Verified on Linux</span><h3>Browser fixture missions</h3><p>CRM, reports and outbox apps driven by Playwright (DOM-level, not physical cursor). Effects checked in each app's SQLite database.</p></article>
-        <article class="status-card ok"><span class="chip chip-ok">Verified on Linux</span><h3>Approval digests</h3><p>A wrong or stale digest is refused with <code>409</code>. Editing the report after approval blocks the send.</p></article>
-        <article class="status-card ok"><span class="chip chip-ok">Verified on Linux</span><h3>Lost-ack reconciliation</h3><p>A dropped acknowledgement becomes <code>UNCERTAIN</code>, then <code>CONFIRMED</code> by a read-only check. Exactly one message.</p></article>
-        <article class="status-card ok"><span class="chip chip-ok">Verified on Linux</span><h3>Executor lease</h3><p>Two concurrent missions serialize on one exclusive lease. A fenced worker sends nothing.</p></article>
-        <article class="status-card ok"><span class="chip chip-ok">Verified on Linux</span><h3>SSE ledger stream</h3><p>Persisted ledger events stream over Server-Sent Events and resume by sequence number after a reconnect.</p></article>
+        <article class="status-card ok"><span class="chip chip-ok">Verified on Linux</span><h3>Flagship mission</h3><p>Parallel reader and analyzer, digest-bound approval, PDF output re-read and re-hashed by a separate verifier, with browser end-to-end tests.</p></article>
+        <article class="status-card ok"><span class="chip chip-ok">Verified on Linux</span><h3>Private accounts</h3><p>Another user guessing your document, mission, project or sandbox id gets a 404 and no data. Tested against a real server in production mode.</p></article>
+        <article class="status-card ok"><span class="chip chip-ok">Verified on Linux</span><h3>Safe project upload</h3><p>Archives are read in memory and never extracted, with path, size, zip-bomb and symlink guards. Code is parsed, never executed.</p></article>
+        <article class="status-card ok"><span class="chip chip-ok">Verified on Linux</span><h3>Browser fixture missions</h3><p>The original CRM, reports and outbox demo, driven by Playwright (DOM-level, not physical cursor), with effects checked in each app's database.</p></article>
+        <article class="status-card warn"><span class="chip chip-warn">Partly verified</span><h3>Speech recognition</h3><p>Audio capture, consent, validation and error handling are tested. Recognition accuracy with a real speech engine has not been verified yet.</p></article>
         <article class="status-card warn"><span class="chip chip-warn">Not run on build host</span><h3>Native Windows control</h3><p>Cursor movement, clicks and typing into Notepad were not exercised here: <code>WINDOWS_NATIVE_TESTS_NOT_RUN</code> on the build host. To test, run <code>scripts/smoke-windows.ps1</code> in an interactive Windows session.</p></article>
-        <article class="status-card warn"><span class="chip chip-warn">Simulated</span><h3>Message delivery</h3><p>The outbox is a local fixture: <b>SIMULATED DELIVERY</b>. No external email or messages are ever sent.</p></article>
-        <article class="status-card muted"><span class="chip chip-muted">No integration</span><h3>Wispr Flow</h3><p>Wispr Flow was used to dictate development notes. There is no Wispr SDK integration in RESOLVE. Voice input in the app uses the browser's speech recognition where available.</p></article>
+        <article class="status-card warn"><span class="chip chip-warn">Simulated</span><h3>Message delivery &amp; connectors</h3><p>The fixture outbox is <b>SIMULATED DELIVERY</b>; no email or message is ever sent. The connectors use built-in fixture data, with no real OAuth.</p></article>
+        <article class="status-card muted"><span class="chip chip-muted">No integration</span><h3>Wispr Flow</h3><p>Wispr Flow can dictate into any RESOLVE text box like any other app. There is no Wispr SDK integration, and RESOLVE does not claim one.</p></article>
       </div>
     </div>
   </section>
 
   <section class="band cta-band" aria-labelledby="cta-title">
     <div class="wrap cta-inner">
-      <h2 id="cta-title">Run the signature demo yourself</h2>
-      <p>Start a browser mission, pick the right Jordan Lee, approve the exact send, arm the lost-acknowledgement fault, and watch the ledger reconcile it live.</p>
-      <a class="btn btn-primary" href="/app">Open Mission Control <span aria-hidden="true">→</span></a>
+      <h2 id="cta-title">Run the flagship mission yourself</h2>
+      <p>Say what you want, watch two workers run side by side, approve the exact plan, and download a PDF that has been checked independently.</p>
+      <a class="btn btn-primary btn-lg" href="/app">Open Mission Control <span aria-hidden="true">→</span></a>
     </div>
   </section>
 </main>
 
 <footer class="site-footer">
   <div class="wrap footer-row">
-    <div><a class="brand" href="/"><img src="/static/mark.svg" alt="" width="20" height="20"><span>RESOLVE</span></a><p class="muted">Local prototype. Runs offline on 127.0.0.1, no API keys. Webpages and documents are treated as untrusted data.</p></div>
+    <div><a class="brand" href="/"><img src="/static/mark.svg" alt="" width="20" height="20"><span>RESOLVE</span></a><p class="muted" id="foot-mode">Checking server mode…</p><p class="muted">Webpages and documents are treated as untrusted data.</p></div>
     <div class="muted footer-cmds"><p>Server: <code>python src/resolve_app.py</code></p><p>Tests: <code>python -m pytest tests -q</code></p><p>Benchmark: <code>python benchmarks/web_bench.py</code></p></div>
   </div>
 </footer>

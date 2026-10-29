@@ -20,7 +20,7 @@ One instruction — typed, or spoken into the in-page microphone — runs the **
 7. Download (hash shown == hash of the file received, asserted in a real-browser test), browser print dialog (**physical printing is never claimed**), delete.
 
 Reproduce: `pip install -r requirements-dev.txt && python -m pytest tests/test_brief_mission.py tests/test_brief_mission_api.py tests/test_flagship_e2e.py -q`.
-Screenshots from that real-browser run: `harness/evidence/screens/flagship-{plan-desktop,result-desktop,mobile}.png`.
+Screenshots from real-browser runs: `harness/evidence/screens/flagship-{plan-desktop,result-desktop,plan-mobile,mobile}.png`, `landing-{desktop,mobile}.png`, `app-signin-desktop.png`, `privacy-desktop.png`.
 
 ## Why voice matters
 Spec-to-report work is dictation-shaped: long, structured intent. The page has its own push-to-talk (real `getUserMedia` → 16 kHz WAV → server STT)
@@ -40,7 +40,7 @@ Spec-to-report work is dictation-shaped: long, structured intent. The page has i
   an off-server STT provider needs explicit per-recording consent.
 
 ## Tests (see `harness/evidence/FINAL_REGRESSION.md`)
-244 passed, 12 skipped (all native-Windows/Tk, with reasons), 0 failed on Linux. GitHub CI workflow written but not yet run.
+265 passed, 12 skipped (all native-Windows/Tk, with reasons), 0 failed on Linux. GitHub CI workflow written but not yet run.
 
 ## Demo script (≈2 min, no fabricated steps)
 0:00 problem (scattered brief + code + report) · 0:12 *show real Wispr Flow dictating* a prompt (**user records this**) · 0:25 open RESOLVE, sign in with a demo account ·

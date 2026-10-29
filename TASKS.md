@@ -8,6 +8,7 @@
 - [x] In-page microphone capture + consent + audio validation + provider adapter (tested with fake STT only)
 - [x] Cream theme + flagship UI + account gate, real-browser E2E with screenshots
 - [x] Upload-your-own-project analysis (multi-language), editable architecture, live history, mode-driven UI, real contact resolution
+- [x] UI/UX pass: cream landing, account menu + sign-out, real workspace switcher, stepper, responsive mobile, phone PDF fallback, truthful privacy page (`test_ux_e2e`)
 - [ ] Real STT provider verified with live speech
 - [ ] Public deployment reachable by judges
 - [ ] GitHub Actions run green

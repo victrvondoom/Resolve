@@ -255,6 +255,10 @@ class Handler(BaseHTTPRequestHandler):
                 report = ROOT / 'data' / 'benchmarks' / 'aggregate.json'
                 require(report.exists(), 404, 'no benchmark run has been recorded')
                 return self.send_json(200, json.loads(report.read_text(encoding='utf-8')))
+            if path == '/api/workspaces' and parse_qs(parsed.query).get('tenant'):
+                # The signed-in user's own workspaces (the concept catalog below is a different thing).
+                user = self.document_user()
+                return self.send_json(200, {'workspaces': tenant_auth_mgr.list_workspaces(user['user_id']), 'active_workspace_id': user['workspace_id']})
             if path == '/api/workspaces':
                 workspace = parse_qs(parsed.query).get('workspace', [None])[0]
                 if workspace:
@@ -282,7 +286,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == '/api/auth/me':
                 user = self.get_session()
-                return self.send_json(200, user)
+                return self.send_json(200, {k: v for k, v in user.items() if k != 'token'})   # the client already holds its token
             if path == '/api/sandboxes':
                 user = self.get_session()
                 sandboxes = sandbox_mgr.list_sandboxes(user['user_id'])
