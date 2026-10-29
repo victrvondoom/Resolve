@@ -10,8 +10,8 @@ Developers lose time moving between a spec/brief, the code it describes, and the
 One instruction — typed, or spoken into the in-page microphone — runs the **flagship mission**:
 1. Binds the intent to **one document by stable id + SHA-256** (same-name documents are refused until you choose one).
 2. Two real worker threads run **concurrently**: `DOCUMENT_READER` (extracts requirements from your brief PDF) and `REPOSITORY_ANALYZER`
-   (static AST/regex analysis of a bundled sample project; never executed). Their recorded timestamps overlap — asserted by a barrier test.
-3. `ARCHITECTURE_PLANNER` produces issues with file:line + brief-requirement citations, a corrected architecture (Mermaid + diagram), a task graph.
+   (static analysis of **your uploaded project .zip** — Python, JS/TS, Go, Java, Ruby, PHP — or the bundled sample; never executed, never extracted to disk, bound by content hash). Their recorded timestamps overlap — asserted by a barrier test.
+3. `ARCHITECTURE_PLANNER` produces issues with file:line + brief-requirement citations, a corrected architecture (Mermaid + diagram built from the findings of *your* project), a task graph. **You can edit the Mermaid in the page**; the edit changes the plan digest, so only the edited plan can be approved, and the edit appears in the PDF.
    It is **deterministic rule-based analysis, labelled DRAFT — not an LLM.**
 4. You **approve the exact plan digest**. Revising the instruction changes the digest, so earlier approvals become invalid.
 5. `REPORT_COMPOSER` writes a real PDF; `EFFECT_VERIFIER` independently re-reads the stored bytes, re-hashes, parses with pypdf, and checks title,
@@ -31,8 +31,9 @@ Spec-to-report work is dictation-shaped: long, structured intent. The page has i
   No STT model was reachable in the build environment, so no recognition accuracy or live-microphone result is claimed. With no provider configured the mic
   button is disabled and says "NO SPEECH ENGINE" (it never inserts a scripted sentence). Configure `RESOLVE_VOSK_MODEL` (offline) or `RESOLVE_STT_URL`.
 - **No public URL yet.** `docs/DEPLOYMENT.md` + `Dockerfile` are prepared and untested. Production mode exists and is tested locally against a real server.
-- The analyzed project is a **bundled sample**; arbitrary repos are not analyzed. The brief can be any PDF with `R1 …must…` style lines.
+- Analysis is **static pattern/AST checking** (hard-coded secrets, SQL string building, silent exception handling, TODO/FIXME, missing test files, import graph); it is not a security audit or a semantic bug finder. Python uses the AST; other languages use line-level regexes and can miss or over-report. Projects: ≤5 MiB zip, ≤400 source files. The brief can be any PDF with `R1 …must…` style lines.
 - Cloud browser is **disabled in production** unless per-tenant isolation (microVM/gVisor) is declared; a Playwright context is not a VM.
+- With no server STT configured the mic falls back to the **browser's own speech service** (audio goes to the browser vendor; per-use consent; labelled). Not tested with real speech here.
 - Shared-ledger fixture demos (CRM/outbox, A/B/C benchmark) remain **demo-mode only** and are disabled in production. Outbox is SIMULATED DELIVERY.
 - Native Windows input was not run here (`WINDOWS_NATIVE_TESTS_NOT_RUN`). Browser actions are DOM-level, not physical cursor movement.
 - Sample data only for judges; the demo-account flow creates a disposable account (deletable under *Privacy & data*). Audio is processed in memory and not stored;

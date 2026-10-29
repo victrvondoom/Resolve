@@ -31,7 +31,8 @@ from effect_graph import EffectDependencyGraph, NodeType, EdgeType
 from connectors import ConnectorRegistry, ConnectorError
 from privacy_engine import PrivacyEngine
 from document_studio import DocumentStudio, DocumentError
-from brief_mission import BriefMissionStore, MissionError
+from brief_mission import BriefMissionStore, MissionError, BUNDLED_PROJECTS, load_bundled
+from project_store import ProjectStore, ProjectError, fingerprint
 from voice_engine import VoiceEngine, VoiceError
 from server_security import ServerSecurity, RateLimiter, SECURITY_HEADERS, ConfigError, client_ip
 
@@ -52,8 +53,10 @@ connector_registry = ConnectorRegistry()
 privacy_engine = PrivacyEngine(tenant_auth_mgr, sandbox_mgr, connector_registry)
 document_studio = DocumentStudio(Path(os.environ.get('RESOLVE_DOCUMENTS_DIR', ROOT / 'data' / 'documents')))
 default_demo = tenant_auth_mgr.seed_demo_tenant()
-brief_missions = BriefMissionStore(Path(os.environ.get('RESOLVE_MISSIONS_DB', document_studio.base_dir / 'missions.sqlite3')), document_studio)
+project_store = ProjectStore(document_studio.base_dir)
+brief_missions = BriefMissionStore(Path(os.environ.get('RESOLVE_MISSIONS_DB', document_studio.base_dir / 'missions.sqlite3')), document_studio, projects=project_store)
 privacy_engine.mission_store = brief_missions
+privacy_engine.project_store = project_store
 privacy_engine.browser_pool = cloud_browser_pool
 SECURITY = ServerSecurity.from_env()
 rate_limiter = RateLimiter()
@@ -140,7 +143,8 @@ class Handler(BaseHTTPRequestHandler):
         if origin:
             host = self.headers.get('Host')
             require(origin in {f'http://{host}', f'https://{host}'}, 403, 'cross-origin request refused')
-        if self.path.split('?')[0].startswith(LEGACY_GLOBAL_PREFIXES) and SECURITY.production:
+        path_only = self.path.split('?')[0]
+        if SECURITY.production and (path_only.startswith(LEGACY_GLOBAL_PREFIXES) or path_only == '/api/voice/transcribe'):
             raise ApiError(404, 'route disabled in production: backed by the shared demo ledger, not tenant-scoped')
         if mutation:
             require(self.headers.get('Content-Type', '').split(';')[0].strip().lower() == 'application/json', 415, 'JSON content type required')
@@ -179,7 +183,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             if urlparse(self.path).path in {'/api/health', '/api/system/health'}:  # platform probes use arbitrary Host headers; nothing sensitive
-                return self.send_json(200, {'status': 'ok', 'name': 'RESOLVE', 'version': '0.2', 'database': 'sqlite-wal', 'mode': SECURITY.mode})
+                return self.send_json(200, {'status': 'ok', 'name': 'RESOLVE', 'version': '0.2', 'database': 'sqlite-wal', 'mode': SECURITY.mode,
+                                            'features': {'speech_server': voice_engine.health()['available'], 'cloud_browser': SECURITY.cloud_browser_enabled}})
             self.check_origin()
             parsed = urlparse(self.path)
             path = parsed.path
@@ -313,6 +318,11 @@ class Handler(BaseHTTPRequestHandler):
             if m_bm:
                 user = self.document_user()
                 return self.send_json(200, brief_missions.get(m_bm.group(1), user['user_id'], user['workspace_id']))
+            if path == '/api/projects':
+                user = self.document_user()
+                bundled = [{'id': n, 'name': n + ' (bundled sample)', 'files_count': len(f), 'sha256': fingerprint(f), 'bundled': True}
+                           for n in sorted(BUNDLED_PROJECTS) for f in [load_bundled(n)]]
+                return self.send_json(200, {'bundled': bundled, 'uploaded': project_store.list(user['user_id'], user['workspace_id'])})
             if path == '/api/voice/health':
                 self.get_session()
                 return self.send_json(200, voice_engine.health())
@@ -375,7 +385,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(exc.status_code, {'error': exc.message, **({'candidates': exc.candidates} if exc.candidates else {})})
         except VoiceError as exc:
             self.send_json(exc.status_code, {'error': exc.message, 'code': exc.code})
-        except (TenantError, SandboxError, CloudBrowserError, ConnectorError, DocumentError) as exc:
+        except (TenantError, SandboxError, CloudBrowserError, ConnectorError, DocumentError, ProjectError) as exc:
             self.send_json(getattr(exc, 'status_code', 400), {'error': exc.message if hasattr(exc, 'message') else str(exc)})
         except Exception as exc:
             self.send_json(503, {'error': str(exc)})
@@ -395,7 +405,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(200, session)
 
             self.check_origin(mutation=True)
-            data = self.body(max_size=7 * 1024 * 1024 if path == '/api/documents/upload' else 3 * 1024 * 1024 if path == '/api/voice/transcribe-audio' else 32768)
+            data = self.body(max_size=7 * 1024 * 1024 if path in ('/api/documents/upload', '/api/projects/upload') else 3 * 1024 * 1024 if path == '/api/voice/transcribe-audio' else 32768)
             user = self.get_session()
 
             if path == '/api/documents/upload':
@@ -411,6 +421,17 @@ class Handler(BaseHTTPRequestHandler):
                     str(data.get('operation', '')), data.get('document_ids', []),
                     data.get('expected_sha256', {}), degrees=data.get('degrees'), pages=data.get('pages'))
                 return self.send_json(201, {'document': doc})
+            if path == '/api/projects/upload':
+                try:
+                    raw = base64.b64decode(data.get('content_base64', ''), validate=True)
+                except (ValueError, binascii.Error):
+                    raise ApiError(400, 'invalid base64 archive')
+                require(rate_limiter.allow('project', user['user_id'], 10), 429, 'too many project uploads; retry shortly')
+                return self.send_json(201, {'project': project_store.add(user['user_id'], user['workspace_id'], str(data.get('name', 'project.zip')), raw)})
+            m_pd = re.fullmatch(r'/api/projects/([A-Za-z0-9_-]+)/delete', path)
+            if m_pd:
+                project_store.delete(user['user_id'], user['workspace_id'], m_pd.group(1))
+                return self.send_json(200, {'deleted': m_pd.group(1)})
             if path == '/api/documents/sample-brief':
                 return self.send_json(201, {'document': brief_missions.seed_sample_brief(user['user_id'], user['workspace_id'])})
             m_dd = re.fullmatch(r'/api/documents/([A-Za-z0-9_-]+)/delete', path)
@@ -423,7 +444,7 @@ class Handler(BaseHTTPRequestHandler):
                     document_id=data.get('document_id'), document_name=data.get('document_name'),
                     expected_sha256=data.get('expected_sha256'), project=str(data.get('project', 'sample_project')))
                 return self.send_json(202, mission)
-            m_bma = re.fullmatch(r'/api/brief-missions/([A-Za-z0-9_-]+)/(approve|cancel|revise|print-event|delete)', path)
+            m_bma = re.fullmatch(r'/api/brief-missions/([A-Za-z0-9_-]+)/(approve|cancel|revise|print-event|delete|edit-architecture)', path)
             if m_bma:
                 mid, action = m_bma.groups()
                 uid, wid = user['user_id'], user['workspace_id']
@@ -433,6 +454,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(200, brief_missions.cancel(mid, uid, wid))
                 if action == 'revise':
                     return self.send_json(200, brief_missions.revise(mid, uid, wid, str(data.get('intent_text', ''))))
+                if action == 'edit-architecture':
+                    return self.send_json(200, brief_missions.edit_architecture(mid, uid, wid, data.get('mermaid')))
                 if action == 'print-event':
                     return self.send_json(200, brief_missions.record_print_dialog(mid, uid, wid))
                 return self.send_json(200, brief_missions.delete(mid, uid, wid, delete_output=data.get('delete_output', True) is not False))
@@ -532,13 +555,23 @@ class Handler(BaseHTTPRequestHandler):
                 text = str(data.get('text', '')).strip()
                 require(bool(text), 400, 'text is required; audio transcription is not configured')
                 is_correction = bool(re.search(r'\b(no|not|wait|correction|instead)\b', text, re.IGNORECASE))
+                # Real resolution against ledger entities (stable ids), not keyword -> canned contact.
+                pool = resolve_candidates(ledger, 'contact')
+                low = text.casefold()
+                named = [c for c in pool if c['display_name'].casefold() in low or c['display_name'].casefold().split()[0] in low]
+                by_context = [c for c in named if any(tok in low for tok in re.findall(r'[a-z0-9]+', (c.get('context') or '').casefold()) if tok not in {'account', 'the', 'team'})]
+                candidates = by_context if by_context else named
                 resolved_contact = None
-                if "finance" in text.lower():
-                    resolved_contact = {"id": "alex-fin-02", "name": "Alex Morgan", "department": "Finance"}
-                elif "sales" in text.lower():
-                    resolved_contact = {"id": "alex-sales-01", "name": "Alex Morgan", "department": "Sales"}
+                if len(candidates) == 1:
+                    c = candidates[0]
+                    resolved_contact = {'id': c['entity_id'], 'name': c['display_name'], 'context': c.get('context'), 'stable_id': c.get('stable_id')}
+                options = [{'id': c['entity_id'], 'name': c['display_name'], 'context': c.get('context')} for c in candidates]
+                if resolved_contact:
+                    feedback = f"Understood. Targeting {resolved_contact['name']} ({resolved_contact['context']}) with the latest report."
+                elif options:
+                    feedback = f"{len(options)} contacts match. Which one: " + '; '.join(f"{o['name']} ({o['context']})" for o in options) + '?'
                 else:
-                    resolved_contact = None
+                    feedback = 'I could not match a contact. Please name the contact and their account.'
                 response = {
                     "transcription": text,
                     "source": "submitted_text",
@@ -547,10 +580,10 @@ class Handler(BaseHTTPRequestHandler):
                     "is_correction": is_correction,
                     "intent": "UPDATE_AND_FOLLOWUP",
                     "resolved_entity": resolved_contact,
+                    "candidates": options,
                     "confidence": None,
                     "recommended_action": "simulated_send_and_update_followup" if resolved_contact else "needs_clarification",
-                    "spoken_feedback": (f"Understood. Targeting {resolved_contact['name']} in {resolved_contact['department']} with the latest report."
-                                        if resolved_contact else "Please specify the contact and department before any action.")
+                    "spoken_feedback": feedback,
                 }
                 return self.send_json(200, response)
             path = urlparse(self.path).path
@@ -636,7 +669,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(exc.status_code, {'error': exc.message, **({'candidates': exc.candidates} if exc.candidates else {})})
         except ApiError as exc:
             self.send_json(exc.status, {'error': exc.message})
-        except (TenantError, SandboxError, CloudBrowserError, ConnectorError, DocumentError) as exc:
+        except (TenantError, SandboxError, CloudBrowserError, ConnectorError, DocumentError, ProjectError) as exc:
             self.send_json(getattr(exc, 'status_code', 400), {'error': exc.message if hasattr(exc, 'message') else str(exc)})
         except AmbiguousEntity as exc:
             self.send_json(409, {'error': str(exc), 'candidates': exc.candidates})

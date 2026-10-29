@@ -6,7 +6,7 @@ pre-installed Chromium under `/opt/pw-browsers`. Native Windows input was **not*
 ## Command and result
 ```
 python -m pytest tests -q --no-header -p no:cacheprovider -rs
-244 passed, 12 skipped, 27 subtests passed in 362.38s        (0 failed, 0 errors)
+258 passed, 12 skipped, 35 subtests passed in 405.28s        (0 failed, 0 errors)
 ```
 Reported handoff baseline: 47 failed, 133 passed, 10 skipped, 11 errors. Same repo, same suite; no test deleted, skipped to hide a
 failure, or weakened.
@@ -28,7 +28,7 @@ independent jobs (`.github/workflows/ci.yml`); **that workflow has not been exec
 
 ## New tests this sprint (all passing)
 `test_production_security` (10), `test_voice_engine` (9), `test_brief_mission` (20), `test_brief_mission_api` (3),
-`test_flagship_e2e` (1, real Chromium, CSP enforced), `test_hidden_failures` (13, see docs/HIDDEN_PROBLEMS.md), plus 5 new `test_cloud_browser` SSRF/scheme tests.
+`test_flagship_e2e` (1, real Chromium, CSP enforced), `test_hidden_failures` (13, see docs/HIDDEN_PROBLEMS.md), `test_dynamic_inputs` (13), second browser E2E (upload→edit→history), plus 5 new `test_cloud_browser` SSRF/scheme tests.
 A later audit pass found and fixed 11 hidden failures (known demo password, startup crash without Playwright, verifier false-confidence, races, hung workers…).
 
 ## NOT verified (stays open)

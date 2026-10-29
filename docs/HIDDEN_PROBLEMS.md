@@ -27,3 +27,13 @@ Also fixed: CI `portable` job ran browser tests without the runner-compatible sa
 - Abandoned (timed-out) worker threads cannot be killed in-process; they finish in the background. Real isolation needs subprocess/VM workers.
 - Rate limiting is per-instance memory. DNS-rebinding TOCTOU in the browser SSRF guard (see SECURITY.md). Upload/parse limits are size-based only.
 - Real speech recognition, live deployment and GitHub CI execution remain unverified (see FINAL_REGRESSION.md).
+
+## Round 2: "static where it should be dynamic" (fixed)
+| Static / fake behaviour | Replacement | Test |
+|---|---|---|
+| Only a bundled sample project could be analyzed; analyzer was Python-only with fixed module names | Tenant-private project upload (zip read in memory, never extracted; zip-slip/bomb/symlink/quota guards), multi-language analyzer, proposed components attach to modules whose findings motivate them, mission bound to project SHA-256 and re-verified | `test_dynamic_inputs` (13), E2E |
+| Architecture was read-only | Edit Mermaid in the page → parsed back to a graph → new digest, old approval dead, edit shown in PDF | `test_dynamic_inputs`, E2E |
+| `/api/voice/transcribe` returned canned contacts (`alex-fin-02`) for the words "finance"/"sales" — ids that exist nowhere | Real resolution against ledger entities by stable id; ambiguity → candidates + clarification; route disabled in production (shared ledger) | `test_cloud_api` |
+| Dead mic when no server STT | Browser speech fallback, labelled, per-use consent | E2E (badge) |
+| Only the latest mission visible; static sidebar text; dead demo screens/buttons offered in production | Live mission history; sidebar note, nav and controls driven by `/api/health` mode + features | E2E |
+| `hidden` attribute overridden by `.btn` CSS (buttons meant to be hidden stayed visible) | global `[hidden]{display:none!important}` | E2E |

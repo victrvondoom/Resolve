@@ -143,5 +143,77 @@ class FlagshipE2E(unittest.TestCase):
                 srv.stop(); stt.shutdown()
 
 
+@unittest.skipUnless(HAVE_PW, 'browser-e2e: playwright not installed')
+class DynamicFlowE2E(unittest.TestCase):
+    def test_upload_project_edit_architecture_history_and_mode_driven_ui(self):
+        import io, zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            zpath = Path(tmp) / 'shop.zip'
+            with zipfile.ZipFile(zpath, 'w') as z:
+                z.writestr('api/handler.js', 'const db = require("./db");\nconst API_TOKEN = "live-token-abcdef123456";\nmodule.exports = (r) => { try { return db.find(r) } catch (e) {} };\n')
+                z.writestr('api/db.js', 'exports.find = (s) => conn.query(`SELECT * FROM t WHERE s = \'${s}\'`);\n')
+            srv = ProdServer(tmp, free_port()).start()   # no STT configured on purpose
+            errors = []
+            try:
+                with sync_playwright() as p:
+                    b = p.chromium.launch(executable_path=_chromium_executable())
+                    page = b.new_context(viewport={'width': 1360, 'height': 900}, accept_downloads=True).new_page()
+                    page.on('pageerror', lambda e: errors.append(f'pageerror: {e}'))
+                    page.on('dialog', lambda d: d.accept())
+                    page.goto(f'http://127.0.0.1:{srv.port}/app')
+                    page.wait_for_selector('#authDialog[open]'); page.click('#authDemo'); page.wait_for_selector('#authDialog', state='hidden')
+                    # UI reflects the real server mode: production note, shared-ledger screens absent, dead screens not offered
+                    expect(page.locator('#sidebarNote')).to_contain_text('Production mode')
+                    expect(page.locator('#sidebarNote')).to_contain_text('Cloud browser: disabled')
+                    for dead in ('mission', 'ledger', 'bench', 'windows', 'cloud'):
+                        self.assertEqual(page.locator(f'.sidebar a[data-view="{dead}"]').count(), 0, dead)
+                    self.assertEqual(page.locator('.sidebar a[data-view="flagship"]').count(), 1)
+                    for dead_ctl in ('#estop', '#resume', '#statusStrip'):   # controls for the disabled demo ledger are not offered
+                        self.assertFalse(page.is_visible(dead_ctl), dead_ctl)
+                    # no server STT -> the mic offers the browser recognizer (labelled) or says why it cannot; never a fake "ready"
+                    badge = page.inner_text('#fmMicBadge')
+                    self.assertTrue(badge.startswith('MIC READY · BROWSER SPEECH') or badge.startswith('NO SPEECH ENGINE') or badge.startswith('MIC UNSUPPORTED'), badge)
+                    # upload a real project through the file input
+                    page.set_input_files('#fmProjectFile', str(zpath))
+                    expect(page.locator('#fmProject')).to_contain_text('shop.zip', timeout=10000)
+                    expect(page.locator('#fmProjectInfo')).to_contain_text('Your upload')
+                    self.assertFalse(page.is_disabled('#fmProjectDelete'))
+                    page.click('#fmSample'); expect(page.locator('#fmDoc')).not_to_have_value('')
+                    page.click('#fmStart')
+                    page.wait_for_selector('#fmPlanCard:not([hidden])', timeout=30000)
+                    issues = page.locator('#fmIssues').inner_text()
+                    self.assertIn('api/handler.js:2', issues); self.assertIn('HARDCODED_SECRET', issues); self.assertIn('SQL_STRING_BUILDING', issues)
+                    self.assertNotIn('live-token-abcdef123456', page.content())
+                    self.assertIn('shop.zip', page.inner_text('#fmPlanMeta'))
+                    old_digest = page.inner_text('#fmPlanMeta')
+                    # edit the architecture in the page; the digest must change and the edit must reach the PDF
+                    src = page.input_value('#fmMermaid') + '\n    new_cache["Response cache"]:::proposed'
+                    page.fill('#fmMermaid', src); page.click('#fmApplyEdit')
+                    expect(page.locator('#fmEditMsg')).to_contain_text('Applied')
+                    self.assertNotEqual(old_digest, page.inner_text('#fmPlanMeta'))
+                    self.assertIn('edited by you', page.inner_text('#fmPlanMeta'))
+                    page.fill('#fmMermaid', 'this is not mermaid'); page.click('#fmApplyEdit')
+                    expect(page.locator('#fmEditMsg')).to_contain_text('Mermaid')   # actionable validation error shown
+                    page.click('#fmApprove')
+                    expect(page.locator('#fmHash')).to_have_text(re.compile('^[0-9a-f]{64}$'), timeout=30000)
+                    self.assertIn('CONFIRMED', page.inner_text('#fmResultChip'))
+                    with page.expect_download() as dl:
+                        page.click('#fmDownload')
+                    data = Path(dl.value.path()).read_bytes()
+                    self.assertEqual(hashlib.sha256(data).hexdigest(), page.inner_text('#fmHash'))
+                    from pypdf import PdfReader
+                    text = ''.join(pg.extract_text() for pg in PdfReader(io.BytesIO(data)).pages).replace('\n', '')
+                    self.assertIn('Response cache', text); self.assertIn('PROJECT-SHA256', text); self.assertIn('api/handler.js', text)
+                    # history is live data
+                    expect(page.locator('#fmHistory button')).to_have_count(1)
+                    expect(page.locator('#fmHistory button')).to_contain_text('CONFIRMED')
+                    page.click('#fmDelete'); expect(page.locator('#fmHistory')).to_contain_text('No missions yet')
+                    page.click('#fmProjectDelete'); expect(page.locator('#fmProject')).not_to_contain_text('shop.zip')
+                    b.close()
+                self.assertEqual([e for e in errors if 'Failed to load resource' not in e], [], errors)
+            finally:
+                srv.stop()
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -7,6 +7,7 @@
 - [x] Brief→analysis→architecture→verified PDF mission: concurrent workers, approval digest, independent read-back, chain invariant, cancel/late-result/delete races
 - [x] In-page microphone capture + consent + audio validation + provider adapter (tested with fake STT only)
 - [x] Cream theme + flagship UI + account gate, real-browser E2E with screenshots
+- [x] Upload-your-own-project analysis (multi-language), editable architecture, live history, mode-driven UI, real contact resolution
 - [ ] Real STT provider verified with live speech
 - [ ] Public deployment reachable by judges
 - [ ] GitHub Actions run green

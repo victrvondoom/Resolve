@@ -42,14 +42,14 @@
       <li><a href="#view-privacy" data-view="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Privacy &amp; data</a></li>
       <li><a href="#view-ledger" data-view="ledger"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg>Ledger &amp; registry</a></li>
     </ul>
-    <p class="sidebar-note">Local prototype on 127.0.0.1. Outbox is <b>SIMULATED DELIVERY</b>. Browser actions are DOM-level (Playwright), not physical cursor movement.</p>
+    <p class="sidebar-note" id="sidebarNote">Checking server mode…</p>
   </nav>
 
   <main id="main" tabindex="-1">
     <!-- ============ FLAGSHIP: BRIEF -> VERIFIED PDF ============ -->
     <section class="view" id="view-flagship" data-view="flagship" aria-labelledby="h-flagship" hidden>
       <div class="view-head"><div><h1 id="h-flagship">Flagship mission</h1>
-        <p class="muted">Speak or type one goal. Two workers read your brief and analyze a bundled sample project at the same time, a planner proposes a corrected architecture, you approve the exact plan, and a verifier re-reads the generated PDF before anything is marked confirmed.</p></div></div>
+        <p class="muted">Speak or type one goal. Two workers read your brief and analyze a project (the bundled sample or your own upload) at the same time, a planner proposes a corrected architecture, you approve the exact plan, and a verifier re-reads the generated PDF before anything is marked confirmed.</p></div></div>
       <div class="grid">
         <section class="card span6 hero-card" aria-labelledby="h-fm-1">
           <div class="card-head"><h2 id="h-fm-1">1. Your instruction</h2><span id="fmMicBadge" class="chip chip-muted small" role="status">CHECKING MIC…</span></div>
@@ -62,7 +62,10 @@
           <p id="fmMicNote" class="msg" style="display:none" aria-live="polite"></p>
           <label class="label" for="fmDoc">Source brief (bound by document id + SHA-256, never by name)</label>
           <select id="fmDoc"><option value="">No PDFs yet — load the sample brief or upload one in Documents</option></select>
-          <p class="muted small">Project under analysis: <code>sample_project</code> (bundled, parsed statically, never executed).</p>
+          <label class="label" for="fmProject">Project to analyze (parsed statically, never executed)</label>
+          <select id="fmProject" aria-describedby="fmProjectInfo"></select>
+          <div class="row" style="gap:8px;margin:6px 0"><label class="btn" for="fmProjectFile" id="fmProjectUploadLabel">Upload project .zip</label><input type="file" id="fmProjectFile" accept=".zip,application/zip" class="sr-only"><button class="btn btn-danger" id="fmProjectDelete" disabled title="Select one of your uploaded projects to delete it">Delete project</button></div>
+          <p class="muted small" id="fmProjectInfo">Loading projects…</p>
           <div class="row" style="gap:8px"><button class="btn btn-primary" id="fmStart">Start mission</button><button class="btn" id="fmCancel" disabled title="No running mission">Cancel</button></div>
           <p id="fmStatus" class="msg" role="status" aria-live="polite"></p>
         </section>
@@ -71,12 +74,18 @@
           <ol id="fmNodes" class="fm-nodes" aria-label="Worker tasks"><li class="muted">Start a mission to see real worker execution.</li></ol>
           <details><summary class="small muted">Event log</summary><pre id="fmEvents" class="fm-log" tabindex="0">—</pre></details>
         </section>
+        <section class="card span12" aria-labelledby="h-fm-hist">
+          <div class="card-head"><h2 id="h-fm-hist">Your missions</h2><button class="btn" id="fmHistRefresh">Refresh</button></div>
+          <ul id="fmHistory" class="fm-hist" aria-label="Mission history"><li class="muted">No missions yet.</li></ul>
+        </section>
         <section class="card span12" id="fmPlanCard" aria-labelledby="h-fm-3" hidden>
           <div class="card-head"><h2 id="h-fm-3">3. Plan awaiting your approval</h2><span class="chip chip-warn">DRAFT · rule-based, not an LLM</span></div>
           <p class="muted small" id="fmPlanMeta"></p>
           <div class="fm-split">
             <div><h3 class="fm-h">Issues with evidence</h3><div class="tablewrap"><table class="fm-table"><thead><tr><th>ID</th><th>Severity</th><th>Where</th><th>Violates</th></tr></thead><tbody id="fmIssues"></tbody></table></div></div>
-            <div><h3 class="fm-h">Corrected architecture</h3><div id="fmDiagram" class="fm-diagram" role="img" aria-label="Architecture diagram"></div><details><summary class="small muted">Mermaid source</summary><pre id="fmMermaid" class="fm-log" tabindex="0"></pre></details></div>
+            <div><h3 class="fm-h">Corrected architecture</h3><div id="fmDiagram" class="fm-diagram" role="img" aria-label="Architecture diagram"></div><details open><summary class="small muted">Edit the architecture (Mermaid flowchart) — changing it creates a new plan digest you must approve</summary>
+              <label class="sr-only" for="fmMermaid">Mermaid source</label><textarea id="fmMermaid" class="fm-log" rows="10" spellcheck="false"></textarea>
+              <div class="row" style="gap:8px;margin-top:6px"><button class="btn" id="fmApplyEdit">Apply edit</button><span id="fmEditMsg" class="msg" role="status" aria-live="polite"></span></div></details></div>
           </div>
           <div class="row" style="gap:8px;margin-top:10px"><button class="btn btn-primary" id="fmApprove">Approve this exact plan</button><button class="btn" id="fmRevise" title="Re-runs analysis with your edited instruction; any earlier approval becomes invalid">Revise instruction &amp; re-plan</button></div>
         </section>

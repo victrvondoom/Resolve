@@ -126,7 +126,7 @@ $('#approve').onclick = async () => { if (!pending) return; $('#approve').disabl
 $('#windows').onclick = async () => { try { const r = await api('/api/windows'); windowSnapshot = r.windows.find(w => w.foreground)?.snapshot_id || null; $('#hwnd').innerHTML = '<option value="">Choose a visible window…</option>' + r.windows.map(w => `<option value="${w.hwnd}" ${w.foreground ? 'selected' : ''}>${esc(w.title)} · PID ${w.pid}${w.foreground ? ' · foreground' : ''}</option>`).join(''); $('#winlog').textContent = JSON.stringify(r, null, 2); } catch (e) { $('#winlog').textContent = 'Observation unavailable: ' + e.message; } };
 async function winAction(kind) { try { const hwnd = $('#hwnd').value; if (!hwnd) throw Error('Inspect and select a window first.'); if (!windowSnapshot) throw Error('Inspect windows to obtain a fresh snapshot.'); const mission = state.missions.find(x => x.mission_id === 'mission_demo'); const payload = { hwnd: Number(hwnd), snapshot_id: windowSnapshot, mission_id: mission.mission_id, intent_revision: mission.intent_revision }; if (kind === 'move' || kind === 'click') { if (!$('#px').value || !$('#py').value) throw Error('Enter screen coordinates within the selected window.'); payload.x = Number($('#px').value); payload.y = Number($('#py').value); } if (kind === 'type') { payload.text = $('#typevalue').value; if (!payload.text) throw Error('Enter text to type.'); } const r = await api('/api/windows/' + kind, payload); windowSnapshot = null; $('#winlog').textContent = JSON.stringify(r, null, 2) + '\nRefresh window observation before the next input.'; await refresh(); } catch (e) { windowSnapshot = null; $('#winlog').textContent = 'Action refused: ' + e.message + ' Refresh window observation before retrying.'; } }
 $('#move').onclick = () => winAction('move'); $('#click').onclick = () => winAction('click'); $('#type').onclick = () => winAction('type');
-api('/api/health').then(() => refresh()).catch(e => isProdDisabled(e) ? setHealth('server healthy · shared-ledger demo panels disabled in production', true) : setHealth('offline: ' + e.message, false));
+api('/api/health').then(() => refresh()).catch(e => isProdDisabled(e) ? setHealth('server healthy · production mode', true) : setHealth('offline: ' + e.message, false));
 
 $('#discover').onclick = async () => { try { $('#agentlog').textContent = 'Running contact and report specialists…'; const r = await api('/api/agents/discover', { mission_id: 'mission_demo' }); $('#agentlog').textContent = JSON.stringify(r, null, 2); await refresh(); } catch (e) { $('#agentlog').textContent = 'Agent run failed: ' + e.message; } };
 $('#estop').onclick = async () => { window.speechSynthesis?.cancel(); try { const r = await api('/api/emergency-stop', {}); windowSnapshot = null; $('#agentlog').textContent = JSON.stringify(r, null, 2); setHealth('STOPPED · cursor lease revoked', false); } catch (e) { $('#agentlog').textContent = e.message; } };
@@ -922,8 +922,13 @@ api('/api/web/benchmark').then(b => {
       let perm = 'prompt';
       try { perm = (await navigator.permissions.query({ name: 'microphone' })).state; } catch (_) { /* Permissions API optional */ }
       if (perm === 'denied') { btn.disabled = true; setMic('chip-warn', 'MIC BLOCKED', 'Microphone permission is denied in browser settings'); return; }
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!voice.health.available && SR) {   // no server engine: offer the browser's own recognizer, clearly labelled
+        voice.mode = 'browser'; btn.disabled = false;
+        setMic('chip-warn', 'MIC READY · BROWSER SPEECH', 'Uses your browser vendor\'s speech service; audio leaves this app. Asks for consent each time.'); return;
+      }
       if (!voice.health.available) { btn.disabled = true; setMic('chip-warn', 'NO SPEECH ENGINE', voice.health.detail + '. Type the command, or dictate into the box with Wispr Flow.'); return; }
-      btn.disabled = false;
+      voice.mode = 'server'; btn.disabled = false;
       setMic('chip-ok', voice.health.offline ? 'MIC READY · OFFLINE STT' : 'MIC READY · CLOUD STT', voice.health.provider + ' — ' + voice.health.detail);
     } catch (e) { btn.disabled = true; setMic('chip-warn', 'VOICE OFFLINE', String(e.message || e)); }
   }
@@ -931,6 +936,19 @@ api('/api/web/benchmark').then(b => {
     refreshVoiceHealth();
     btn.onclick = async () => {
       if (voice.rec) { voice.rec.stop(); return; }
+      if (voice.mode === 'browser') {
+        if (!confirm('Your browser will send this recording to its speech vendor (e.g. Google) to transcribe it. RESOLVE does not receive or store audio. Continue?')) return;
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition, rec = new SR();
+        rec.lang = navigator.language || 'en-US'; rec.interimResults = true; rec.continuous = false;
+        let finalText = '';
+        rec.onresult = (ev) => { let interim = ''; for (let i = ev.resultIndex; i < ev.results.length; i++) { if (ev.results[i].isFinal) finalText += ev.results[i][0].transcript; else interim += ev.results[i][0].transcript; } if (target) { target.value = (finalText + interim).trim(); target.dispatchEvent(new Event('input', { bubbles: true })); } };
+        rec.onerror = (ev) => { setMic('chip-warn', ev.error === 'not-allowed' ? 'MIC BLOCKED' : 'SPEECH ERROR', ev.error); micMsg(ev.error === 'not-allowed' ? 'Microphone permission was refused. Allow it in the address bar, or type the command.' : 'Speech recognition failed (' + ev.error + '). You can type the command instead.'); };
+        rec.onend = () => { voice.rec = null; btn.textContent = 'Push to talk'; if (finalText) micMsg('Transcript ready — review and edit it, then run the mission. (browser speech service)'); refreshVoiceHealth(); };
+        voice.rec = { stop: () => rec.stop(), cancel: () => { finalText = ''; rec.abort(); } };
+        btn.textContent = 'Stop'; setMic('chip-warn', 'LISTENING…'); micMsg('Listening via your browser\'s speech service. Press again to stop; Esc cancels.');
+        try { rec.start(); } catch (e) { voice.rec = null; micMsg(String(e.message || e)); }
+        return;
+      }
       if (voice.health && voice.health.audio_leaves_server && !confirm('Your recording will be sent to the configured speech service to be transcribed, then discarded. Continue?')) return;
       let stream;
       try { stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true } }); }

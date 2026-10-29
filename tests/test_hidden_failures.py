@@ -45,13 +45,14 @@ class VerifierFalseConfidence(unittest.TestCase):
                        'file': 'auth.py', 'line': n, 'citation': f'auth.py:{n}'} for n in range(1, 13)]
             src_sha = 'a' * 64
             plan = {'title': 'T', 'status': 'DRAFT', 'method': 'm', 'intent': {'revision': 1, 'text': ''}, 'source': {'document_id': 'd', 'name': 'n', 'sha256': src_sha},
+                    'project': {'name': 'p', 'id': None, 'sha256': 'b' * 64, 'files_scanned': 1, 'languages': {}, 'findings_total': 12, 'findings_omitted': 0},
                     'requirements': [], 'issues': issues, 'architecture': {'nodes': [{'id': 'a', 'label': 'a', 'kind': 'current'}], 'edges': []},
                     'mermaid': 'flowchart TD\n    a["a"]', 'tasks': [], 'test_strategy': []}
             plan['digest'] = bm.plan_digest(plan)
             missing_first = {**plan, 'issues': issues[1:]}          # PDF that silently omits ISS-1
             pdf = bm.compose_pdf(missing_first, {'id': 'bm_x', 'intent_revision': 1, 'intent_text': 'x'})
             doc = studio.save_generated('u', 'w', pdf, 'x.pdf')
-            res = bm.verify_output(studio, 'u', 'w', doc['id'], plan, src_sha)
+            res = bm.verify_output(studio, 'u', 'w', doc['id'], plan, src_sha, 'b' * 64)
             self.assertFalse(res['checks']['contains_every_issue'])
             self.assertFalse(res['passed'])
 
@@ -169,7 +170,7 @@ class ArchitectureIdentifiers(unittest.TestCase):
     def test_module_names_cannot_collide_with_proposed_nodes_or_break_mermaid(self):
         """Assumption: module file names are valid, unique Mermaid ids. 'config'/'tests' collided with proposed nodes; 'my-mod' broke syntax."""
         analysis = {'modules': ['config', 'tests', 'my-mod', 'app'], 'imports': {'app': ['config', 'my-mod']}, 'findings': [], 'files_scanned': 4}
-        issues = [{'category': c} for c in ('secrets', 'validation', 'error-handling', 'testing')]
+        issues = [{'category': c, 'file': f} for c, f in (('secrets', 'config.py'), ('validation', 'my-mod.py'), ('error-handling', 'app.py'), ('testing', 'tests.py'))]
         g = bm.build_architecture({**analysis}, issues)
         ids = [n['id'] for n in g['nodes']]
         self.assertEqual(len(ids), len(set(ids)), ids)

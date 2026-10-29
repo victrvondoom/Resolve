@@ -26,9 +26,10 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from document_studio import DocumentError, DocumentStudio
+from project_store import ProjectError, ProjectStore, SOURCE_EXTENSIONS, fingerprint
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECTS_DIR = ROOT / "demo_data"
@@ -81,49 +82,113 @@ def extract_requirements(brief_text: str) -> list[dict]:
     return reqs
 
 
-def analyze_project(project_dir: Path) -> dict:
-    """Static analysis only; the project is parsed, never executed."""
-    findings, modules, imports = [], [], {}
-    py_files = sorted(p for p in project_dir.rglob("*.py") if "__pycache__" not in p.parts)
-    names = {p.stem for p in py_files}
-    test_names = {p.stem for p in py_files if p.stem.startswith("test_")}
-    for path in py_files:
-        rel = path.relative_to(project_dir).as_posix()
-        src = path.read_text(encoding="utf-8", errors="replace")
+MAX_ISSUES = 60
+MAX_DIAGRAM_MODULES = 16
+_JS_LIKE = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}
+_SECRET_RE = re.compile(r"""\b\w*(secret|password|passwd|api_?key|token)\w*\s*[:=]\s*(["'`])([^"'`\n]{8,})\2""", re.I)
+_ENV_RE = re.compile(r"process\.env|os\.getenv|os\.environ|getenv\(|ENV\[|System\.getenv|\$\{")
+_SQL_CALL_RE = re.compile(r"\b(query|execute|exec|raw|prepare|run|all)\s*\(")
+_SQL_WORD_RE = re.compile(r"\b(select|insert|update|delete)\b", re.I)
+_EMPTY_CATCH_RE = re.compile(r"catch\s*(\([^)]*\))?\s*\{\s*(//[^\n]*)?\s*\}")
+_TODO_RE = re.compile(r"(#|//|/\*)\s*(TODO|FIXME)\b")
+_IMPORT_RE = re.compile(r"""(?:from\s+|require\(\s*|import\s+)["'](\.{1,2}/[^"']+)["']""")
+
+
+def _module_name(path: str) -> str:
+    return str(PurePosixPath(path).with_suffix(""))
+
+
+def _is_test_file(path: str) -> bool:
+    p = PurePosixPath(path)
+    name = p.name.lower()
+    return (name.startswith("test_") or ".test." in name or ".spec." in name or name.endswith(("_test.go", "test.java", "_spec.rb", "test.php"))
+            or any(part in ("tests", "test", "__tests__", "spec") for part in p.parts[:-1]))
+
+
+def _test_target(path: str) -> str:
+    stem = PurePosixPath(path).stem.lower()
+    for marker in ("test_", ".test", ".spec", "_test", "_spec"):
+        stem = stem.replace(marker, "")
+    return re.sub(r"test$", "", stem)
+
+
+def analyze_sources(files: dict[str, str]) -> dict:
+    """Static analysis of a {path: text} map. Nothing is executed or imported."""
+    findings, imports, modules = [], {}, []
+    stems: dict[str, list[str]] = {}
+    test_targets = {_test_target(p) for p in files if _is_test_file(p)}
+    for path in sorted(files):
+        if not _is_test_file(path):
+            modules.append(_module_name(path))
+            stems.setdefault(PurePosixPath(path).stem.lower(), []).append(_module_name(path))
+    langs: dict[str, int] = {}
+    for path in sorted(files):
+        src, ext = files[path], PurePosixPath(path).suffix.lower()
+        langs[ext] = langs.get(ext, 0) + 1
         lines = src.splitlines()
-        try:
-            tree = ast.parse(src)
-        except SyntaxError as exc:
-            findings.append({"category": "error-handling", "file": rel, "line": exc.lineno or 1, "rule": "SYNTAX_ERROR",
-                             "snippet": (exc.text or "").strip()[:120]})
-            continue
-        if not path.stem.startswith("test_"):
-            modules.append(path.stem)
-            imports[path.stem] = sorted({(a.name if isinstance(n, ast.Import) else (n.module or "")).split(".")[0]
-                                         for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom)) for a in (n.names if isinstance(n, ast.Import) else [n])} & names)
-            if f"test_{path.stem}" not in test_names:
-                findings.append({"category": "testing", "file": rel, "line": 1, "rule": "NO_TESTS", "snippet": f"no test_{path.stem}.py found"})
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
-                for t in node.targets:
-                    if isinstance(t, ast.Name) and re.search(r"(secret|password|api_?key|token)", t.id, re.I) and len(node.value.value) >= 8:
-                        findings.append({"category": "secrets", "file": rel, "line": node.lineno, "rule": "HARDCODED_SECRET", "snippet": f"{t.id} = <redacted literal>"})
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("execute", "executemany") and node.args:
-                a = node.args[0]
-                if isinstance(a, (ast.JoinedStr, ast.BinOp)):
-                    findings.append({"category": "validation", "file": rel, "line": node.lineno, "rule": "SQL_STRING_BUILDING", "snippet": lines[node.lineno - 1].strip()[:120]})
-            if isinstance(node, ast.ExceptHandler) and (node.type is None or (len(node.body) == 1 and isinstance(node.body[0], ast.Pass))):
-                findings.append({"category": "error-handling", "file": rel, "line": node.lineno, "rule": "SILENT_EXCEPT", "snippet": lines[node.lineno - 1].strip()[:120]})
+        test_file = _is_test_file(path)
+        mod = _module_name(path)
+        if not test_file and PurePosixPath(path).stem.lower() not in test_targets:
+            findings.append({"category": "testing", "file": path, "line": 1, "rule": "NO_TESTS", "snippet": f"no test file found for {PurePosixPath(path).name}"})
+        if ext == ".py":
+            try:
+                tree = ast.parse(src)
+            except SyntaxError as exc:
+                findings.append({"category": "error-handling", "file": path, "line": exc.lineno or 1, "rule": "SYNTAX_ERROR", "snippet": (exc.text or "").strip()[:120]})
+                continue
+            if not test_file:
+                imports[mod] = sorted({m for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))
+                                       for a in (n.names if isinstance(n, ast.Import) else [n])
+                                       for m in stems.get((a.name if isinstance(n, ast.Import) else (n.module or "")).split(".")[-1].lower(), [])} - {mod})
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                    for t in node.targets:
+                        if isinstance(t, ast.Name) and re.search(r"(secret|password|api_?key|token)", t.id, re.I) and len(node.value.value) >= 8:
+                            findings.append({"category": "secrets", "file": path, "line": node.lineno, "rule": "HARDCODED_SECRET", "snippet": f"{t.id} = <redacted literal>"})
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("execute", "executemany") and node.args \
+                        and isinstance(node.args[0], (ast.JoinedStr, ast.BinOp)):
+                    findings.append({"category": "validation", "file": path, "line": node.lineno, "rule": "SQL_STRING_BUILDING", "snippet": lines[node.lineno - 1].strip()[:120]})
+                if isinstance(node, ast.ExceptHandler) and (node.type is None or (len(node.body) == 1 and isinstance(node.body[0], ast.Pass))):
+                    findings.append({"category": "error-handling", "file": path, "line": node.lineno, "rule": "SILENT_EXCEPT", "snippet": lines[node.lineno - 1].strip()[:120]})
+        else:
+            if not test_file:
+                deps = set()
+                for ref in _IMPORT_RE.findall(src):
+                    deps.update(stems.get(PurePosixPath(ref).stem.lower(), []))
+                imports[mod] = sorted(deps - {mod})
+            for i, text in enumerate(lines, 1):
+                m = _SECRET_RE.search(text)
+                if m and not _ENV_RE.search(text) and not test_file:
+                    name = re.search(r"\b\w*(?:secret|password|passwd|api_?key|token)\w*", text, re.I).group(0)
+                    findings.append({"category": "secrets", "file": path, "line": i, "rule": "HARDCODED_SECRET", "snippet": f"{name} = <redacted literal>"})
+                if _SQL_CALL_RE.search(text) and _SQL_WORD_RE.search(text) and (("${" in text) or re.search(r"""["'`]\s*\+|\+\s*["'`]|%s?\s*%""", text)):
+                    findings.append({"category": "validation", "file": path, "line": i, "rule": "SQL_STRING_BUILDING", "snippet": text.strip()[:120]})
+                if _EMPTY_CATCH_RE.search(text):
+                    findings.append({"category": "error-handling", "file": path, "line": i, "rule": "SILENT_EXCEPT", "snippet": text.strip()[:120]})
         for i, text in enumerate(lines, 1):
-            if re.search(r"#\s*(TODO|FIXME)\b", text):
-                findings.append({"category": "maintainability", "file": rel, "line": i, "rule": "OPEN_TODO", "snippet": text.strip()[:120]})
+            if _TODO_RE.search(text):
+                findings.append({"category": "maintainability", "file": path, "line": i, "rule": "OPEN_TODO", "snippet": text.strip()[:120]})
     findings.sort(key=lambda f: (f["file"], f["line"], f["rule"]))
-    return {"modules": modules, "imports": imports, "findings": findings, "files_scanned": len(py_files)}
+    return {"modules": modules, "imports": imports, "findings": findings, "files_scanned": len(files), "languages": langs}
 
 
-def build_plan(requirements: list[dict], analysis: dict, source: dict, title: str, intent: dict | None = None) -> dict:
+def load_bundled(name: str) -> dict[str, str]:
+    root = BUNDLED_PROJECTS[name]
+    return {p.relative_to(root).as_posix(): p.read_text(encoding="utf-8", errors="replace")
+            for p in sorted(root.rglob("*")) if p.is_file() and p.suffix.lower() in SOURCE_EXTENSIONS and "__pycache__" not in p.parts}
+
+
+def analyze_project(project_dir: Path) -> dict:   # kept for callers that pass a directory
+    root = Path(project_dir)
+    return analyze_sources({p.relative_to(root).as_posix(): p.read_text(encoding="utf-8", errors="replace")
+                            for p in sorted(root.rglob("*")) if p.is_file() and p.suffix.lower() in SOURCE_EXTENSIONS and "__pycache__" not in p.parts})
+
+
+def build_plan(requirements: list[dict], analysis: dict, source: dict, title: str, intent: dict | None = None, project: dict | None = None) -> dict:
     issues = []
-    for n, f in enumerate(analysis["findings"], 1):
+    ranked = sorted(analysis["findings"], key=lambda f: ({"HIGH": 0, "MEDIUM": 1, "LOW": 2}[SEVERITY.get(f["category"], "LOW")], f["file"], f["line"]))
+    kept = sorted(ranked[:MAX_ISSUES], key=lambda f: (f["file"], f["line"], f["rule"]))
+    for n, f in enumerate(kept, 1):
         req = next((r for r in requirements if r["category"] == f["category"]), None)
         issues.append({"id": f"ISS-{n}", "severity": SEVERITY.get(f["category"], "LOW"), **f,
                        "requirement": ({"id": req["id"], "text": req["text"], "brief_line": req["line"]} if req else None),
@@ -135,7 +200,9 @@ def build_plan(requirements: list[dict], analysis: dict, source: dict, title: st
     tasks = [{"id": f"T{i}", "title": f"Fix {x['id']}: {x['fix']}", "depends_on": [], "category": x["category"]} for i, x in enumerate(issues, 1)]
     tasks.append({"id": f"T{len(tasks) + 1}", "title": "Re-run analyzer and the new test suite; every ISS must clear", "depends_on": [t["id"] for t in tasks], "category": "verification"})
     plan = {
-        "title": title, "status": "DRAFT", "intent": intent or {"revision": 1, "text": ""}, "method": "deterministic static analysis (AST + regex); not an LLM and not human-reviewed",
+        "title": title, "status": "DRAFT", "intent": intent or {"revision": 1, "text": ""},
+        "project": {**(project or {"name": "unknown", "id": None, "sha256": "0" * 64}), "files_scanned": analysis["files_scanned"], "languages": analysis.get("languages", {}),
+                    "findings_total": len(analysis["findings"]), "findings_omitted": max(0, len(analysis["findings"]) - MAX_ISSUES)}, "method": "deterministic static analysis (AST + regex); not an LLM and not human-reviewed",
         "source": {"document_id": source["id"], "name": source["name"], "sha256": source["sha256"]},
         "requirements": requirements, "issues": issues, "architecture": graph, "mermaid": mermaid, "tasks": tasks,
         "test_strategy": ["Unit tests per module (one test_<module>.py each)", "Negative test per fixed issue (secret absent, SQL parameterized, error surfaced)",
@@ -146,35 +213,36 @@ def build_plan(requirements: list[dict], analysis: dict, source: dict, title: st
 
 
 def plan_digest(plan: dict) -> str:
-    core = {k: plan[k] for k in ("title", "intent", "source", "requirements", "issues", "architecture", "mermaid", "tasks")}
+    core = {k: plan[k] for k in ("title", "intent", "source", "project", "requirements", "issues", "architecture", "mermaid", "tasks")}
     return hashlib.sha256(json.dumps(core, sort_keys=True).encode()).hexdigest()
 
 
 def build_architecture(analysis: dict, issues: list[dict]) -> dict:
-    """Node ids are generated, never taken from file names: names can collide with proposed nodes or be invalid Mermaid."""
+    """Node ids are generated, never taken from file names. Proposed components attach to the modules whose
+    findings motivate them, so the diagram follows the analyzed project instead of fixed module names."""
+    by_module: dict[str, set] = {}
+    for i in issues:
+        by_module.setdefault(_module_name(i["file"]), set()).add(i["category"])
+    degree = {m: len(analysis["imports"].get(m, [])) + sum(m in d for d in analysis["imports"].values()) for m in analysis["modules"]}
+    ranked = sorted(analysis["modules"], key=lambda m: (-(2 * len(by_module.get(m, ())) + degree[m]), m))
+    shown = sorted(ranked[:MAX_DIAGRAM_MODULES])
     ids: dict[str, str] = {}
-    for m in analysis["modules"]:
+    for m in shown:
         base = "m_" + (re.sub(r"\W", "_", m) or "x")
         cand, k = base, 2
         while cand in ids.values():
             cand, k = f"{base}_{k}", k + 1
         ids[m] = cand
-    nodes = [{"id": ids[m], "label": m, "kind": "current"} for m in analysis["modules"]]
+    nodes = [{"id": ids[m], "label": m, "kind": "current"} for m in shown]
     edges = [{"from": ids[a], "to": ids[b]} for a, deps in sorted(analysis["imports"].items()) if a in ids for b in deps if b in ids]
-    cats = {i["category"] for i in issues}
-    additions = []
-    if "secrets" in cats:
-        additions.append(("new_config", "Config / secrets loader (env)", ["auth"]))
-    if "validation" in cats:
-        additions.append(("new_repo", "Repository layer (parameterized SQL)", ["db"]))
-    if "error-handling" in cats:
-        additions.append(("new_errors", "Error handling and logging", ["db", "app"]))
-    if "testing" in cats:
-        additions.append(("new_tests", "Automated test suite", list(analysis["modules"])))
-    for nid, label, links in additions:
-        nodes.append({"id": nid, "label": label, "kind": "proposed"})
-        edges += [{"from": nid, "to": ids[x], "dashed": True} for x in links if x in ids]
-    return {"nodes": nodes, "edges": edges}
+    plan_for = (("secrets", "new_config", "Config / secrets loader (env)"), ("validation", "new_repo", "Validated data-access layer"),
+                ("error-handling", "new_errors", "Error handling and logging"), ("testing", "new_tests", "Automated test suite"))
+    for cat, nid, label in plan_for:
+        targets = [m for m in shown if cat in by_module.get(m, ())][:6]
+        if targets:
+            nodes.append({"id": nid, "label": label, "kind": "proposed"})
+            edges += [{"from": nid, "to": ids[m], "dashed": True} for m in targets]
+    return {"nodes": nodes, "edges": edges, "modules_total": len(analysis["modules"]), "modules_omitted": len(analysis["modules"]) - len(shown)}
 
 
 def graph_to_mermaid(g: dict) -> str:
@@ -210,6 +278,27 @@ def validate_mermaid(src: str) -> list[str]:
             continue
         raise MissionError(f"Mermaid syntax error near: {t[:60]}", 422)
     return sorted(ids)
+
+
+def parse_mermaid(src: str) -> dict:
+    """Parse the validated flowchart subset back into the graph structure (so user edits drive the PDF and diagram)."""
+    validate_mermaid(src)
+    nodes, edges = [], []
+    for line in src.strip().splitlines()[1:]:
+        t = line.strip()
+        if not t or t.startswith("classDef"):
+            continue
+        m = re.match(r'^([A-Za-z_][A-Za-z0-9_]*)\["([^"\]]*)"\](:::[A-Za-z]+)?$', t)
+        if m:
+            nodes.append({"id": m.group(1), "label": m.group(2), "kind": "proposed" if m.group(3) == ":::proposed" else "current"})
+            continue
+        e = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s+(-->|-\.->)\s+([A-Za-z_][A-Za-z0-9_]*)$", t)
+        edges.append({"from": e.group(1), "to": e.group(3), **({"dashed": True} if e.group(2) == "-.->" else {})})
+    if not nodes or len(nodes) > 60 or len(edges) > 300:
+        raise MissionError("Architecture must have 1-60 nodes and at most 300 edges", 422)
+    if len({n["id"] for n in nodes}) != len(nodes):
+        raise MissionError("Duplicate node ids in architecture", 422)
+    return {"nodes": nodes, "edges": edges}
 
 
 def layout_layers(g: dict) -> list[list[dict]]:
@@ -259,9 +348,16 @@ def compose_pdf(plan: dict, mission: dict) -> bytes:
     state["y"] -= 2
     c.setStrokeColor(gold); c.setLineWidth(2); c.line(50, state["y"], W - 50, state["y"]); state["y"] -= 22
     line(f"Status: {plan['status']}   Method: {plan['method']}", size=9)
+    if plan.get("edited_by_user"):
+        line("The architecture below was edited by the user before approval.", size=9)
     line(f"Source brief: {plan['source']['name']}")
     line(f"SRC-SHA256: {plan['source']['sha256']}", font="Courier", size=8)
     line(f"Source document id: {plan['source']['document_id']}", font="Courier", size=8)
+    pj = plan["project"]
+    line(f"Analyzed project: {pj['name']} ({pj['files_scanned']} source files, languages: {', '.join(sorted(pj['languages'])) or 'n/a'})", size=9)
+    line(f"PROJECT-SHA256: {pj['sha256']}", font="Courier", size=8)
+    if pj["findings_omitted"]:
+        line(f"Note: {pj['findings_total']} findings detected; the {pj['findings_total'] - pj['findings_omitted']} highest-severity are listed.", size=9)
     line(f"Intent revision: {mission['intent_revision']}   Plan digest: {plan['digest'][:32]}", font="Courier", size=8)
     line(f"Request: {mission['intent_text']}", size=9)
     state["y"] -= 8
@@ -302,6 +398,8 @@ def compose_pdf(plan: dict, mission: dict) -> bytes:
         for k, part in enumerate(parts):
             c.drawCentredString(x + bw / 2, y + bh / 2 + 2 - k * 9 + (0 if len(parts) > 1 else -2), part.encode("latin-1", "replace").decode("latin-1"))
     state["y"] = top - row * (bh + gy) - 14
+    if plan["architecture"].get("modules_omitted"):
+        line(f"Diagram shows {len(plan['architecture']['nodes']) - sum(n['kind'] == 'proposed' for n in plan['architecture']['nodes'])} of {plan['architecture']['modules_total']} modules (most connected / most findings).", size=8)
     line("Solid border = current module; gold border = proposed component; dashed edge = proposed dependency.", size=8)
     line("Mermaid source:", font="Helvetica-Bold", size=10)
     for ml in plan["mermaid"].splitlines():
@@ -322,7 +420,7 @@ def compose_pdf(plan: dict, mission: dict) -> bytes:
     return buf.getvalue()
 
 
-def verify_output(studio: DocumentStudio, user_id: str, workspace_id: str, doc_id: str, plan: dict, source_sha: str) -> dict:
+def verify_output(studio: DocumentStudio, user_id: str, workspace_id: str, doc_id: str, plan: dict, source_sha: str, project_sha: str | None = None) -> dict:
     """Independent oracle: re-read stored bytes, re-hash, parse with pypdf, and check required content."""
     from pypdf import PdfReader
     raw = studio.read_pdf(user_id, workspace_id, doc_id)
@@ -335,6 +433,8 @@ def verify_output(studio: DocumentStudio, user_id: str, workspace_id: str, doc_i
         "contains_title": plan["title"][:30].replace(" ", "") in flat,
         "references_correct_source_sha": f"SRC-SHA256:{source_sha}" in flat,
         "no_other_source_sha": all(h == source_sha for h in re.findall(r"SRC-SHA256:([0-9a-f]{64})", flat)),
+        "references_correct_project_sha": f"PROJECT-SHA256:{project_sha or plan['project']['sha256']}" in flat,
+        "no_other_project_sha": all(h == (project_sha or plan["project"]["sha256"]) for h in re.findall(r"PROJECT-SHA256:([0-9a-f]{64})", flat)),
         # word-boundary matching: "ISS-1" must not be satisfied by "ISS-10", nor "auth.py:1" by "auth.py:10"
         "contains_every_issue": all(re.search(re.escape(i["id"]) + r"(?!\d)", flat) and re.search(re.escape(i["citation"].split()[0]) + r"(?!\d)", flat) for i in plan["issues"]),
         "contains_architecture": "flowchartTD" in flat,
@@ -357,6 +457,8 @@ def verify_chain(m: dict, doc_owner_ok: bool) -> list[str]:
         broken.append("source entity not bound")
     if ((m.get("plan") or {}).get("intent") or {}).get("revision") != m.get("intent_revision"):
         broken.append("plan was produced for a different intent revision")
+    if (m.get("plan") or {}).get("project", {}).get("sha256") != m.get("project_sha256"):
+        broken.append("plan analyzed a different project version than the one bound to the mission")
     if (m.get("plan") or {}).get("source", {}).get("sha256") != m.get("source_sha256"):
         broken.append("plan derived from a different source version")
     if r.get("approved_plan_digest") != (m.get("plan") or {}).get("digest"):
@@ -372,8 +474,9 @@ def verify_chain(m: dict, doc_owner_ok: bool) -> list[str]:
 # ------------------------------------------------------------------ durable store + orchestration
 
 class BriefMissionStore:
-    def __init__(self, db_path: str | Path, studio: DocumentStudio, hooks: dict | None = None):
+    def __init__(self, db_path: str | Path, studio: DocumentStudio, hooks: dict | None = None, projects: ProjectStore | None = None):
         self.db_path, self.studio, self.hooks = Path(db_path), studio, hooks if hooks is not None else {}
+        self.projects = projects
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="worker")  # node workers
@@ -384,6 +487,8 @@ class BriefMissionStore:
                 intent_text TEXT NOT NULL, intent_revision INTEGER NOT NULL, project TEXT NOT NULL,
                 source_doc_id TEXT, source_sha256 TEXT, plan TEXT, output_doc_id TEXT, output_sha256 TEXT,
                 receipt TEXT, error TEXT, cancelled INTEGER NOT NULL DEFAULT 0, created_at REAL, updated_at REAL)""")
+            if "project_sha256" not in {r[1] for r in db.execute("PRAGMA table_info(brief_missions)")}:   # migration for databases created before project binding
+                db.execute("ALTER TABLE brief_missions ADD COLUMN project_sha256 TEXT")
             db.execute("""CREATE TABLE IF NOT EXISTS mission_events (
                 seq INTEGER PRIMARY KEY AUTOINCREMENT, mission_id TEXT NOT NULL, ts REAL NOT NULL, node TEXT,
                 worker TEXT, kind TEXT NOT NULL, detail TEXT)""")
@@ -493,6 +598,35 @@ class BriefMissionStore:
             return matches[0]
         raise MissionError("document_id or document_name is required", 400)
 
+    def resolve_project(self, user_id: str, workspace_id: str, ref: str) -> dict:
+        """Bind to ONE project by stable id + content hash: a bundled sample name or a tenant-owned uploaded project id."""
+        if ref in BUNDLED_PROJECTS:
+            files = load_bundled(ref)
+            return {"ref": ref, "name": ref + " (bundled sample)", "id": ref, "sha256": fingerprint(files)}
+        if ref.startswith("prj_") and self.projects is not None:
+            try:
+                meta = self.projects.get(user_id, workspace_id, ref)
+            except ProjectError as exc:
+                raise MissionError(exc.message, exc.status_code)
+            return {"ref": ref, "name": meta["name"], "id": ref, "sha256": meta["sha256"]}
+        raise MissionError(f"Unknown project '{ref[:40]}'. Use a bundled sample ({sorted(BUNDLED_PROJECTS)}) or one of your uploaded project ids.", 404)
+
+    def _load_project_files(self, row) -> tuple[dict, dict]:
+        """Re-load the bound project and verify it still has the bound hash (replaced/deleted projects fail the mission)."""
+        ref = row["project"]
+        if ref in BUNDLED_PROJECTS:
+            files = load_bundled(ref)
+            info = {"ref": ref, "name": ref + " (bundled sample)", "id": ref, "sha256": fingerprint(files)}
+        else:
+            try:
+                meta, files = self.projects.load(row["user_id"], row["workspace_id"], ref)
+            except (ProjectError, AttributeError) as exc:
+                raise MissionError(f"Project is no longer available: {getattr(exc, 'message', exc)}", 409)
+            info = {"ref": ref, "name": meta["name"], "id": ref, "sha256": meta["sha256"]}
+        if info["sha256"] != row["project_sha256"]:
+            raise MissionError("project content changed after the mission was bound", 409)
+        return info, files
+
     def start(self, user_id: str, workspace_id: str, intent_text: str, document_id: str | None = None, document_name: str | None = None,
               expected_sha256: str | None = None, project: str = "sample_project") -> dict:
         intent_text = (intent_text or "").strip()
@@ -500,8 +634,7 @@ class BriefMissionStore:
             raise MissionError("intent_text (1-2000 chars) required")
         if not re.search(r"\b(brief|report|architecture|spec)", intent_text, re.I):
             raise MissionError("Unsupported intent: this mission handles 'inspect brief -> analyze -> architecture -> report'", 422)
-        if project not in BUNDLED_PROJECTS:
-            raise MissionError(f"Unknown project '{project}'. Available: {sorted(BUNDLED_PROJECTS)}", 400)
+        proj = self.resolve_project(user_id, workspace_id, str(project))
         src = self.resolve_brief(user_id, workspace_id, document_id, document_name)
         if expected_sha256 and expected_sha256 != src["sha256"]:
             raise MissionError("Source document changed since it was selected (stale sha256); refusing to proceed", 409)
@@ -514,9 +647,9 @@ class BriefMissionStore:
             raise MissionError("Mission quota reached; delete old missions", 429)
         mid, now = "bm_" + uuid.uuid4().hex[:12], time.time()
         with self._db() as db:
-            db.execute("INSERT INTO brief_missions(id,user_id,workspace_id,state,intent_text,intent_revision,project,source_doc_id,source_sha256,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                       (mid, user_id, workspace_id, "RUNNING", intent_text, 1, project, src["id"], src["sha256"], now, now))
-        self._event(mid, "MISSION", "orchestrator", "MISSION_CREATED", {"intent_revision": 1, "source_doc_id": src["id"], "source_sha256": src["sha256"], "name": src["name"]})
+            db.execute("INSERT INTO brief_missions(id,user_id,workspace_id,state,intent_text,intent_revision,project,project_sha256,source_doc_id,source_sha256,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                       (mid, user_id, workspace_id, "RUNNING", intent_text, 1, proj["ref"], proj["sha256"], src["id"], src["sha256"], now, now))
+        self._event(mid, "MISSION", "orchestrator", "MISSION_CREATED", {"intent_revision": 1, "source_doc_id": src["id"], "source_sha256": src["sha256"], "name": src["name"], "project": proj["name"], "project_sha256": proj["sha256"]})
         self._orch.submit(self._run_analysis, mid)
         return self.get(mid, user_id, workspace_id)
 
@@ -565,16 +698,22 @@ class BriefMissionStore:
                 return
             uid, wid = row["user_id"], row["workspace_id"]
             fa = self._pool.submit(self._node, mid, "DOCUMENT_READER", lambda: self._read_brief(row))
-            fb = self._pool.submit(self._node, mid, "REPOSITORY_ANALYZER", lambda: analyze_project(BUNDLED_PROJECTS[row["project"]]))
+            fb = self._pool.submit(self._node, mid, "REPOSITORY_ANALYZER", lambda: self._analyze_bound_project(row))
             reqs, analysis = fa.result(), fb.result()  # both must succeed; a failure in either fails the mission
             src = self.studio.get_document(uid, wid, row["source_doc_id"])
-            plan = self._node(mid, "ARCHITECTURE_PLANNER", lambda: build_plan(reqs, analysis, src, self._title(src), {"revision": row["intent_revision"], "text": row["intent_text"]}))
+            plan = self._node(mid, "ARCHITECTURE_PLANNER", lambda: build_plan(reqs, analysis, src, self._title(src), {"revision": row["intent_revision"], "text": row["intent_text"]}, analysis["project_info"]))
             if not self._cas(mid, ("RUNNING",), plan=plan, state="AWAITING_APPROVAL"):
                 self._event(mid, "ARCHITECTURE_PLANNER", "orchestrator", "LATE_RESULT_REJECTED", {"reason": "mission left RUNNING before the plan could be committed"})
                 return
             self._event(mid, "MISSION", "orchestrator", "AWAITING_APPROVAL", {"plan_digest": plan["digest"], "issues": len(plan["issues"])})
         except Exception as exc:
             self._fail(mid, exc)
+
+    def _analyze_bound_project(self, row) -> dict:
+        info, files = self._load_project_files(row)
+        result = analyze_sources(files)
+        result["project_info"] = info
+        return result
 
     @staticmethod
     def _title(src: dict) -> str:
@@ -622,6 +761,25 @@ class BriefMissionStore:
         self._orch.submit(self._run_analysis, mission_id)
         return self.get(mission_id, user_id, workspace_id)
 
+    def edit_architecture(self, mission_id: str, user_id: str, workspace_id: str, mermaid: str) -> dict:
+        """User review & modification: the edited diagram becomes the plan, the digest changes, so only the edited plan can be approved."""
+        row = self._row(mission_id, user_id, workspace_id)
+        if row["state"] != "AWAITING_APPROVAL":
+            raise MissionError(f"Mission is {row['state']}; the architecture can only be edited while awaiting approval", 409)
+        if not isinstance(mermaid, str) or len(mermaid) > 8000:
+            raise MissionError("mermaid (max 8000 chars) required", 400)
+        graph = parse_mermaid(mermaid)
+        plan = json.loads(row["plan"])
+        old = plan["digest"]
+        plan["architecture"] = {**graph, "modules_total": plan["architecture"].get("modules_total", 0), "modules_omitted": plan["architecture"].get("modules_omitted", 0)}
+        plan["mermaid"] = graph_to_mermaid(graph)
+        plan["edited_by_user"] = True
+        plan["digest"] = plan_digest(plan)
+        if not self._cas(mission_id, ("AWAITING_APPROVAL",), plan=plan):
+            raise MissionError("Mission changed state while editing; reload and retry", 409)
+        self._event(mission_id, "ARCHITECTURE_PLANNER", user_id, "ARCHITECTURE_EDITED", {"old_digest": old, "new_digest": plan["digest"], "nodes": len(graph["nodes"]), "edges": len(graph["edges"])})
+        return self.get(mission_id, user_id, workspace_id)
+
     def cancel(self, mission_id: str, user_id: str, workspace_id: str) -> dict:
         row = self._row(mission_id, user_id, workspace_id)
         if row["state"] in TERMINAL:
@@ -657,7 +815,7 @@ class BriefMissionStore:
                 return doc
 
             doc = self._node(mid, "REPORT_COMPOSER", compose)
-            ver = self._node(mid, "EFFECT_VERIFIER", lambda: verify_output(self.studio, uid, wid, doc["id"], plan, row["source_sha256"]))
+            ver = self._node(mid, "EFFECT_VERIFIER", lambda: verify_output(self.studio, uid, wid, doc["id"], plan, row["source_sha256"], row["project_sha256"]))
             if not ver["passed"] or ver["output_sha256"] != doc["sha256"]:
                 self._event(mid, "EFFECT_VERIFIER", "verifier", "VERIFICATION_FAILED", ver)
                 raise MissionError("Output failed independent verification: " + ", ".join(k for k, v in ver["checks"].items() if not v), 422)
