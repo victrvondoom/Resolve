@@ -38,9 +38,9 @@ class DashboardE2E(unittest.TestCase):
             try:
                 with sync_playwright() as p:
                     b = p.chromium.launch(executable_path=CHROMIUM) if Path(CHROMIUM).exists() else p.chromium.launch()
-                    page = b.new_page()
+                    page = b.new_context(bypass_csp=True).new_page()
                     watch(page, errors)
-                    page.goto(f'http://127.0.0.1:{srv.port}/app')
+                    page.goto(f'http://127.0.0.1:{srv.port}/app#mission')
                     page.get_by_role('button', name='Start mission').click()
                     page.locator('#wmcands button', has_text='C-104').click()
                     page.get_by_role('button', name='Plan actions').click()
@@ -84,9 +84,9 @@ class DashboardE2E(unittest.TestCase):
             try:
                 with sync_playwright() as p:
                     b = p.chromium.launch(executable_path=CHROMIUM) if Path(CHROMIUM).exists() else p.chromium.launch()
-                    page = b.new_page(viewport={'width': 1280, 'height': 900})
+                    page = b.new_context(bypass_csp=True, viewport={'width': 1280, 'height': 900}).new_page()
                     watch(page, errors)
-                    page.goto(f'http://127.0.0.1:{srv.port}/app')
+                    page.goto(f'http://127.0.0.1:{srv.port}/app#mission')
                     self.assertTrue(page.locator('#utterSubmit').is_disabled())  # no mission yet -> cannot submit
                     page.get_by_role('button', name='Start mission').click()
                     page.wait_for_selector('#wmcands button')

@@ -5,15 +5,27 @@ let state = null, contactId = null, reportId = null, pending = null, sessionToke
 
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
+let authWaiter = null;
+async function ensureToken() {
+  if (sessionToken) return sessionToken;
+  try { sessionToken = sessionStorage.getItem('resolve_token') || null; } catch (_) { /* storage may be blocked */ }
+  if (sessionToken) return sessionToken;
+  const r = await fetch('/api/session');            // demo mode only; 404 in production
+  if (r.ok) { sessionToken = (await r.json()).token; return sessionToken; }
+  authWaiter = authWaiter || window.ResolveAuth.prompt().finally(() => { authWaiter = null; });
+  sessionToken = await authWaiter;
+  return sessionToken;
+}
+async function authHeaders(extra) {
+  const t = await ensureToken();
+  return { Authorization: 'Bearer ' + t, 'X-Resolve-Token': t, ...(extra || {}) };
+}
 async function api(path, body) {
-  if (body && !sessionToken) {
-    const session = await fetch('/api/session');
-    if (!session.ok) throw Error('Could not establish local session');
-    sessionToken = (await session.json()).token;
-  }
-  const r = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Resolve-Token': sessionToken }, body: JSON.stringify(body) } : {});
+  const headers = await authHeaders(body ? { 'Content-Type': 'application/json' } : {});
+  const r = await fetch(path, body ? { method: 'POST', headers, body: JSON.stringify(body) } : { headers });
   let d = {};
   try { d = await r.json(); } catch (e) { d = {}; }
+  if (r.status === 401 && sessionToken) { try { sessionStorage.removeItem('resolve_token'); } catch (_) {} sessionToken = null; }
   if (!r.ok) { const err = Error(d.error || r.statusText || ('HTTP ' + r.status)); err.status = r.status; err.body = d; throw err; }
   return d;
 }
@@ -32,14 +44,14 @@ function setMsg(el, text, kind) { el.textContent = text; el.classList.toggle('er
 const views = [...document.querySelectorAll('section.view')];
 const navLinks = [...document.querySelectorAll('.sidebar a[data-view]')];
 function showView(name, focus) {
-  if (!views.some(v => v.dataset.view === name)) name = 'mission';
+  if (!views.some(v => v.dataset.view === name)) name = 'flagship';
   views.forEach(v => { v.hidden = v.dataset.view !== name; });
   navLinks.forEach(a => { if (a.dataset.view === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   if (focus) { const h = document.querySelector(`#view-${name} h1`); if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); } window.scrollTo(0, 0); }
 }
 navLinks.forEach(a => a.addEventListener('click', ev => { ev.preventDefault(); history.replaceState(null, '', '#' + a.dataset.view); showView(a.dataset.view, true); }));
 window.addEventListener('hashchange', () => showView(location.hash.slice(1), true));
-showView(location.hash.slice(1) || 'mission', false);
+showView(location.hash.slice(1) || 'flagship', false);
 
 /* ---------------- desktop simulator (existing flow) ---------------- */
 function render() {
@@ -55,6 +67,7 @@ function renderChoices(sel, items, kind) {
   $(sel).innerHTML = items.map(x => `<label class="candidate ${((kind === 'contact' ? contactId : reportId) === x.entity_id) ? 'selected' : ''}"><input type="radio" name="${kind}" value="${esc(x.entity_id)}" ${((kind === 'contact' ? contactId : reportId) === x.entity_id) ? 'checked' : ''}><span><b>${esc(x.display_name)} · ${esc(x.version || x.kind)}</b><small>${esc(x.context || '')} · ID ${esc(x.stable_id || 'unknown')} ${x.modified_at ? '· modified ' + esc(x.modified_at) : ''}</small></span></label>`).join('');
   $(sel).querySelectorAll('input').forEach(i => i.onchange = () => { if (kind === 'contact') contactId = i.value; else reportId = i.value; render(); });
 }
+const isProdDisabled = (e) => !!(e && e.status === 404 && /disabled in production/.test(e.message || ''));
 function setHealth(text, ok) { $('#health').textContent = text; $('#healthChip').className = 'chip ' + (ok ? 'chip-ok' : 'chip-bad'); }
 async function refresh() {
   state = await api('/api/state');
@@ -113,7 +126,7 @@ $('#approve').onclick = async () => { if (!pending) return; $('#approve').disabl
 $('#windows').onclick = async () => { try { const r = await api('/api/windows'); windowSnapshot = r.windows.find(w => w.foreground)?.snapshot_id || null; $('#hwnd').innerHTML = '<option value="">Choose a visible window…</option>' + r.windows.map(w => `<option value="${w.hwnd}" ${w.foreground ? 'selected' : ''}>${esc(w.title)} · PID ${w.pid}${w.foreground ? ' · foreground' : ''}</option>`).join(''); $('#winlog').textContent = JSON.stringify(r, null, 2); } catch (e) { $('#winlog').textContent = 'Observation unavailable: ' + e.message; } };
 async function winAction(kind) { try { const hwnd = $('#hwnd').value; if (!hwnd) throw Error('Inspect and select a window first.'); if (!windowSnapshot) throw Error('Inspect windows to obtain a fresh snapshot.'); const mission = state.missions.find(x => x.mission_id === 'mission_demo'); const payload = { hwnd: Number(hwnd), snapshot_id: windowSnapshot, mission_id: mission.mission_id, intent_revision: mission.intent_revision }; if (kind === 'move' || kind === 'click') { if (!$('#px').value || !$('#py').value) throw Error('Enter screen coordinates within the selected window.'); payload.x = Number($('#px').value); payload.y = Number($('#py').value); } if (kind === 'type') { payload.text = $('#typevalue').value; if (!payload.text) throw Error('Enter text to type.'); } const r = await api('/api/windows/' + kind, payload); windowSnapshot = null; $('#winlog').textContent = JSON.stringify(r, null, 2) + '\nRefresh window observation before the next input.'; await refresh(); } catch (e) { windowSnapshot = null; $('#winlog').textContent = 'Action refused: ' + e.message + ' Refresh window observation before retrying.'; } }
 $('#move').onclick = () => winAction('move'); $('#click').onclick = () => winAction('click'); $('#type').onclick = () => winAction('type');
-api('/api/health').then(() => refresh()).catch(e => setHealth('offline: ' + e.message, false));
+api('/api/health').then(() => refresh()).catch(e => isProdDisabled(e) ? setHealth('server healthy · production mode', true) : setHealth('offline: ' + e.message, false));
 
 $('#discover').onclick = async () => { try { $('#agentlog').textContent = 'Running contact and report specialists…'; const r = await api('/api/agents/discover', { mission_id: 'mission_demo' }); $('#agentlog').textContent = JSON.stringify(r, null, 2); await refresh(); } catch (e) { $('#agentlog').textContent = 'Agent run failed: ' + e.message; } };
 $('#estop').onclick = async () => { window.speechSynthesis?.cancel(); try { const r = await api('/api/emergency-stop', {}); windowSnapshot = null; $('#agentlog').textContent = JSON.stringify(r, null, 2); setHealth('STOPPED · cursor lease revoked', false); } catch (e) { $('#agentlog').textContent = e.message; } };
@@ -376,7 +389,7 @@ api('/api/web/status').then(s => {
   else setMsg($('#winAvail'), 'Server reports native Windows control is available.', 'ok');
   if (sp.note) $('#utterMicChip').title = sp.note;
 }).catch(e => {
-  $('#statusStrip').innerHTML = `<span class="chip chip-bad">Runtime status unavailable — ${esc(errText(e))}</span>` + chip('Outbox: SIMULATED DELIVERY', 'chip-warn');
+  $('#statusStrip').innerHTML = (isProdDisabled(e) ? `<span class="chip chip-muted">Fixture-demo runtime panels are disabled in production (they use a shared, non-tenant ledger)</span>` : `<span class="chip chip-bad">Runtime status unavailable — ${esc(errText(e))}</span>`) + chip('Outbox: SIMULATED DELIVERY', 'chip-warn');
   setMsg($('#winAvail'), 'Runtime status unavailable (' + errText(e) + '); Win32 requests will report their own errors.', 'err');
 });
 
@@ -882,50 +895,90 @@ api('/api/web/benchmark').then(b => {
     };
   }
 
-  /* ---------------- push-to-talk voice controller ---------------- */
-  let isListening = false;
-  if ($('#voiceMicBtn')) {
-    $('#voiceMicBtn').onclick = async () => {
-      if (isListening) return;
-      isListening = true;
-      if ($('#voiceStatusBadge')) {
-        $('#voiceStatusBadge').className = 'chip chip-warn small';
-        $('#voiceStatusBadge').textContent = 'LISTENING…';
-      }
-
-      // Check browser SpeechRecognition
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recog = new SpeechRecognition();
-        recog.lang = 'en-US';
-        recog.onresult = async (ev) => {
-          const transcript = ev.results[0][0].transcript;
-          handleVoiceTranscript(transcript);
-        };
-        recog.onerror = () => fallbackVoicePrompt();
-        recog.onend = () => {
-          isListening = false;
-          if ($('#voiceStatusBadge')) {
-            $('#voiceStatusBadge').className = 'chip chip-muted small';
-            $('#voiceStatusBadge').textContent = 'MIC READY';
-          }
-        };
-        recog.start();
-      } else {
-        fallbackVoicePrompt();
-      }
-    };
+  /* ---------------- push-to-talk voice controller ----------------
+     Real capture: getUserMedia -> 16 kHz mono PCM WAV -> POST /api/voice/transcribe-audio.
+     The transcript only fills the editable command box; nothing is submitted automatically. */
+  function attachVoice({ btn, badge, note, target }) {
+  const voice = { rec: null, health: null };
+  const setMic = (cls, text, title) => { const b = badge; if (b) { b.className = 'chip ' + cls + ' small'; b.textContent = text; if (title) b.title = title; } };
+  const micMsg = (text) => { const n = note; if (n) { n.style.display = text ? 'block' : 'none'; n.textContent = text; } };
+  function encodeWav(chunks, inRate) {
+    const len = chunks.reduce((n, c) => n + c.length, 0), merged = new Float32Array(len);
+    let o = 0; for (const c of chunks) { merged.set(c, o); o += c.length; }
+    const outRate = 16000, ratio = inRate / outRate, n = Math.floor(len / ratio), pcm = new DataView(new ArrayBuffer(44 + n * 2));
+    const w = (off, str) => { for (let i = 0; i < str.length; i++) pcm.setUint8(off + i, str.charCodeAt(i)); };
+    w(0, 'RIFF'); pcm.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); pcm.setUint32(16, 16, true); pcm.setUint16(20, 1, true); pcm.setUint16(22, 1, true);
+    pcm.setUint32(24, outRate, true); pcm.setUint32(28, outRate * 2, true); pcm.setUint16(32, 2, true); pcm.setUint16(34, 16, true); w(36, 'data'); pcm.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) { const v = Math.max(-1, Math.min(1, merged[Math.floor(i * ratio)])); pcm.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true); }
+    return new Uint8Array(pcm.buffer);
   }
-
-  function fallbackVoicePrompt() {
-    isListening = false;
-    if ($('#voiceStatusBadge')) {
-      $('#voiceStatusBadge').className = 'chip chip-muted small';
-      $('#voiceStatusBadge').textContent = 'MIC READY';
+  const toB64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+  async function refreshVoiceHealth() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) {
+      btn.disabled = true; setMic('chip-warn', 'MIC UNSUPPORTED', 'Needs a browser with getUserMedia on HTTPS or localhost'); return;
     }
-    const input = prompt('Dictate or type your voice command (e.g. "Prepare follow-up for Alex in Finance"):', $('#wmcmd') ? $('#wmcmd').value : '');
-    if (input) handleVoiceTranscript(input);
+    try {
+      voice.health = await api('/api/voice/health');
+      let perm = 'prompt';
+      try { perm = (await navigator.permissions.query({ name: 'microphone' })).state; } catch (_) { /* Permissions API optional */ }
+      if (perm === 'denied') { btn.disabled = true; setMic('chip-warn', 'MIC BLOCKED', 'Microphone permission is denied in browser settings'); return; }
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!voice.health.available && SR) {   // no server engine: offer the browser's own recognizer, clearly labelled
+        voice.mode = 'browser'; btn.disabled = false;
+        setMic('chip-warn', 'MIC READY · BROWSER SPEECH', 'Uses your browser vendor\'s speech service; audio leaves this app. Asks for consent each time.'); return;
+      }
+      if (!voice.health.available) { btn.disabled = true; setMic('chip-warn', 'NO SPEECH ENGINE', voice.health.detail + '. Type the command, or dictate into the box with Wispr Flow.'); return; }
+      voice.mode = 'server'; btn.disabled = false;
+      setMic('chip-ok', voice.health.offline ? 'MIC READY · OFFLINE STT' : 'MIC READY · CLOUD STT', voice.health.provider + ' — ' + voice.health.detail);
+    } catch (e) { btn.disabled = true; setMic('chip-warn', 'VOICE OFFLINE', String(e.message || e)); }
   }
+  if (btn) {
+    refreshVoiceHealth();
+    btn.onclick = async () => {
+      if (voice.rec) { voice.rec.stop(); return; }
+      if (voice.mode === 'browser') {
+        if (!confirm('Your browser will send this recording to its speech vendor (e.g. Google) to transcribe it. RESOLVE does not receive or store audio. Continue?')) return;
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition, rec = new SR();
+        rec.lang = navigator.language || 'en-US'; rec.interimResults = true; rec.continuous = false;
+        let finalText = '';
+        rec.onresult = (ev) => { let interim = ''; for (let i = ev.resultIndex; i < ev.results.length; i++) { if (ev.results[i].isFinal) finalText += ev.results[i][0].transcript; else interim += ev.results[i][0].transcript; } if (target) { target.value = (finalText + interim).trim(); target.dispatchEvent(new Event('input', { bubbles: true })); } };
+        rec.onerror = (ev) => { setMic('chip-warn', ev.error === 'not-allowed' ? 'MIC BLOCKED' : 'SPEECH ERROR', ev.error); micMsg(ev.error === 'not-allowed' ? 'Microphone permission was refused. Allow it in the address bar, or type the command.' : 'Speech recognition failed (' + ev.error + '). You can type the command instead.'); };
+        rec.onend = () => { voice.rec = null; btn.textContent = 'Push to talk'; if (finalText) micMsg('Transcript ready — review and edit it, then run the mission. (browser speech service)'); refreshVoiceHealth(); };
+        voice.rec = { stop: () => rec.stop(), cancel: () => { finalText = ''; rec.abort(); } };
+        btn.textContent = 'Stop'; setMic('chip-warn', 'LISTENING…'); micMsg('Listening via your browser\'s speech service. Press again to stop; Esc cancels.');
+        try { rec.start(); } catch (e) { voice.rec = null; micMsg(String(e.message || e)); }
+        return;
+      }
+      if (voice.health && voice.health.audio_leaves_server && !confirm('Your recording will be sent to the configured speech service to be transcribed, then discarded. Continue?')) return;
+      let stream;
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true } }); }
+      catch (e) { setMic('chip-warn', 'MIC BLOCKED', String(e.name)); micMsg('Microphone access was refused (' + e.name + '). Allow it in the browser address bar, or type the command.'); return; }
+      const ctx = new (window.AudioContext || window.webkitAudioContext)(), src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(4096, 1, 1), chunks = [];
+      proc.onaudioprocess = (ev) => chunks.push(new Float32Array(ev.inputBuffer.getChannelData(0)));
+      src.connect(proc); proc.connect(ctx.destination);
+      const stop = async (reason) => {
+        voice.rec = null; clearTimeout(timer);
+        proc.disconnect(); src.disconnect(); stream.getTracks().forEach(t => t.stop()); const rate = ctx.sampleRate; await ctx.close();
+        btn.textContent = 'Push to talk';
+        if (reason === 'cancel') { setMic('chip-muted', 'CANCELLED'); micMsg('Recording cancelled; nothing was sent.'); return; }
+        setMic('chip-warn', 'TRANSCRIBING…'); btn.disabled = true;
+        try {
+          const wav = encodeWav(chunks, rate);
+          const res = await api('/api/voice/transcribe-audio', { audio_base64: toB64(wav), consent: true, language: navigator.language || 'en-US' });
+          if (target) { target.value = res.transcript; target.dispatchEvent(new Event('input', { bubbles: true })); }
+          micMsg('Transcript ready — review and edit it, then run the mission. (' + res.provider + ', ' + res.duration_s + 's, audio not stored)');
+        } catch (e) { micMsg('Could not transcribe: ' + (e.message || e) + '. You can type the command instead.'); }
+        btn.disabled = false; refreshVoiceHealth();
+      };
+      const timer = setTimeout(() => stop('limit'), 55000);
+      voice.rec = { stop: () => stop('done'), cancel: () => stop('cancel') };
+      btn.textContent = 'Stop & transcribe'; setMic('chip-warn', 'RECORDING…'); micMsg('Recording from your microphone. Press again to stop; Esc cancels.');
+    };
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && voice.rec) voice.rec.cancel(); });
+  }
+  }
+  window.ResolveVoice = { attach: attachVoice };
+  attachVoice({ btn: $('#voiceMicBtn'), badge: $('#voiceStatusBadge'), note: $('#voiceNarration'), target: $('#wmcmd') });
 
   async function handleVoiceTranscript(transcript) {
     try {
@@ -963,8 +1016,7 @@ api('/api/web/benchmark').then(b => {
   };
   const report = (message, error = false) => setMsg(status, message, error ? 'err' : 'ok');
   async function token() {
-    if (!sessionToken) sessionToken = (await api('/api/session')).token;
-    return sessionToken;
+    return ensureToken();
   }
   async function request(path, body) {
     const t = await token();

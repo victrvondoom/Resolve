@@ -1,5 +1,19 @@
 # Tasks
 
+## Final sprint 2026-10-29 (ticked only when verified by tests above)
+- [x] Full-suite regression diagnosed and repaired (231 passed / 12 skipped with reasons / 0 failed)
+- [x] Production mode: no shared token, no demo fallback, host allow-list, startup validation, headers, rate limits, cross-tenant negative tests
+- [x] Cloud browser SSRF policy: scheme allow-list, address classification, redirect-hop validation, sandbox flag off by default, browser disabled in prod without isolation
+- [x] Brief→analysis→architecture→verified PDF mission: concurrent workers, approval digest, independent read-back, chain invariant, cancel/late-result/delete races
+- [x] In-page microphone capture + consent + audio validation + provider adapter (tested with fake STT only)
+- [x] Cream theme + flagship UI + account gate, real-browser E2E with screenshots
+- [x] Upload-your-own-project analysis (multi-language), editable architecture, live history, mode-driven UI, real contact resolution
+- [ ] Real STT provider verified with live speech
+- [ ] Public deployment reachable by judges
+- [ ] GitHub Actions run green
+- [ ] Wispr Flow Insights screenshot (user), two-minute video (user)
+- [ ] Voice bug-report skill, persona skill, spec-studio editing, page reorder/compare, per-tenant VM isolation (PLANNED)
+
 ## College cloud sprint
 - [x] PDF upload, report creation, page rotation/removal, merge, version guard, authenticated download, workspace/account purge with focused tests
 - [x] Document studio UI with browser preview, download and print dialog

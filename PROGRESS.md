@@ -1,5 +1,18 @@
 # Progress
 
+## Final sprint — 2026-10-29 (branch `claude/beautiful-bardeen-fw59qp`, base = master incl. merged cloud-sprint `8a5962d`)
+GATE: regression + hosted-security + flagship mission | **PASS (portable/Linux)** · voice STT end-to-end **BLOCKED** · deployment **BLOCKED (no credentials)**.
+- `python -m pytest tests -q` → **258 passed, 12 skipped, 0 failed** (was 47 failed / 11 errors). Root cause: pip Playwright vs installed Chromium revision mismatch. `harness/evidence/FINAL_REGRESSION.md`.
+- New: `src/net_policy.py` (SSRF), `src/server_security.py` (prod mode/headers/rate limits), `src/voice_engine.py` (audio→STT adapter), `src/brief_mission.py` (worker DAG + verified PDF),
+  `web/static/{flagship.js,cream.css}`, `tests/test_{production_security,voice_engine,brief_mission,brief_mission_api,flagship_e2e}.py`, `.github/workflows/ci.yml`, `Dockerfile`, `docs/{DEPLOYMENT,JUDGE_SUBMISSION,WISPR_EVIDENCE}.md`.
+- Observed (real Chromium, CSP enforced): sign-in → mic capture via getUserMedia (fake device, **fake STT server**) → mission → two workers overlap → approve digest → PDF read-back verified → download hash == shown hash → delete.
+- NOT verified: real speech recognition, live mic, GitHub CI run, Docker build, any public URL, Wispr evidence (user-owned), native Windows (`WINDOWS_NATIVE_TESTS_NOT_RUN`).
+- Hidden-problem audit (`docs/HIDDEN_PROBLEMS.md`): 11 reproduced-then-fixed failures incl. publicly known `demo123` account, Docker boot crash, verifier ISS-1/ISS-10 false confidence, approval/cancel races, hung-worker quota DoS. Residual risks listed there.
+- Dynamic-inputs pass: uploaded-project analysis (multi-language, hash-bound), editable architecture, live mission history, mode-driven UI, real contact resolution replacing canned data. `docs/HIDDEN_PROBLEMS.md` round 2.
+- Subagents: none were spawned; all work was done sequentially by one agent (no 13-role task force was run).
+- NEXT COMMAND: configure STT (`RESOLVE_VOSK_MODEL=<dir>` or `RESOLVE_STT_URL`) then speak into the flagship mic; deploy per `docs/DEPLOYMENT.md`.
+
+
 ## College cloud sprint — 2026-10-29
 Branch `college/cloud-sprint` adds the tested Document studio. `python -m unittest tests.test_document_studio tests.test_document_api tests.test_cloud_api -v` → 6 passed; `node --check web/static/app.js` and `git diff --check` passed. Real HTTP flow covered report creation, upload, PDF download and SHA-256 check, merge, stale-hash rejection, cross-user denial, export metadata, and account deletion. Browser print uses the browser dialog; physical completion was not tested. `python -m pytest tests -q` under this runtime yielded 47 failed, 133 passed, 10 skipped, 11 errors because the installed pytest environment runs sync Playwright calls inside an asyncio loop; Chromium browser download was also blocked in this environment. No full-suite or browser UI pass is claimed. See `docs/COLLEGE_HANDOFF.md`.
 

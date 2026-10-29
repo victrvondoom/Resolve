@@ -1,0 +1,48 @@
+name: ci
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  portable:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [unit, document, cloud, voice, security, api]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install -r requirements-dev.txt
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m pytest tests -q -m "${{ matrix.group }}" -rs
+        env:
+          RESOLVE_BROWSER_NO_SANDBOX: '1'   # test-only: runner user-namespace restrictions; never set in production
+
+  browser-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install -r requirements-dev.txt
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m pytest tests -q -m browser_e2e -rs
+        env:
+          RESOLVE_BROWSER_NO_SANDBOX: '1'   # GitHub runners restrict user namespaces; test-only, never set in production
+          RESOLVE_SCREENSHOT_DIR: ${{ runner.temp }}/shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: e2e-screenshots, path: '${{ runner.temp }}/shots' }
+
+  windows-native:
+    # Runs ONLY what a non-interactive runner can; physical-input tests remain skipped with an explicit reason.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest tests -q -m windows_native -rs

@@ -68,6 +68,7 @@ class FaultMatrixTests(unittest.TestCase):
             self.assertIn('foreground changed', res['refused'])
             self.assertEqual(target_file.read_text(encoding='utf-8'), '')
 
+    @unittest.skipUnless(sys.platform == 'win32', 'windows-native: WINDOWS_NATIVE_TESTS_NOT_RUN (needs interactive Windows desktop; run scripts/smoke-windows.ps1)')
     def test_F02_target_bounds_out_of_range(self):
         """F02: Target coordinates fall outside window bounds -> rejected before dispatch."""
         foreground = next((w for w in windows_adapter.list_windows()["windows"] if w["foreground"]), None)
@@ -78,6 +79,7 @@ class FaultMatrixTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             windows_adapter.validate_target(foreground["hwnd"], token, b[2] + 500, b[3] + 500)
 
+    @unittest.skipUnless(sys.platform == 'win32', 'windows-native: WINDOWS_NATIVE_TESTS_NOT_RUN (needs interactive Windows desktop; run scripts/smoke-windows.ps1)')
     def test_F03_stale_snapshot_rejected(self):
         """F03: Snapshot timestamp older than SNAPSHOT_MAX_AGE -> rejected."""
         foreground = next((w for w in windows_adapter.list_windows()["windows"] if w["foreground"]), None)
