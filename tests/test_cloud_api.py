@@ -92,16 +92,22 @@ class CloudApiIntegrationTests(unittest.TestCase):
         self.assertEqual(res_status, 200)
         self.assertTrue(len(res_body['resources']) >= 1)
 
-        # 7. Test voice transcription with correction handling
+        # 7. Voice text resolution is real: bound to ledger entity ids, ambiguity asks, nothing is canned
         voice_status, voice_body = self.srv.req(
             'POST', '/api/voice/transcribe',
-            {'text': 'No, not Alex from Sales. Alex from Finance'},
+            {'text': 'No, not that one. Alex Morgan at Contoso'},
             headers={'Authorization': f'Bearer {token}'}
         )
         self.assertEqual(voice_status, 200)
         self.assertTrue(voice_body['is_correction'])
-        self.assertEqual(voice_body['resolved_entity']['id'], 'alex-fin-02')
-        self.assertEqual(voice_body['resolved_entity']['department'], 'Finance')
+        self.assertEqual(voice_body['resolved_entity']['id'], 'contact_alex_2')
+        self.assertEqual(voice_body['resolved_entity']['stable_id'], 'crm:contact:208')
+        s2, ambiguous = self.srv.req('POST', '/api/voice/transcribe', {'text': 'Send it to Alex'}, headers={'Authorization': f'Bearer {token}'})
+        self.assertIsNone(ambiguous['resolved_entity'])
+        self.assertEqual({c['id'] for c in ambiguous['candidates']}, {'contact_alex_1', 'contact_alex_2'})
+        self.assertEqual(ambiguous['recommended_action'], 'needs_clarification')
+        s3, nobody = self.srv.req('POST', '/api/voice/transcribe', {'text': 'Send it to Zed'}, headers={'Authorization': f'Bearer {token}'})
+        self.assertIsNone(nobody['resolved_entity']); self.assertEqual(nobody['candidates'], [])
 
         # 8. Test privacy summary and data export
         priv_status, priv_body = self.srv.req('GET', '/api/privacy/summary', headers={'Authorization': f'Bearer {token}'})

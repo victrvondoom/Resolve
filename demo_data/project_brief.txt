@@ -1,0 +1,8 @@
+Inventory Service v2 - Project Brief
+Owner: Platform team
+Goal: harden the inventory service before the warehouse rollout.
+R1 All credentials must come from environment variables; no secrets may be stored in source code.
+R2 All database access must use parameterized queries to prevent SQL injection.
+R3 Errors must be handled explicitly and logged; silent failures are not acceptable.
+R4 Every module must have automated tests before release.
+R5 Open TODO and FIXME items must be resolved or tracked before release.

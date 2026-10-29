@@ -50,8 +50,8 @@ class TenantAuthTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 401)
 
     def test_cross_tenant_workspace_isolation(self):
-        user_a = self.auth.register("user_a@test.com", "pass_a")
-        user_b = self.auth.register("user_b@test.com", "pass_b")
+        user_a = self.auth.register("user_a@test.com", "pass_a_long_enough")
+        user_b = self.auth.register("user_b@test.com", "pass_b_long_enough")
 
         # User A attempts to switch to User B's workspace
         with self.assertRaises(TenantError) as ctx:
@@ -59,7 +59,7 @@ class TenantAuthTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 403)
 
     def test_workspace_management(self):
-        user = self.auth.register("dave@test.com", "passdave")
+        user = self.auth.register("dave@test.com", "passdave-long-1")
         ws2 = self.auth.create_workspace(user["user_id"], "Project Alpha")
         self.assertTrue(ws2["id"].startswith("ws_"))
 
@@ -81,7 +81,7 @@ class TenantAuthTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
 
     def test_user_deletion_cascades(self):
-        user = self.auth.register("eve@test.com", "passeve")
+        user = self.auth.register("eve@test.com", "passeve-long-1")
         token = user["token"]
         user_id = user["user_id"]
 

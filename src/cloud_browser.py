@@ -6,18 +6,30 @@ import os
 import threading
 import time
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
-from playwright.sync_api import sync_playwright, BrowserContext, Page, Playwright
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # Playwright is optional: production ships without a browser
+    from playwright.sync_api import BrowserContext, Page, Playwright
+
+from net_policy import NetPolicy, PolicyViolation
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# Block AWS/GCP/Azure instance metadata endpoints and sensitive local ports
-BLOCKED_HOSTS = {
-    "169.254.169.254",
-    "metadata.google.internal",
-    "metadata.azure.com"
-}
+
+def _chromium_executable() -> str | None:
+    """Honor RESOLVE_CHROMIUM_PATH, else a pre-installed /opt/pw-browsers build when the
+    pip Playwright revision has no matching download."""
+    explicit = os.environ.get("RESOLVE_CHROMIUM_PATH")
+    if explicit:
+        return explicit
+    base = Path(os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers"))
+    for pattern in ("chromium-*/chrome-linux*/chrome", "chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell"):
+        found = sorted(base.glob(pattern))
+        if found:
+            return str(found[-1])
+    return None
 
 
 class CloudBrowserError(Exception):
@@ -28,7 +40,9 @@ class CloudBrowserError(Exception):
 
 
 class CloudBrowserSession:
-    def __init__(self, sandbox_id: str, owner_user_id: str, profile_dir: Path | str):
+    def __init__(self, sandbox_id: str, owner_user_id: str, profile_dir: Path | str, policy: NetPolicy | None = None):
+        self.policy = policy or NetPolicy()
+        self.blocked_requests: list[dict] = []
         self.sandbox_id = sandbox_id
         self.owner_user_id = owner_user_id
         self.profile_dir = Path(profile_dir)
@@ -44,27 +58,59 @@ class CloudBrowserSession:
         self._init_browser()
 
     def _init_browser(self) -> None:
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError as exc:
+            raise CloudBrowserError('Playwright is not installed on this deployment', status_code=503) from exc
         self._pw = sync_playwright().start()
-        # Launch persistent context inside the sandbox profile directory
+        args = ["--disable-dev-shm-usage"]
+        # Chromium's own sandbox stays ON unless the host cannot provide user namespaces
+        # (typical root-in-container). Opt out explicitly; never silently.
+        if os.environ.get("RESOLVE_BROWSER_NO_SANDBOX") == "1":
+            args.append("--no-sandbox")
+        kwargs = {}
+        exe = _chromium_executable()
+        if exe:
+            kwargs["executable_path"] = exe
         self._context = self._pw.chromium.launch_persistent_context(
             user_data_dir=str(self.profile_dir),
             headless=True,
             viewport={"width": 1280, "height": 800},
-            args=["--disable-dev-shm-usage", "--no-sandbox"]
+            args=args,
+            service_workers="block",
+            accept_downloads=False,
+            **kwargs,
         )
+        # Every request (navigations, redirects, subresources) passes the policy.
+        self._context.route("**/*", self._route_guard)
         self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
 
+    def _route_guard(self, route) -> None:
+        """Validate the request, then fetch it with redirects disabled and validate every
+        Location hop ourselves; Chromium does not re-route redirects it follows internally."""
+        url = route.request.url
+        if url.startswith("about:blank"):
+            return route.continue_()
+        try:
+            self.policy.check_url(url)
+            resp = route.fetch(max_redirects=0, timeout=15000)
+            if 300 <= resp.status < 400 and resp.headers.get("location"):
+                self.policy.check_url(urljoin(url, resp.headers["location"]))
+        except PolicyViolation as exc:
+            self.blocked_requests.append({"url": url[:200], "reason": exc.message, "t": time.time()})
+            return route.abort("blockedbyclient")
+        except Exception as exc:  # fetch failure: fail closed
+            self.blocked_requests.append({"url": url[:200], "reason": f"fetch failed: {exc}"[:200], "t": time.time()})
+            return route.abort("failed")
+        return route.fulfill(response=resp)
+
     def _validate_url(self, url: str) -> str:
-        parsed = urlparse(url)
-        if not parsed.scheme:
-            url = f"http://{url}"
-            parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https", "file", "data"):
-            raise CloudBrowserError(f"Unsupported URL scheme: {parsed.scheme}")
-        hostname = (parsed.hostname or "").lower()
-        if hostname in BLOCKED_HOSTS:
-            raise CloudBrowserError(f"Access to metadata host {hostname} is forbidden by policy", status_code=403)
-        return url
+        if "://" not in url and not url.startswith(("data:", "file:", "javascript:", "about:")):
+            url = f"https://{url}"
+        try:
+            return self.policy.check_url(url)
+        except PolicyViolation as exc:
+            raise CloudBrowserError(exc.message, status_code=exc.status_code)
 
     def navigate(self, url: str) -> dict:
         with self._lock:
@@ -154,7 +200,8 @@ class CloudBrowserSession:
 
 class CloudBrowserPool:
     """Manages active cloud browser sessions indexed by sandbox_id."""
-    def __init__(self):
+    def __init__(self, policy: NetPolicy | None = None):
+        self._policy = policy
         self._sessions: dict[str, CloudBrowserSession] = {}
         self._lock = threading.Lock()
 
@@ -167,7 +214,7 @@ class CloudBrowserPool:
                 return session
 
             profile_dir = Path(storage_path) / "browser_profile"
-            session = CloudBrowserSession(sandbox_id, owner_user_id, profile_dir)
+            session = CloudBrowserSession(sandbox_id, owner_user_id, profile_dir, self._policy)
             self._sessions[sandbox_id] = session
             return session
 

@@ -23,7 +23,7 @@ class PrivacyEngineTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_summary_and_export(self):
-        user = self.auth.register("dan@test.com", "passdan")
+        user = self.auth.register("dan@test.com", "passdan-long-1")
         uid = user["user_id"]
         wid = user["workspace_id"]
 
@@ -43,7 +43,7 @@ class PrivacyEngineTests(unittest.TestCase):
         self.assertEqual(len(bundle["connected_integrations"]), 3)
 
     def test_delete_sandbox_flow(self):
-        user = self.auth.register("frank@test.com", "passfrank")
+        user = self.auth.register("frank@test.com", "passfrank-long-1")
         uid = user["user_id"]
         wid = user["workspace_id"]
 
@@ -54,7 +54,7 @@ class PrivacyEngineTests(unittest.TestCase):
         self.assertTrue(len(receipt.sha256_proof) == 64)
 
     def test_delete_account_complete_purge(self):
-        user = self.auth.register("grace@test.com", "passgrace")
+        user = self.auth.register("grace@test.com", "passgrace-long-1")
         uid = user["user_id"]
         wid = user["workspace_id"]
 

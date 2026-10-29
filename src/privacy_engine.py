@@ -46,6 +46,7 @@ class PrivacyEngine:
         self.sandbox_mgr = sandbox_mgr
         self.connector_reg = connector_reg
         self.data_dir = Path(data_dir) if data_dir else ROOT / 'data'
+
         self.documents = DocumentStudio(Path(os.environ.get('RESOLVE_DOCUMENTS_DIR', self.data_dir / 'documents')))
 
     def get_summary(self, user_id: str, workspace_id: str) -> dict:
@@ -97,6 +98,7 @@ class PrivacyEngine:
         }
         # Binary PDFs remain available through authenticated download.
         export_bundle['documents'] = self.documents.list_documents(user_id, workspace_id)
+
         bundle_str = json.dumps(export_bundle, sort_keys=True)
         export_bundle["sha256_checksum"] = hashlib.sha256(bundle_str.encode()).hexdigest()
         return export_bundle
@@ -127,6 +129,8 @@ class PrivacyEngine:
         destroyed_sbx = []
         for sbx in user_sandboxes:
             if sbx.workspace_id == workspace_id:
+                if self.browser_pool:
+                    self.browser_pool.close_session(sbx.id)
                 self.sandbox_mgr.destroy_sandbox(sbx.id, caller_user_id=user_id)
                 destroyed_sbx.append(sbx.id)
 
@@ -136,7 +140,7 @@ class PrivacyEngine:
             if c["status"] == "CONNECTED":
                 self.connector_reg.disconnect(user_id, workspace_id, c["connector_id"])
 
-        # 3. Delete from tenant database
+
         self.documents.delete_workspace(user_id, workspace_id)
         self.auth_mgr.delete_workspace(user_id, workspace_id)
 
@@ -150,7 +154,7 @@ class PrivacyEngine:
             target_id=workspace_id,
             user_id=user_id,
             status="COMPLETED",
-            purged_items={"workspace_id": workspace_id, "destroyed_sandboxes": destroyed_sbx, "documents_removed": True},
+
             timestamp=now,
             retention_notice="Workspace metadata and isolated sandboxes permanently erased.",
             sha256_proof=proof
@@ -162,6 +166,8 @@ class PrivacyEngine:
         user_sandboxes = self.sandbox_mgr.list_sandboxes(user_id)
         destroyed_sbx = []
         for sbx in user_sandboxes:
+            if self.browser_pool:
+                self.browser_pool.close_session(sbx.id)
             self.sandbox_mgr.destroy_sandbox(sbx.id, caller_user_id=user_id)
             destroyed_sbx.append(sbx.id)
 
@@ -169,6 +175,7 @@ class PrivacyEngine:
         purged_connectors = self.connector_reg.purge_user_connectors(user_id)
 
         # 3. Delete user and sessions from tenant database
+
         self.documents.delete_user(user_id)
         self.auth_mgr.delete_user(user_id)
 
@@ -187,7 +194,7 @@ class PrivacyEngine:
                 "purged_connectors_count": purged_connectors,
                 "sessions_invalidated": True,
                 "user_record_deleted": True,
-                "documents_removed": True
+
             },
             timestamp=now,
             retention_notice="All personal credentials, browser sessions, and workspace storage have been permanently erased. Offsite backup snapshots expire in 30 days.",

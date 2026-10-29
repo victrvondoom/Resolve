@@ -1,5 +1,6 @@
 # Progress
 
+<
 ## College cloud sprint — 2026-10-29
 Branch `college/cloud-sprint` adds the tested Document studio. `python -m unittest tests.test_document_studio tests.test_document_api tests.test_cloud_api -v` → 6 passed; `node --check web/static/app.js` and `git diff --check` passed. Real HTTP flow covered report creation, upload, PDF download and SHA-256 check, merge, stale-hash rejection, cross-user denial, export metadata, and account deletion. Browser print uses the browser dialog; physical completion was not tested. `python -m pytest tests -q` under this runtime yielded 47 failed, 133 passed, 10 skipped, 11 errors because the installed pytest environment runs sync Playwright calls inside an asyncio loop; Chromium browser download was also blocked in this environment. No full-suite or browser UI pass is claimed. See `docs/COLLEGE_HANDOFF.md`.
 

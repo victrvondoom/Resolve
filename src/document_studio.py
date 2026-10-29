@@ -34,6 +34,7 @@ def synchronized(fn):
 class DocumentStudio:
     MAX_PDF_BYTES = 20 * 1024 * 1024
 
+
     def __init__(self, base_dir: str | Path):
         self._lock = threading.RLock()
         self.base_dir = Path(base_dir).resolve()
@@ -217,6 +218,7 @@ class DocumentStudio:
                           operation="report")
 
     @synchronized
+
     def delete_workspace(self, user_id: str, workspace_id: str) -> int:
         """Purge PDF artifacts for one tenant workspace; return removed count."""
         with self._db() as db:
@@ -237,3 +239,4 @@ class DocumentStudio:
                 (self.files_dir / f"{doc_id}.pdf").unlink(missing_ok=True)
             db.execute("DELETE FROM documents WHERE user_id=?", (user_id,))
         return len(ids)
+
