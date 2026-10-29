@@ -18,6 +18,8 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python -m playwright install --with-deps chromium
       - run: python -m pytest tests -q -m "${{ matrix.group }}" -rs
+        env:
+          RESOLVE_BROWSER_NO_SANDBOX: '1'   # test-only: runner user-namespace restrictions; never set in production
 
   browser-e2e:
     runs-on: ubuntu-latest

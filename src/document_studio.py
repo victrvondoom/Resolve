@@ -33,6 +33,7 @@ def synchronized(fn):
 
 class DocumentStudio:
     MAX_PDF_BYTES = 20 * 1024 * 1024
+    MAX_TEXT_PAGES = 100   # bound parser work when extracting text
 
     def __init__(self, base_dir: str | Path):
         self._lock = threading.RLock()
@@ -225,6 +226,8 @@ class DocumentStudio:
     @synchronized
     def extract_text(self, user_id: str, workspace_id: str, document_id: str) -> str:
         reader = PdfReader(io.BytesIO(self.read_pdf(user_id, workspace_id, document_id)), strict=True)
+        if len(reader.pages) > self.MAX_TEXT_PAGES:
+            raise DocumentError(f"Document has {len(reader.pages)} pages; text extraction is limited to {self.MAX_TEXT_PAGES}", 413)
         return "\n".join((page.extract_text() or "") for page in reader.pages)
 
     @synchronized

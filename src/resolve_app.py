@@ -33,7 +33,7 @@ from privacy_engine import PrivacyEngine
 from document_studio import DocumentStudio, DocumentError
 from brief_mission import BriefMissionStore, MissionError
 from voice_engine import VoiceEngine, VoiceError
-from server_security import ServerSecurity, RateLimiter, SECURITY_HEADERS, ConfigError
+from server_security import ServerSecurity, RateLimiter, SECURITY_HEADERS, ConfigError, client_ip
 
 DB = Path(os.environ.get('RESOLVE_DB', ROOT / 'data' / 'resolve.sqlite3'))
 ledger = Ledger(DB)
@@ -385,7 +385,7 @@ class Handler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path
             if path in {'/api/auth/register', '/api/auth/login'}:
                 self.check_origin(mutation=True, public_auth=True)
-                require(rate_limiter.allow('auth', self.client_address[0], SECURITY.auth_rate_per_min), 429, 'too many authentication attempts; retry later')
+                require(rate_limiter.allow('auth', client_ip(self.client_address[0], self.headers.get('X-Forwarded-For', ''), SECURITY.trusted_proxy), SECURITY.auth_rate_per_min), 429, 'too many authentication attempts; retry later')
                 data = self.body()
                 if path == '/api/auth/register':
                     session = tenant_auth_mgr.register(data.get('email', ''), data.get('password', ''), data.get('display_name'))

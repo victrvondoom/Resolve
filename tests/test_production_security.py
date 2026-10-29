@@ -95,6 +95,10 @@ class ProductionApiTests(unittest.TestCase):
         self.assertEqual(self.srv.req('POST', '/api/documents/report', {'title': 't', 'text': 'x'})[0], 401)
         self.assertEqual(self.srv.req('GET', '/api/auth/me', headers={'Authorization': 'Bearer nonsense'})[0], 401)
 
+    def test_demo_account_with_known_password_does_not_exist(self):
+        for pw in ('demo123', 'password', 'demo@resolve.local'):
+            self.assertEqual(self.srv.req('POST', '/api/auth/login', {'email': 'demo@resolve.local', 'password': pw})[0], 401, pw)
+
     def test_legacy_global_ledger_routes_disabled(self):
         a = self.register()
         for path in ('/api/state', '/api/approvals', '/api/evidence', '/api/mission/history', '/api/stream', '/api/web/state', '/api/skills'):

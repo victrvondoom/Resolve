@@ -8,7 +8,10 @@ import time
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
-from playwright.sync_api import sync_playwright, BrowserContext, Page, Playwright
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # Playwright is optional: production ships without a browser
+    from playwright.sync_api import BrowserContext, Page, Playwright
 
 from net_policy import NetPolicy, PolicyViolation
 
@@ -55,6 +58,10 @@ class CloudBrowserSession:
         self._init_browser()
 
     def _init_browser(self) -> None:
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError as exc:
+            raise CloudBrowserError('Playwright is not installed on this deployment', status_code=503) from exc
         self._pw = sync_playwright().start()
         args = ["--disable-dev-shm-usage"]
         # Chromium's own sandbox stays ON unless the host cannot provide user namespaces

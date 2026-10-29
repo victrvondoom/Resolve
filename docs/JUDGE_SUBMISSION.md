@@ -39,7 +39,7 @@ Spec-to-report work is dictation-shaped: long, structured intent. The page has i
   an off-server STT provider needs explicit per-recording consent.
 
 ## Tests (see `harness/evidence/FINAL_REGRESSION.md`)
-231 passed, 12 skipped (all native-Windows/Tk, with reasons), 0 failed on Linux. GitHub CI workflow written but not yet run.
+244 passed, 12 skipped (all native-Windows/Tk, with reasons), 0 failed on Linux. GitHub CI workflow written but not yet run.
 
 ## Demo script (≈2 min, no fabricated steps)
 0:00 problem (scattered brief + code + report) · 0:12 *show real Wispr Flow dictating* a prompt (**user records this**) · 0:25 open RESOLVE, sign in with a demo account ·

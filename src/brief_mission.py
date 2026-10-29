@@ -151,21 +151,29 @@ def plan_digest(plan: dict) -> str:
 
 
 def build_architecture(analysis: dict, issues: list[dict]) -> dict:
-    nodes = [{"id": m, "label": m, "kind": "current"} for m in analysis["modules"]]
-    edges = [{"from": a, "to": b} for a, deps in sorted(analysis["imports"].items()) for b in deps]
+    """Node ids are generated, never taken from file names: names can collide with proposed nodes or be invalid Mermaid."""
+    ids: dict[str, str] = {}
+    for m in analysis["modules"]:
+        base = "m_" + (re.sub(r"\W", "_", m) or "x")
+        cand, k = base, 2
+        while cand in ids.values():
+            cand, k = f"{base}_{k}", k + 1
+        ids[m] = cand
+    nodes = [{"id": ids[m], "label": m, "kind": "current"} for m in analysis["modules"]]
+    edges = [{"from": ids[a], "to": ids[b]} for a, deps in sorted(analysis["imports"].items()) if a in ids for b in deps if b in ids]
     cats = {i["category"] for i in issues}
     additions = []
     if "secrets" in cats:
-        additions.append(("config", "Config / secrets loader (env)", ["auth"]))
+        additions.append(("new_config", "Config / secrets loader (env)", ["auth"]))
     if "validation" in cats:
-        additions.append(("repo", "Repository layer (parameterized SQL)", ["db"]))
+        additions.append(("new_repo", "Repository layer (parameterized SQL)", ["db"]))
     if "error-handling" in cats:
-        additions.append(("errors", "Error handling and logging", ["db", "app"]))
+        additions.append(("new_errors", "Error handling and logging", ["db", "app"]))
     if "testing" in cats:
-        additions.append(("tests", "Automated test suite", list(analysis["modules"])))
+        additions.append(("new_tests", "Automated test suite", list(analysis["modules"])))
     for nid, label, links in additions:
         nodes.append({"id": nid, "label": label, "kind": "proposed"})
-        edges += [{"from": nid, "to": x, "dashed": True} for x in links if x in analysis["modules"]]
+        edges += [{"from": nid, "to": ids[x], "dashed": True} for x in links if x in ids]
     return {"nodes": nodes, "edges": edges}
 
 
@@ -327,7 +335,8 @@ def verify_output(studio: DocumentStudio, user_id: str, workspace_id: str, doc_i
         "contains_title": plan["title"][:30].replace(" ", "") in flat,
         "references_correct_source_sha": f"SRC-SHA256:{source_sha}" in flat,
         "no_other_source_sha": all(h == source_sha for h in re.findall(r"SRC-SHA256:([0-9a-f]{64})", flat)),
-        "contains_every_issue": all(i["id"] in flat and i["citation"].split()[0].replace(" ", "") in flat for i in plan["issues"]),
+        # word-boundary matching: "ISS-1" must not be satisfied by "ISS-10", nor "auth.py:1" by "auth.py:10"
+        "contains_every_issue": all(re.search(re.escape(i["id"]) + r"(?!\d)", flat) and re.search(re.escape(i["citation"].split()[0]) + r"(?!\d)", flat) for i in plan["issues"]),
         "contains_architecture": "flowchartTD" in flat,
         "contains_plan_digest": plan["digest"][:32] in flat,
     }
@@ -431,6 +440,19 @@ class BriefMissionStore:
         with self._db() as db:
             db.execute(f"UPDATE brief_missions SET {sets} WHERE id=?", (*fields.values(), mission_id))
 
+    def _cas(self, mission_id: str, from_states: tuple, **fields) -> bool:
+        """Atomic compare-and-set transition. A check-then-write in Python is racy (two approvals, or a cancel landing
+        between a worker's liveness check and its commit); the WHERE clause makes the state test and the write one step."""
+        fields["updated_at"] = time.time()
+        for k in ("plan", "receipt"):
+            if k in fields and fields[k] is not None and not isinstance(fields[k], str):
+                fields[k] = json.dumps(fields[k])
+        sets = ",".join(f"{k}=?" for k in fields)
+        marks = ",".join("?" * len(from_states))
+        with self._db() as db:
+            cur = db.execute(f"UPDATE brief_missions SET {sets} WHERE id=? AND cancelled=0 AND state IN ({marks})", (*fields.values(), mission_id, *from_states))
+            return cur.rowcount == 1
+
     def _public(self, row, with_events=True) -> dict:
         m = {k: row[k] for k in row.keys()}
         m["plan"] = json.loads(m["plan"]) if m["plan"] else None
@@ -505,9 +527,7 @@ class BriefMissionStore:
         self._event(mid, node, worker, "NODE_STARTED", ts=t0)
         hook = self.hooks.get(node)
         try:
-            if hook:
-                hook()
-            result = fn()
+            result = self._run_bounded(node, lambda: (hook() if hook else None, fn())[1])
         except Exception as exc:
             self._event(mid, node, worker, "NODE_FAILED", {"error": str(exc)[:300]})
             raise
@@ -515,11 +535,28 @@ class BriefMissionStore:
         if self._alive(mid) is None:
             self._event(mid, node, worker, "LATE_RESULT_REJECTED", {"reason": "mission cancelled, finished or deleted"})
             raise MissionError("late result rejected", 409)
-        if t1 - t0 > NODE_TIMEOUT_S:
-            self._event(mid, node, worker, "NODE_FAILED", {"error": f"timeout after {t1 - t0:.1f}s"})
-            raise MissionError(f"{node} exceeded {NODE_TIMEOUT_S}s", 504)
         self._event(mid, node, worker, "NODE_FINISHED", {"duration_s": round(t1 - t0, 4)}, ts=t1)
         return result
+
+    @staticmethod
+    def _run_bounded(node: str, fn):
+        """Run fn in a daemon thread and give up after NODE_TIMEOUT_S. Python cannot kill a thread, so a hung node is
+        abandoned (its result is discarded by the liveness/CAS guards) instead of blocking the mission and its quota slot forever."""
+        box: dict = {}
+
+        def target():
+            try:
+                box["value"] = fn()
+            except BaseException as exc:  # noqa: BLE001 - re-raised in the caller
+                box["error"] = exc
+        t = threading.Thread(target=target, name=f"node-{node}", daemon=True)
+        t.start()
+        t.join(NODE_TIMEOUT_S)
+        if t.is_alive():
+            raise MissionError(f"{node} exceeded {NODE_TIMEOUT_S}s (timeout)", 504)
+        if "error" in box:
+            raise box["error"]
+        return box["value"]
 
     def _run_analysis(self, mid: str):
         try:
@@ -532,9 +569,9 @@ class BriefMissionStore:
             reqs, analysis = fa.result(), fb.result()  # both must succeed; a failure in either fails the mission
             src = self.studio.get_document(uid, wid, row["source_doc_id"])
             plan = self._node(mid, "ARCHITECTURE_PLANNER", lambda: build_plan(reqs, analysis, src, self._title(src), {"revision": row["intent_revision"], "text": row["intent_text"]}))
-            if self._alive(mid) is None:
+            if not self._cas(mid, ("RUNNING",), plan=plan, state="AWAITING_APPROVAL"):
+                self._event(mid, "ARCHITECTURE_PLANNER", "orchestrator", "LATE_RESULT_REJECTED", {"reason": "mission left RUNNING before the plan could be committed"})
                 return
-            self._update(mid, plan=plan, state="AWAITING_APPROVAL")
             self._event(mid, "MISSION", "orchestrator", "AWAITING_APPROVAL", {"plan_digest": plan["digest"], "issues": len(plan["issues"])})
         except Exception as exc:
             self._fail(mid, exc)
@@ -554,10 +591,8 @@ class BriefMissionStore:
         return reqs
 
     def _fail(self, mid: str, exc: Exception):
-        if self._alive(mid) is None:
-            return
-        self._update(mid, state="FAILED", error=str(exc)[:400])
-        self._event(mid, "MISSION", "orchestrator", "MISSION_FAILED", {"error": str(exc)[:400]})
+        if self._cas(mid, ("RUNNING", "AWAITING_APPROVAL", "COMPOSING"), state="FAILED", error=str(exc)[:400]):
+            self._event(mid, "MISSION", "orchestrator", "MISSION_FAILED", {"error": str(exc)[:400]})
 
     def approve(self, mission_id: str, user_id: str, workspace_id: str, plan_digest: str) -> dict:
         row = self._row(mission_id, user_id, workspace_id)
@@ -567,7 +602,8 @@ class BriefMissionStore:
         if plan_digest != plan["digest"]:
             self._event(mission_id, "APPROVAL", "user", "APPROVAL_REJECTED_STALE", {"presented": str(plan_digest)[:16], "current": plan["digest"][:16]})
             raise MissionError("Approval digest does not match the current plan (stale approval)", 409)
-        self._update(mission_id, state="COMPOSING")
+        if not self._cas(mission_id, ("AWAITING_APPROVAL",), state="COMPOSING"):   # exactly one concurrent approval wins
+            raise MissionError("Mission is no longer awaiting approval (already approved, revised or cancelled)", 409)
         self._event(mission_id, "APPROVAL", user_id, "PLAN_APPROVED", {"plan_digest": plan_digest, "intent_revision": row["intent_revision"]})
         self._orch.submit(self._run_output, mission_id, plan_digest)
         return self.get(mission_id, user_id, workspace_id)
@@ -580,7 +616,8 @@ class BriefMissionStore:
         if not intent_text or len(intent_text) > 2000:
             raise MissionError("intent_text (1-2000 chars) required")
         rev = row["intent_revision"] + 1
-        self._update(mission_id, intent_text=intent_text, intent_revision=rev, state="RUNNING", plan=None)
+        if not self._cas(mission_id, ("AWAITING_APPROVAL",), intent_text=intent_text, intent_revision=rev, state="RUNNING", plan=None):
+            raise MissionError("Mission changed state while revising; reload and retry", 409)
         self._event(mission_id, "MISSION", user_id, "INTENT_REVISED", {"intent_revision": rev, "supersedes_approvals": True})
         self._orch.submit(self._run_analysis, mission_id)
         return self.get(mission_id, user_id, workspace_id)
@@ -589,7 +626,8 @@ class BriefMissionStore:
         row = self._row(mission_id, user_id, workspace_id)
         if row["state"] in TERMINAL:
             raise MissionError(f"Mission already {row['state']}", 409)
-        self._update(mission_id, cancelled=1, state="CANCELLED")
+        if not self._cas(mission_id, ("RUNNING", "AWAITING_APPROVAL", "COMPOSING"), cancelled=1, state="CANCELLED"):
+            raise MissionError("Mission already finished or cancelled", 409)
         self._event(mission_id, "MISSION", user_id, "MISSION_CANCELLED", {})
         return self.get(mission_id, user_id, workspace_id)
 
@@ -632,9 +670,10 @@ class BriefMissionStore:
             broken = verify_chain(candidate, self._owns(uid, wid, doc["id"]))
             if broken:
                 raise MissionError("Causal chain broken: " + "; ".join(broken), 422)
-            if self._alive(mid) is None:
+            if not self._cas(mid, ("COMPOSING",), state="CONFIRMED", output_doc_id=doc["id"], output_sha256=doc["sha256"], receipt=receipt):
+                self._event(mid, "MISSION", "orchestrator", "LATE_RESULT_REJECTED", {"reason": "mission left COMPOSING before confirmation"})
+                self.studio.delete_document(uid, wid, doc["id"])   # compensate: no confirmed receipt, so no orphan artifact
                 return
-            self._update(mid, state="CONFIRMED", output_doc_id=doc["id"], output_sha256=doc["sha256"], receipt=receipt)
             self._event(mid, "MISSION", "orchestrator", "MISSION_CONFIRMED", {"output_doc_id": doc["id"], "output_sha256": doc["sha256"]})
         except Exception as exc:
             if out_id and row is not None and self._alive(mid) is not None:  # failed verification: do not leave an unverified artifact
