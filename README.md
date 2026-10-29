@@ -1,5 +1,11 @@
 # RESOLVE: Wisper and Solve
 
+## College cloud sprint (document workflow)
+
+The browser app now has a Document studio: upload a PDF (up to 5 MiB), rotate pages, remove pages, merge PDFs, create a report from text, preview the generated PDF, download it, or open the browser print dialog. Each operation stores an actual PDF with a SHA-256 receipt. Transformations require the source hash; document reads and writes are scoped to the current account and workspace. Workspace and account deletion purge their stored PDFs. Install `requirements-dev.txt`, run `python src/resolve_app.py`, then open `/app` and choose **Documents & print**. The HTTP and PDF checks are in `tests/test_document_api.py` and `tests/test_document_studio.py`.
+
+This branch is a local server prototype. It binds to loopback, exposes a shared demo session for local use, has no production OAuth, and has no deployed per-user VM isolation. Its `/api/voice/transcribe` route accepts submitted text; it does not transcribe audio. The print dialog cannot prove that a physical printer completed a job. See `docs/COLLEGE_HANDOFF.md` for the implementation boundary and next steps.
+
 **Say what you want done. RESOLVE makes sure it happens to the right person, with the right file, exactly once — and proves it.**
 
 RESOLVE is a local, Windows-first, voice-operable agent system for computer work where *acting correctly* matters more than clicking quickly. Many tools can click, type and read a screen. RESOLVE targets a different failure: an agent that does every click right and still emails the wrong Jordan Lee, attaches last week's report, sends twice after a lost acknowledgement, or acts on an instruction you already corrected — then reports success.

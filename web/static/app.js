@@ -949,3 +949,152 @@ api('/api/web/benchmark').then(b => {
   loadConnectors();
   loadPrivacy();
 })();
+
+/* Document Studio uses real PDF bytes returned by the authenticated server. */
+(() => {
+  const list = $('#docList');
+  if (!list) return;
+  let documents = [], selected = [], active = null, previewUrl = null;
+  const status = $('#docStatus');
+  const busy = (value) => {
+    $('#docUploadBtn').disabled = value;
+    $('#docTransform').disabled = value;
+    $('#docRefresh').disabled = value;
+  };
+  const report = (message, error = false) => setMsg(status, message, error ? 'err' : 'ok');
+  async function token() {
+    if (!sessionToken) sessionToken = (await api('/api/session')).token;
+    return sessionToken;
+  }
+  async function request(path, body) {
+    const t = await token();
+    const res = await fetch(path, {
+      method: body ? 'POST' : 'GET',
+      headers: { Authorization: 'Bearer ' + t, 'X-Resolve-Token': t, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+    if (!res.ok) {
+      let detail = {};
+      try { detail = await res.json(); } catch (_) { /* Preserve HTTP error. */ }
+      throw Error(detail.error || detail.message || 'HTTP ' + res.status);
+    }
+    return res;
+  }
+  const idOf = d => String(d.id ?? d.document_id);
+  function renderList() {
+    list.replaceChildren();
+    if (!documents.length) { list.textContent = 'No PDFs in this workspace yet.'; return; }
+    documents.forEach(d => {
+      const label = document.createElement('label');
+      label.className = 'doc-item';
+      const input = document.createElement('input');
+      input.type = 'checkbox'; input.value = idOf(d); input.checked = selected.includes(idOf(d));
+      input.addEventListener('change', () => {
+        selected = [...list.querySelectorAll('input:checked')].map(el => el.value);
+        if (selected.length === 1) void preview(selected[0]);
+      });
+      const description = document.createElement('span');
+      const name = document.createElement('strong'); name.textContent = d.name || d.filename || 'Untitled PDF';
+      const meta = document.createElement('small');
+      meta.textContent = (d.page_count ? d.page_count + ' pages · ' : '') +
+        (d.size_bytes ? Math.ceil(d.size_bytes / 1024) + ' KB · ' : '') +
+        (d.sha256 ? 'SHA-256 ' + d.sha256.slice(0, 12) + '…' : '');
+      description.append(name, meta); label.append(input, description); list.append(label);
+    });
+  }
+  async function refresh(selectId) {
+    const data = await (await request('/api/documents')).json();
+    documents = data.documents || [];
+    if (selectId) selected = [String(selectId)];
+    else selected = selected.filter(id => documents.some(d => idOf(d) === id));
+    renderList();
+    if (selected.length === 1) await preview(selected[0]);
+  }
+  async function preview(id) {
+    const d = documents.find(x => idOf(x) === String(id));
+    if (!d) return;
+    try {
+      const res = await request('/api/documents/' + encodeURIComponent(id) + '/download');
+      const blob = await res.blob();
+      if (!blob.type.includes('pdf') && !blob.type.includes('octet-stream')) throw Error('Server did not return a PDF');
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+      $('#docPreview').src = previewUrl;
+      active = d;
+      $('#docDownload').disabled = false;
+      $('#docPrint').disabled = false;
+      report('Previewing ' + (d.name || d.filename || 'PDF') + '.');
+    } catch (e) { report('Preview unavailable: ' + e.message, true); }
+  }
+  $('#docRefresh').onclick = async () => { try { busy(true); await refresh(); } catch (e) { report(e.message, true); } finally { busy(false); } };
+  $('#docUploadBtn').onclick = async () => {
+    const file = $('#docUpload').files[0];
+    if (!file) return report('Choose a PDF first.', true);
+    if (file.size > 5 * 1024 * 1024) return report('PDF exceeds the 5 MB limit.', true);
+    if (!file.name.toLowerCase().endsWith('.pdf')) return report('Choose a PDF file.', true);
+    busy(true); report('Uploading ' + file.name + '…');
+    try {
+      const content_base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(Error('Unable to read PDF'));
+        reader.onload = () => resolve(String(reader.result).split(',')[1]);
+        reader.readAsDataURL(file);
+      });
+      const result = await (await request('/api/documents/upload', { name: file.name, content_base64 })).json();
+      await refresh(idOf(result.document || result));
+      $('#docUpload').value = '';
+      report('PDF uploaded. Verify the preview before editing.');
+    } catch (e) { report('Upload failed: ' + e.message, true); } finally { busy(false); }
+  };
+  $('#docOperation').onchange = () => {
+    const op = $('#docOperation').value;
+    $('#docDegreesWrap').hidden = op !== 'rotate';
+    $('#docPagesWrap').hidden = op !== 'delete_pages';
+  };
+  $('#docTransform').onclick = async () => {
+    const operation = $('#docOperation').value;
+    if ((operation === 'merge' && selected.length < 2) || (operation !== 'merge' && selected.length !== 1))
+      return report(operation === 'merge' ? 'Select at least two PDFs to merge.' : 'Select exactly one PDF.', true);
+    const expected_sha256 = Object.fromEntries(selected.map(id => {
+      const d = documents.find(x => idOf(x) === id);
+      return [id, d?.sha256 || ''];
+    }));
+    const body = { operation, document_ids: selected, expected_sha256 };
+    if (operation === 'rotate') body.degrees = Number($('#docDegrees').value);
+    if (operation === 'delete_pages') {
+      const raw = $('#docPages').value.trim();
+      if (!/^\d+(\s*,\s*\d+)*$/.test(raw)) return report('Enter page numbers such as 2, 4.', true);
+      body.pages = raw.split(',').map(Number);
+    }
+    busy(true); report('Creating a new PDF…');
+    try {
+      const result = await (await request('/api/documents/transform', body)).json();
+      await refresh(idOf(result.document || result));
+      report('New PDF created. Inspect its preview before download or printing.');
+    } catch (e) { report('Transform failed: ' + e.message, true); } finally { busy(false); }
+  };
+  $('#docCreateReport').onclick = async () => {
+    const title = $('#docTitle').value.trim();
+    const text = $('#docText').value.trim();
+    if (!title || !text) return report('Add both a title and report text.', true);
+    busy(true); $('#docCreateReport').disabled = true; report('Generating report PDF…');
+    try {
+      const result = await (await request('/api/documents/report', { title, text })).json();
+      await refresh(idOf(result.document || result));
+      report('Report PDF created. Inspect its preview before download or printing.');
+    } catch (e) { report('Report failed: ' + e.message, true); }
+    finally { busy(false); $('#docCreateReport').disabled = false; }
+  };
+  $('#docDownload').onclick = () => {
+    if (!active || !previewUrl) return;
+    const a = document.createElement('a'); a.href = previewUrl; a.download = active.name || active.filename || 'resolve.pdf';
+    document.body.append(a); a.click(); a.remove();
+  };
+  $('#docPrint').onclick = () => {
+    if (!active || !previewUrl) return;
+    try { $('#docPreview').contentWindow.print(); report('Browser print dialog opened. Physical printing is unverified.'); }
+    catch (e) { report('Open the PDF preview and use your browser Print command. ' + e.message, true); }
+  };
+  window.addEventListener('beforeunload', () => { if (previewUrl) URL.revokeObjectURL(previewUrl); });
+  refresh().catch(e => report('Documents unavailable: ' + e.message, true));
+})();

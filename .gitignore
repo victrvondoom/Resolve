@@ -5,3 +5,4 @@ data/cursor.lock
 .venv/
 data/fixtures/
 data/resolve.sqlite3*
+data/documents/
