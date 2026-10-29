@@ -1,5 +1,10 @@
 # Tasks
 
+## College cloud sprint
+- [x] PDF upload, report creation, page rotation/removal, merge, version guard, authenticated download, workspace/account purge with focused tests
+- [x] Document studio UI with browser preview, download and print dialog
+- [ ] Production account UX, audio transcription, hosted tenant runtime and real service OAuth
+
 ## Implemented and checked
 - [x] Local dashboard/API, health route, SQLite WAL, startup scripts, and local demo fixtures
 - [x] Typed contracts, mission revision history, narrow stop/send interpretation, same-name and report-version constraints
