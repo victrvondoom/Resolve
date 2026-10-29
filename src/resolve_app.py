@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import base64
+import binascii
 import os
 import re
 import secrets
@@ -28,6 +30,7 @@ from cloud_browser import CloudBrowserPool, CloudBrowserError
 from effect_graph import EffectDependencyGraph, NodeType, EdgeType
 from connectors import ConnectorRegistry, ConnectorError
 from privacy_engine import PrivacyEngine
+from document_studio import DocumentStudio, DocumentError
 
 DB = Path(os.environ.get('RESOLVE_DB', ROOT / 'data' / 'resolve.sqlite3'))
 ledger = Ledger(DB)
@@ -44,6 +47,7 @@ sandbox_mgr = SandboxManager()
 cloud_browser_pool = CloudBrowserPool()
 connector_registry = ConnectorRegistry()
 privacy_engine = PrivacyEngine(tenant_auth_mgr, sandbox_mgr, connector_registry)
+document_studio = DocumentStudio(Path(os.environ.get('RESOLVE_DOCUMENTS_DIR', ROOT / 'data' / 'documents')))
 default_demo = tenant_auth_mgr.seed_demo_tenant()
 
 
@@ -120,12 +124,24 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     require(secrets.compare_digest(token, SESSION_TOKEN), 403, 'session token required')
 
-    def body(self) -> dict:
+    def body(self, max_size: int = 32768) -> dict:
         size = int(self.headers.get('Content-Length', '0'))
-        require(0 <= size <= 32768, 413, 'request too large')
+        require(0 <= size <= max_size, 413, 'request too large')
         data = json.loads(self.rfile.read(size) or b'{}')
         require(isinstance(data, dict), 400, 'JSON object required')
         return data
+
+    def document_user(self) -> dict:
+        """Require an explicit valid token for private document reads."""
+        auth = self.headers.get('Authorization', '')
+        token = auth[7:].strip() if auth.startswith('Bearer ') else self.headers.get('X-Resolve-Token', '').strip()
+        require(bool(token), 401, 'session token required')
+        if secrets.compare_digest(token, SESSION_TOKEN):
+            return default_demo
+        try:
+            return tenant_auth_mgr.validate_session(token)
+        except TenantError as exc:
+            raise ApiError(401, exc.message)
 
     def do_GET(self):
         try:
@@ -208,6 +224,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {'total_concepts': len(concepts), 'workspaces': [{'name': name, 'planned_concepts': sum(item['resolve_workspace'] == name for item in concepts)} for name in sorted(WORKSPACES)]})
             if path == '/api/skills':
                 return self.send_json(200, {'skills': skill_store.list_skills()})
+            if path == '/api/documents':
+                user = self.document_user()
+                return self.send_json(200, {'documents': document_studio.list_documents(user['user_id'], user['workspace_id'])})
+            m_doc = re.fullmatch(r'/api/documents/([A-Za-z0-9_-]+)/download', path)
+            if m_doc:
+                user = self.document_user()
+                raw = document_studio.read_pdf(user['user_id'], user['workspace_id'], m_doc.group(1))
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/pdf')
+                self.send_header('Content-Disposition', 'attachment; filename="resolve-document.pdf"')
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.send_header('Content-Length', str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
             if path == '/api/auth/me':
                 user = self.get_session()
                 return self.send_json(200, user)
@@ -294,7 +326,7 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(404, 'not found')
         except ApiError as exc:
             self.send_json(exc.status, {'error': exc.message})
-        except (TenantError, SandboxError, CloudBrowserError, ConnectorError) as exc:
+        except (TenantError, SandboxError, CloudBrowserError, ConnectorError, DocumentError) as exc:
             self.send_json(getattr(exc, 'status_code', 400), {'error': exc.message if hasattr(exc, 'message') else str(exc)})
         except Exception as exc:
             self.send_json(503, {'error': str(exc)})
@@ -313,8 +345,26 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(200, session)
 
             self.check_origin(mutation=True)
-            data = self.body()
+            data = self.body(max_size=7 * 1024 * 1024 if path == '/api/documents/upload' else 32768)
             user = self.get_session()
+
+            if path == '/api/documents/upload':
+                try:
+                    raw = base64.b64decode(data.get('content_base64', ''), validate=True)
+                except (ValueError, binascii.Error):
+                    raise ApiError(400, 'invalid base64 PDF')
+                require(len(raw) <= 5 * 1024 * 1024, 413, 'PDF exceeds 5 MiB')
+                doc = document_studio.import_pdf(user['user_id'], user['workspace_id'], raw, str(data.get('name', 'document.pdf')))
+                return self.send_json(201, {'document': doc})
+            if path == '/api/documents/transform':
+                doc = document_studio.transform(user['user_id'], user['workspace_id'],
+                    str(data.get('operation', '')), data.get('document_ids', []),
+                    data.get('expected_sha256', {}), degrees=data.get('degrees'), pages=data.get('pages'))
+                return self.send_json(201, {'document': doc})
+            if path == '/api/documents/report':
+                doc = document_studio.create_report(user['user_id'], user['workspace_id'],
+                    str(data.get('title', 'Report')), str(data.get('text', '')))
+                return self.send_json(201, {'document': doc})
 
             if path == '/api/auth/logout':
                 tenant_auth_mgr.logout(user['token'])
@@ -401,6 +451,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, receipt.to_dict())
             if path == '/api/voice/transcribe':
                 text = str(data.get('text', '')).strip()
+                require(bool(text), 400, 'text is required; audio transcription is not configured')
                 is_correction = bool(re.search(r'\b(no|not|wait|correction|instead)\b', text, re.IGNORECASE))
                 resolved_contact = None
                 if "finance" in text.lower():
@@ -408,17 +459,19 @@ class Handler(BaseHTTPRequestHandler):
                 elif "sales" in text.lower():
                     resolved_contact = {"id": "alex-sales-01", "name": "Alex Morgan", "department": "Sales"}
                 else:
-                    resolved_contact = {"id": "alex-fin-02", "name": "Alex Morgan", "department": "Finance"}
+                    resolved_contact = None
                 response = {
                     "transcription": text,
+                    "source": "submitted_text",
                     "user_id": user['user_id'],
                     "workspace_id": user['workspace_id'],
                     "is_correction": is_correction,
                     "intent": "UPDATE_AND_FOLLOWUP",
                     "resolved_entity": resolved_contact,
-                    "confidence": 0.96,
-                    "recommended_action": "simulated_send_and_update_followup",
-                    "spoken_feedback": f"Understood. Targeting {resolved_contact['name']} in {resolved_contact['department']} with the latest report."
+                    "confidence": None,
+                    "recommended_action": "simulated_send_and_update_followup" if resolved_contact else "needs_clarification",
+                    "spoken_feedback": (f"Understood. Targeting {resolved_contact['name']} in {resolved_contact['department']} with the latest report."
+                                        if resolved_contact else "Please specify the contact and department before any action.")
                 }
                 return self.send_json(200, response)
             path = urlparse(self.path).path
@@ -500,7 +553,7 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(404, 'not found')
         except ApiError as exc:
             self.send_json(exc.status, {'error': exc.message})
-        except (TenantError, SandboxError, CloudBrowserError, ConnectorError) as exc:
+        except (TenantError, SandboxError, CloudBrowserError, ConnectorError, DocumentError) as exc:
             self.send_json(getattr(exc, 'status_code', 400), {'error': exc.message if hasattr(exc, 'message') else str(exc)})
         except AmbiguousEntity as exc:
             self.send_json(409, {'error': str(exc), 'candidates': exc.candidates})

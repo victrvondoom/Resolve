@@ -32,6 +32,7 @@
       <li><a href="#view-agents" data-view="agents"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 8l3.5 8M16.5 8L13 16"/></svg>Agents</a></li>
       <li><a href="#view-skills" data-view="skills"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/></svg>Skills</a></li>
       <li><a href="#view-files" data-view="files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11H3z"/></svg>Files sandbox</a></li>
+      <li><a href="#view-documents" data-view="documents"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l5 5v15H6zM14 2v5h5M9 12h7M9 16h7"/></svg>Documents &amp; print</a></li>
       <li><a href="#view-bench" data-view="bench"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Benchmarks</a></li>
       <li><a href="#view-sim" data-view="sim"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voice &amp; simulator</a></li>
       <li><a href="#view-windows" data-view="windows"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v12H3zM8 21h8M12 17v4"/></svg>Windows native</a></li>
@@ -190,6 +191,44 @@
           <p id="filesMsg" class="msg" aria-live="polite"></p>
           <div id="filesView"></div>
           <details class="raw"><summary>Raw response</summary><pre class="log" id="filesLog">No file operation yet.</pre></details>
+        </section>
+      </div>
+    </section>
+
+    <!-- ============ DOCUMENTS ============ -->
+    <section class="view" id="view-documents" data-view="documents" aria-labelledby="h-documents" hidden>
+      <div class="view-head">
+        <div><h1 id="h-documents">Document studio</h1><p class="muted">Bring a PDF into your workspace, make precise page changes, inspect the generated file, then download or open the browser print dialog.</p></div>
+      </div>
+      <div class="grid">
+        <section class="card span4" aria-labelledby="h-doc-source">
+          <h2 id="h-doc-source">Your documents</h2>
+          <p class="muted small">PDF only · up to 5 MB per upload.</p>
+          <label class="label" for="docUpload">Choose a PDF</label>
+          <input type="file" id="docUpload" accept=".pdf,application/pdf">
+          <div class="doc-actions"><button class="btn btn-primary" id="docUploadBtn">Upload PDF</button><button class="btn" id="docRefresh">Refresh</button></div>
+          <div id="docList" class="doc-list" aria-label="Workspace documents">Loading documents…</div>
+        </section>
+        <section class="card span8" aria-labelledby="h-doc-edit">
+          <h2 id="h-doc-edit">Page tools</h2>
+          <p class="muted small">Select one PDF for rotate or page removal. Select two or more in order to merge.</p>
+          <div class="doc-controls">
+            <label for="docOperation">Operation<select id="docOperation"><option value="rotate">Rotate pages</option><option value="delete_pages">Remove pages</option><option value="merge">Merge PDFs</option></select></label>
+            <label id="docDegreesWrap" for="docDegrees">Rotation<select id="docDegrees"><option value="90">90° clockwise</option><option value="180">180°</option><option value="270">270° clockwise</option></select></label>
+            <label id="docPagesWrap" for="docPages" hidden>Page numbers<input id="docPages" inputmode="numeric" placeholder="e.g. 2, 4"><span class="muted small">One-based page numbers, separated by commas.</span></label>
+          </div>
+          <button class="btn btn-primary" id="docTransform">Create transformed PDF</button>
+          <p id="docStatus" class="msg" role="status" aria-live="polite">Select a document to begin.</p>
+          <div class="doc-preview-head"><h2>PDF preview</h2><div class="doc-actions"><button class="btn" id="docDownload" disabled>Download</button><button class="btn" id="docPrint" disabled>Print…</button></div></div>
+          <iframe id="docPreview" class="doc-preview" title="Selected PDF preview"></iframe>
+          <p class="muted small">“Print…” opens your browser's print dialog. RESOLVE cannot confirm that a physical printer completed a job.</p>
+        </section>
+        <section class="card span12" aria-labelledby="h-doc-report">
+          <h2 id="h-doc-report">Create a report</h2>
+          <p class="muted small">The server generates PDF bytes from your text and stores the result in this workspace.</p>
+          <label class="label" for="docTitle">Title</label><input id="docTitle" value="Project brief" maxlength="120">
+          <label class="label" for="docText">Report text</label><textarea id="docText" rows="6" placeholder="Paste your brief or prepared report text here."></textarea>
+          <div class="doc-actions"><button class="btn btn-primary" id="docCreateReport">Create PDF report</button></div>
         </section>
       </div>
     </section>
