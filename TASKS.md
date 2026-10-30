@@ -67,6 +67,8 @@
 - [x] End-to-end cloud web API test suite exercising register -> sandbox -> browser -> connectors -> voice correction -> export -> account deletion in `tests/test_cloud_api.py` (G16)
 - [x] Redesigned Mission Control interface with Cloud Computer, Connected Apps, Privacy & Data, workspace switcher, and push-to-talk voice button in `web/index.html` and `web/static/app.js` (G10–G16)
 - [x] Complete suite of 10 high-resolution screenshots generated in `harness/evidence/screens/` (G16)
+- [x] Browser diagnostics agent + controlled faulty demo app (real Chromium), exact-origin NetPolicy allowlist (Operation Zero Hands)
+- [x] Revision-guarded mission engine: mid-run revise, pause/resume, evidence frames, tenant skills, resume, digest-confirmed commands, typed tool registry, Live computer UI
 
 ## Outstanding gates / future work
 - [ ] Connect production OAuth credentials for Google Workspace and GitHub when cloud provider API keys are provisioned

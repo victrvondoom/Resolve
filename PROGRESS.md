@@ -64,3 +64,10 @@ Evidence: `harness/evidence/G*.md`, `harness/evidence/screens/`.
 
 ## Next executable command
 Run live web server: `python src/resolve_app.py` (visit http://127.0.0.1:8765 in any browser).
+
+## Operation Zero Hands sprint (2026-10-30)
+GATE: voice computer / brief mission | PASS (simulator + real Chromium; WINDOWS_NATIVE_TESTS_NOT_RUN)
+- Verified: reader ‖ analyzer ‖ real-Chromium diagnostics (genuine faults on bundled demo app) → planner → approval → report citing runtime frame hashes → independent verifier; revision-guarded mid-run revise, pause/resume, tenant evidence/skills/resume, digest-confirmed commands, typed tool registry (17 tools), Live computer UI.
+- Commands: `python -m pytest tests -q` → 361 passed, 12 skipped, 0 failed (full run 443 s). New: test_mission_sprint (14), test_zero_hands_api (5), test_zero_hands_e2e (2), test_diagnostics_agent (14), test_tool_registry + test_command_router (61).
+- Not verified / blocked: real STT, native Windows input, physical printing, public deployment, Wispr Flow usage (user-owned). Briefs' branch names not created; designated branch only.
+- Next command: `python src/resolve_app.py`, follow docs/JUDGE_DEMO.md.
