@@ -83,3 +83,14 @@ GATE: voice computer / brief mission | PASS (simulator + real Chromium; WINDOWS_
 - G17 real speech: BLOCKED in this environment. `pip install vosk` works, but no Vosk model is available: `RESOLVE_VOSK_MODEL` unset, `alphacephei.com` model host unreachable (HTTP 000), and no PyPI model package exists. `VoiceEngine.health()` correctly reports `available: false`. No STT was run, so no real transcription is claimed.
 - Not started in this session: generalized browser executor, held-out task sites, planner interface, cream frontend changes, public deployment, Wispr evidence. These need multiple sessions and were not begun, to avoid unverified partial work.
 - Next command (once a model is supplied): `RESOLVE_VOSK_MODEL=/path/to/vosk-model-small-en-us-0.15 python src/resolve_app.py`
+
+## Operation Finish Line — integration checkpoint
+- Head verified: `f7db204` (generalized computer tasks, pushed by a parallel session on top of `b0bff5e`). Local and remote match; tree clean before this note.
+- Full regression on `f7db204`: 382 passed, 12 skipped (tkinter-only Windows/desktop tests, NOT_RUN on headless Linux), 0 failed. Previous baseline 361 passed.
+- R1 startup: covered by the regression suite (production server starts via ProdServer tests). PASS.
+- R3 real voice: BLOCKED (no STT model reachable; see the earlier audit note above).
+- R4 real computer use: generalized tasks exist (`src/computer_tasks.py`, `src/controlled_apps.py`) with real-Chromium tests; this session did not independently re-verify the three-app / held-out task requirements beyond the test suite passing.
+- R5–R11: covered by the existing suites that passed above; no new mutation tests were added in this session.
+- R12 deployment, R13 judge demo video, R14 Wispr evidence: NOT DONE in this session. The Wispr Insights screenshot and dictated evidence remain user-owned.
+- Not started in this session: cream frontend polish, skills A–I, print-status enum, deployment configuration. Not claimed complete.
+- Next command: `python -m pytest tests -q` (regression) and `RESOLVE_VOSK_MODEL=<model dir> python src/resolve_app.py` once a model is available.
