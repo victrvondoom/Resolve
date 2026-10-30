@@ -325,7 +325,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if urlparse(self.path).path in {'/api/health', '/api/system/health'}:  # platform probes use arbitrary Host headers; nothing sensitive
                 return self.send_json(200, {'status': 'ok', 'name': 'RESOLVE', 'version': '0.2', 'database': 'sqlite-wal', 'mode': SECURITY.mode,
-                                            'features': {'speech_server': voice_engine.health()['available'], 'cloud_browser': SECURITY.cloud_browser_enabled}})
+                                            'features': {'speech_server': voice_engine.health()['available'], 'cloud_browser': SECURITY.cloud_browser_enabled, 'diagnostics': brief_missions.diagnostics is not None}})
             if urlparse(self.path).path.startswith('/demo-app/'):
                 return self.serve_demo_app('GET')
             self.check_origin()

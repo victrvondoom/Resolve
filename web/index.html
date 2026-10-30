@@ -82,7 +82,8 @@
             <div class="fm-inline"><label class="sr-only" for="fmProject">Project</label><select id="fmProject" aria-describedby="fmProjectInfo"></select><label class="btn" for="fmProjectFile" id="fmProjectUploadLabel">Upload .zip</label><input type="file" id="fmProjectFile" accept=".zip,application/zip" class="sr-only"><button class="btn btn-danger" id="fmProjectDelete" disabled title="Select one of your uploaded projects to delete it">Delete</button></div>
             <small class="muted" id="fmProjectInfo">Loading projects…</small>
           </fieldset>
-          <div class="fm-actions"><button class="btn btn-primary btn-lg" id="fmStart" disabled title="Load the sample brief or choose a PDF first">Start mission</button><button class="btn" id="fmCancel" disabled title="No running mission">Cancel</button></div>
+          <label class="fm-check-opt" id="fmInspectWrap"><input type="checkbox" id="fmInspectWeb" disabled> <span>Also check my web application for errors <small class="muted" id="fmInspectNote">(checking availability…)</small></span></label>
+          <div class="fm-actions"><button class="btn btn-primary btn-lg" id="fmStart" disabled title="Load the sample brief or choose a PDF first">Start mission</button><button class="btn" id="fmPause" disabled title="No running mission">Pause</button><button class="btn" id="fmReviseNow" disabled title="No active mission">Revise now</button><button class="btn" id="fmCancel" disabled title="No running mission">Cancel</button></div>
           <p id="fmStatus" class="msg" role="status" aria-live="polite"></p>
         </section>
         <section class="card span6" aria-labelledby="h-fm-2">
@@ -91,6 +92,31 @@
           <ol id="fmNodes" class="fm-nodes" aria-label="Worker tasks"></ol>
           <p id="fmOverlap" class="small fm-overlap" hidden></p>
           <details class="fm-details"><summary class="small">Event log</summary><pre id="fmEvents" class="fm-log" tabindex="0">—</pre></details>
+        </section>
+        <section class="card span12" id="fmComputerCard" aria-labelledby="h-fm-pc">
+          <div class="card-head"><h2 id="h-fm-pc">Live computer</h2><span id="fmComputerChip" class="chip chip-muted" role="status">DISCONNECTED</span></div>
+          <div class="fm-computer">
+            <figure class="fm-screen"><img id="fmFrame" alt="Latest screenshot from the browser RESOLVE is operating" hidden><figcaption id="fmFrameEmpty" class="muted small">No browser is connected. Tick “Also check my web application for errors” and start a mission to watch RESOLVE operate a real browser.</figcaption></figure>
+            <div>
+              <dl class="fm-prov" id="fmComputerFacts"></dl>
+              <ol class="fm-steps-live" id="fmComputerSteps" aria-label="Browser actions taken"></ol>
+              <p class="small muted">A real Chromium driven through Playwright against the bundled demo web app. These are DOM-level actions, not Windows cursor control. Frames are stored as evidence in your workspace.</p>
+            </div>
+          </div>
+        </section>
+        <section class="card span12" aria-labelledby="h-fm-cmd">
+          <div class="card-head"><h2 id="h-fm-cmd">Voice &amp; text commands</h2><span id="fmCmdBadge" class="chip chip-muted" role="status">IDLE</span></div>
+          <p class="muted small fm-sub">Say or type a command. RESOLVE shows how it understood you, and anything risky waits for your confirmation. Try: <i>pause</i> · <i>stop, use the second report instead</i> · <i>save this process as a skill called weekly review</i> · <i>delete the generated report</i> · <i>resume my last project</i>.</p>
+          <div class="fm-inline"><label class="sr-only" for="fmCmd">Command</label><input id="fmCmd" type="text" maxlength="2000" autocomplete="off" placeholder="Type or speak a command"><button class="btn" id="fmCmdMic" disabled title="Checking microphone and speech engine…">Speak</button><button class="btn btn-primary" id="fmCmdGo">Interpret</button><span id="fmCmdMicBadge" class="chip chip-muted small" role="status">CHECKING MIC…</span></div>
+          <p id="fmCmdMicNote" class="msg" hidden aria-live="polite"></p>
+          <div id="fmCmdOut" class="fm-cmd-out" hidden>
+            <p id="fmCmdSummary" class="fm-cmd-summary"></p>
+            <p class="small muted" id="fmCmdMeta"></p>
+            <div class="fm-inline"><button class="btn btn-primary" id="fmCmdConfirm">Confirm</button><button class="btn" id="fmCmdDismiss">Dismiss</button></div>
+          </div>
+          <p id="fmCmdMsg" class="msg" role="status" aria-live="polite"></p>
+          <h3 class="fm-h">Saved skills</h3>
+          <ul id="fmSkills" class="fm-hist" aria-label="Saved skills"><li class="muted">No skills yet. Finish a mission, then say “save this process as a skill”.</li></ul>
         </section>
         <section class="card span12" id="fmPlanCard" aria-labelledby="h-fm-3" hidden>
           <div class="card-head"><h2 id="h-fm-3" tabindex="-1">Plan awaiting your approval</h2><span class="chip chip-warn">DRAFT · rule-based, not an LLM</span></div>

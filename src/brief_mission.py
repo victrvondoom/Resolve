@@ -866,7 +866,8 @@ class BriefMissionStore:
                 if ev_id:
                     frames.append({"id": ev_id, "label": f"{st.get('n', len(frames) + 1)}. {st.get('action', 'step')}", "sha256": hashlib.sha256(jpeg).hexdigest()})
             self._event(mid, "BROWSER_DIAGNOSTICS", "browser-agent", "TOOL_STEP",
-                        {"n": st.get("n"), "action": _clean(st.get("action"), 120), "ok": bool(st.get("ok")), "detail": _clean(st.get("detail"), 160), "evidence_id": ev_id}, rev=rev)
+                        {"n": st.get("n"), "action": _clean(st.get("action"), 120), "ok": bool(st.get("ok")), "detail": _clean(st.get("detail"), 160), "evidence_id": ev_id,
+                         "url": _clean(st.get("url"), 200), "title": _clean(st.get("title"), 100)}, rev=rev)
 
         result = self.diagnostics(lambda: self._gate(mid, rev), on_step)
         if getattr(result, "aborted", False) or (isinstance(result, dict) and result.get("aborted")):

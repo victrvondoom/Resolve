@@ -53,7 +53,8 @@ window.addEventListener('load', () => {
   const reduceMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
   const canInlinePdf = navigator.pdfViewerEnabled !== false;   // false on phones: an iframe would show nothing
   let mission = null, timer = null, previewUrl = null, docs = [], projects = { bundled: [], uploaded: [] };
-  let renderedDigest = null, lastState = null, watching = false, busy = false, production = false;
+  let renderedDigest = null, lastState = null, watching = false, busy = false, production = false, diagnosticsOn = false;
+  let frameUrl = null, frameId = null, pendingCmd = null, intentVoice = false, cmdVoice = false;
 
   const NODES = [
     ['DOCUMENT_READER', 'Document reader', 'Extracts the requirements from your brief.'],
@@ -72,8 +73,11 @@ window.addEventListener('load', () => {
     no_other_project_sha: 'Cites no other project',
     contains_every_issue: 'Every issue and its file:line is in the PDF',
     contains_architecture: 'Architecture is included',
-    contains_plan_digest: 'Approved plan digest is included'
+    contains_plan_digest: 'Approved plan digest is included',
+    contains_runtime_evidence: 'Runtime evidence (browser frames) is cited',
+    no_other_runtime_evidence: 'Cites no other browser frames'
   };
+  const DIAG_NODE = ['BROWSER_DIAGNOSTICS', 'Browser diagnostics', 'Operates the web app in a real browser and records console errors and failed requests.'];
   const ACTIVE = ['RUNNING', 'AWAITING_APPROVAL', 'COMPOSING'];
   const say = (t, kind) => setMsg(el('fmStatus'), t, kind);
   const sevClass = (s) => s === 'HIGH' ? 'chip-bad' : s === 'MEDIUM' ? 'chip-warn' : 'chip-muted';
@@ -97,11 +101,13 @@ window.addEventListener('load', () => {
     try { h = await (await fetch('/api/health')).json(); } catch (_) { /* rendered as unknown below */ }
     production = h.mode === 'production';
     const f = h.features || {};
+    diagnosticsOn = !!f.diagnostics; updateButtons();
     const browserSpeech = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
     const rows = [
       [production ? 'ok' : 'warn', production ? 'Production mode · private accounts' : 'Local demo mode · 127.0.0.1'],
       f.speech_server ? ['ok', 'Speech: server speech-to-text'] : browserSpeech ? ['warn', 'Speech: browser service (vendor)'] : ['muted', 'Speech: type, or dictate with Wispr Flow'],
-      [f.cloud_browser ? 'ok' : 'muted', 'Cloud browser: ' + (f.cloud_browser ? 'enabled' : 'disabled (no isolated runtime)')]
+      [f.cloud_browser ? 'ok' : 'muted', 'Cloud browser: ' + (f.cloud_browser ? 'enabled' : 'disabled (no isolated runtime)')],
+      [f.diagnostics ? 'ok' : 'muted', 'Web diagnostics: ' + (f.diagnostics ? 'real Chromium vs demo app' : 'off on this server')]
     ];
     el('sidebarNote').innerHTML = '<p class="side-h">This server</p><ul class="side-status">' +
       rows.map(([k, t]) => `<li><span class="dot ${k}" aria-hidden="true"></span>${esc(t)}</li>`).join('') + '</ul>' +
@@ -161,6 +167,14 @@ window.addEventListener('load', () => {
     const noDoc = !el('fmDoc').value, start = el('fmStart'), cancel = el('fmCancel');
     start.disabled = busy || running || noDoc;
     start.title = busy ? 'Working…' : running ? 'A mission is already running. Wait for it, or cancel it.' : noDoc ? 'Load the sample brief or choose a PDF first' : 'Start the mission with this brief and project';
+    const live = mission && ['RUNNING', 'COMPOSING'].includes(mission.state), pause = el('fmPause'), rn = el('fmReviseNow');
+    pause.disabled = busy || !live; pause.textContent = mission && mission.paused ? 'Resume' : 'Pause';
+    pause.title = live ? (mission.paused ? 'Continue from the next action boundary' : 'Pause at the next action boundary') : 'No running mission';
+    rn.disabled = busy || !(mission && ACTIVE.includes(mission.state));
+    rn.title = rn.disabled ? 'No active mission' : 'Replace the instruction (and optionally the brief) now; in-flight work and approvals are superseded';
+    const ins = el('fmInspectWeb'), note = el('fmInspectNote');
+    ins.disabled = !diagnosticsOn; if (!diagnosticsOn) ins.checked = false;
+    note.textContent = diagnosticsOn ? '(real Chromium on the bundled demo web app)' : '(not available on this server)';
     cancel.disabled = !mission || !ACTIVE.includes(mission.state);
     cancel.title = cancel.disabled ? 'No running mission' : 'Cancel the mission. Late worker results are rejected.';
   }
@@ -245,7 +259,9 @@ window.addEventListener('load', () => {
     const by = Object.fromEntries(((m && m.nodes) || []).map(n => [n.node, n]));
     const ol = el('fmNodes');
     ol.replaceChildren();
-    NODES.forEach(([key, title, desc]) => {
+    const withDiag = m && (m.steps || []).includes('inspect_web');
+    const rows = withDiag ? [NODES[0], NODES[1], DIAG_NODE, ...NODES.slice(2)] : NODES;
+    rows.forEach(([key, title, desc]) => {
       const n = by[key], status = n ? n.status : (m ? 'PENDING' : 'NOT STARTED');
       const cls = status === 'DONE' ? 'chip-ok' : (status === 'FAILED' || status === 'REJECTED_LATE') ? 'chip-bad' : status === 'RUNNING' ? 'chip-warn' : 'chip-muted';
       const detail = n && n.started_at
@@ -257,14 +273,15 @@ window.addEventListener('load', () => {
         (n && n.error ? `<small class="msg err">${esc(n.error)}</small>` : '');
       ol.append(li);
     });
-    const a = by.DOCUMENT_READER, b = by.REPOSITORY_ANALYZER, ov = el('fmOverlap');
-    if (a && b && a.finished_at && b.finished_at) {
-      const overlap = Math.min(a.finished_at, b.finished_at) - Math.max(a.started_at, b.started_at);
+    const par = [by.DOCUMENT_READER, by.REPOSITORY_ANALYZER, withDiag ? by.BROWSER_DIAGNOSTICS : null].filter(Boolean), ov = el('fmOverlap');
+    if (par.length >= 2 && par.every(n => n.finished_at)) {
+      const overlap = Math.min(...par.map(n => n.finished_at)) - Math.max(...par.map(n => n.started_at));
+      const who = par.length === 3 ? 'the reader, the analyzer and the browser diagnostics' : 'the reader and the analyzer';
       ov.hidden = false;
       ov.className = 'small fm-overlap' + (overlap > 0 ? ' ok' : '');
       ov.textContent = overlap > 0
-        ? `Measured: the reader and the analyzer ran at the same time, overlapping for ${ms(overlap)} ms.`
-        : `Measured: the reader and the analyzer did not overlap this time (gap of ${ms(-overlap)} ms).`;
+        ? `Measured: ${who} ran at the same time, overlapping for ${ms(overlap)} ms.`
+        : `Measured: ${who} did not overlap this time (gap of ${ms(-overlap)} ms).`;
     } else ov.hidden = true;
     el('fmEvents').textContent = ((m && m.events) || []).map(e => `${clock(e.ts)}  ${e.kind.padEnd(24)} ${e.node}${e.worker ? '  [' + e.worker + ']' : ''}`).join('\n') || '—';
   }
@@ -408,11 +425,51 @@ window.addEventListener('load', () => {
     loadPreview(m).catch(e => say('Preview failed: ' + errText(e), 'err'));
   }
 
+  async function showFrame(ev) {
+    if (!ev || ev.id === frameId) return;
+    frameId = ev.id;
+    try {
+      const blob = await blobOf(`/api/brief-missions/${mission.id}/evidence/${ev.id}`), url = URL.createObjectURL(blob);
+      if (frameUrl) URL.revokeObjectURL(frameUrl);
+      frameUrl = url; el('fmFrame').src = url; el('fmFrame').hidden = false; el('fmFrameEmpty').hidden = true;
+    } catch (_) { frameId = null; }
+  }
+
+  function renderComputer(m) {
+    const diag = m && (m.steps || []).includes('inspect_web'), chip = el('fmComputerChip');
+    const frames = ((m && m.evidence) || []).filter(e => e.kind === 'frame' && e.rev === m.intent_revision);
+    const steps = ((m && m.events) || []).filter(e => e.kind === 'TOOL_STEP' && e.rev === m.intent_revision);
+    const node = ((m && m.nodes) || []).find(n => n.node === 'BROWSER_DIAGNOSTICS');
+    let label = 'DISCONNECTED', cls = 'chip-muted';
+    if (diag && node) {
+      if (node.status === 'RUNNING') [label, cls] = [m.paused ? 'PAUSED' : 'LIVE', 'chip-warn'];
+      else if (node.status === 'DONE') [label, cls] = ['SESSION CLOSED', 'chip-ok'];
+      else if (node.status === 'FAILED' || node.status === 'REJECTED_LATE') [label, cls] = ['FAILED', 'chip-bad'];
+      else [label, cls] = ['CONNECTING', 'chip-warn'];
+    } else if (diag) [label, cls] = ['CONNECTING', 'chip-warn'];
+    chip.textContent = label; chip.className = 'chip ' + cls;
+    if (!frames.length) {
+      frameId = null; el('fmFrame').hidden = true; el('fmFrameEmpty').hidden = false;
+      if (frameUrl) { URL.revokeObjectURL(frameUrl); frameUrl = null; }
+    } else showFrame(frames[frames.length - 1]);
+    const last = steps[steps.length - 1], d = last ? last.detail : {};
+    el('fmComputerFacts').innerHTML = diag ? [
+      ['Page', d.url ? esc(d.url) : '—'], ['Title', d.title ? esc(d.title) : '—'], ['Last action', last ? esc(d.action || '') + (d.ok === false ? ' (failed)' : '') : '—'],
+      ['Frames stored', String(frames.length)], ['Browser', 'Chromium via Playwright (DOM-level)']
+    ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('') : '<dt>Status</dt><dd>No browser session for this mission</dd>';
+    const ol = el('fmComputerSteps'); ol.replaceChildren();
+    steps.forEach(e => {
+      const li = document.createElement('li'); if (e.detail.ok === false) li.className = 'bad';
+      li.innerHTML = `<span class="muted small">${esc(clock(e.ts))}</span><code>${esc(e.detail.action || '')}</code><span class="small">${esc(e.detail.detail || '')}</span>`;
+      ol.append(li);
+    });
+  }
+
   function render() {
     const m = mission;
-    el('fmState').textContent = m ? m.state.replace('_', ' ') : 'NO MISSION';
-    el('fmState').className = 'chip ' + (m ? chipClass(m.state) : 'chip-muted');
-    renderSteps(m); renderNodes(m); renderPlan(m); renderResult(m); updateButtons();
+    el('fmState').textContent = m ? (m.paused ? 'PAUSED' : m.state.replace('_', ' ')) : 'NO MISSION';
+    el('fmState').className = 'chip ' + (m ? (m.paused ? 'chip-warn' : chipClass(m.state)) : 'chip-muted');
+    renderSteps(m); renderNodes(m); renderComputer(m); renderPlan(m); renderResult(m); updateButtons();
   }
 
   function announce(prev, m) {
@@ -428,7 +485,7 @@ window.addEventListener('load', () => {
     try { mission = await api('/api/brief-missions/' + mission.id); } catch (e) { say(errText(e), 'err'); stopPoll(); return; }
     const prev = lastState; lastState = mission.state;
     render(); announce(prev, mission);
-    if (!['RUNNING', 'COMPOSING'].includes(mission.state)) { stopPoll(); loadHistory().catch(() => {}); }
+    if (!['RUNNING', 'COMPOSING'].includes(mission.state)) { stopPoll(); loadHistory().catch(() => {}); loadSkills().catch(() => {}); }
   }
   const stopPoll = () => { if (timer) { clearInterval(timer); timer = null; } };
   const poll = () => { stopPoll(); timer = setInterval(refresh, 600); };
@@ -447,7 +504,8 @@ window.addEventListener('load', () => {
     const id = el('fmDoc').value, d = docs.find(x => x.id === id);
     if (!d) { say('Choose a source brief first, or load the sample brief.', 'err'); return; }
     try {
-      mission = await api('/api/brief-missions', { intent_text: el('fmIntent').value, document_id: id, expected_sha256: d.sha256, project: el('fmProject').value });
+      const steps = ['read_brief', 'analyze_code', ...(el('fmInspectWeb').checked ? ['inspect_web'] : []), 'architecture', 'report', 'print'];
+      mission = await api('/api/brief-missions', { intent_text: el('fmIntent').value, document_id: id, expected_sha256: d.sha256, project: el('fmProject').value, steps, source: intentVoice ? 'voice' : 'text' });
       say('Mission started. The workers are running.', 'ok');
       renderedDigest = null; lastState = mission.state; watching = true;
       render(); poll(); loadHistory().catch(() => {});
@@ -462,7 +520,7 @@ window.addEventListener('load', () => {
   });
   el('fmRevise').onclick = () => act(async () => {
     try {
-      mission = await api(`/api/brief-missions/${mission.id}/revise`, { intent_text: el('fmIntent').value });
+      mission = await api(`/api/brief-missions/${mission.id}/revise`, { intent_text: el('fmIntent').value, document_id: el('fmDoc').value || undefined });
       lastState = mission.state; watching = true; renderedDigest = null;
       say('Instruction revised. The earlier plan and any approval of it are superseded.', 'ok'); render(); poll();
       el('fmIntent').scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'center' });
@@ -546,6 +604,79 @@ window.addEventListener('load', () => {
     if (!id || !confirm('Delete this uploaded project?')) return;
     try { await api(`/api/projects/${id}/delete`, {}); await loadProjects(); say('Project deleted.', 'ok'); } catch (e) { say(errText(e), 'err'); }
   });
+  el('fmPause').onclick = () => act(async () => {
+    try {
+      mission = await api(`/api/brief-missions/${mission.id}/${mission.paused ? 'resume' : 'pause'}`, {});
+      say(mission.paused ? 'Paused. Work stops at the next action boundary.' : 'Resumed.', 'ok'); render(); poll();
+    } catch (e) { say(errText(e), 'err'); await refresh(); }
+  });
+  el('fmReviseNow').onclick = () => act(async () => {
+    try {
+      mission = await api(`/api/brief-missions/${mission.id}/revise`, { intent_text: el('fmIntent').value, document_id: el('fmDoc').value || undefined });
+      lastState = mission.state; watching = true; renderedDigest = null;
+      say('Instruction replaced. In-flight workers and any earlier approval are superseded; the plan is being rebuilt.', 'ok'); render(); poll();
+    } catch (e) { say(errText(e), 'err'); await refresh(); }
+  });
+  el('fmIntent').addEventListener('input', (e) => { intentVoice = !e.isTrusted; });   // dictated text arrives as a synthetic event
+
+  /* ---------------- commands (interpret -> confirm -> execute, bound by digest) ---------------- */
+  const cmdBadge = (t, cls) => { el('fmCmdBadge').textContent = t; el('fmCmdBadge').className = 'chip ' + (cls || 'chip-muted'); };
+  const cmdSay = (t, kind) => setMsg(el('fmCmdMsg'), t, kind);
+  el('fmCmd').addEventListener('input', (e) => { cmdVoice = !e.isTrusted; pendingCmd = null; el('fmCmdOut').hidden = true; });
+  async function runCommand(confirmed) {
+    const text = el('fmCmd').value.trim(), source = cmdVoice ? 'voice' : 'text';
+    if (!text) { cmdSay('Type or speak a command first.', 'err'); return; }
+    if (!confirmed) {
+      cmdBadge('INTERPRETING', 'chip-warn');
+      try {
+        const r = (await api('/api/commands/interpret', { text, source })).interpretation;
+        pendingCmd = { text, source, interp: r };
+        el('fmCmdOut').hidden = false;
+        el('fmCmdSummary').textContent = r.summary;
+        el('fmCmdMeta').textContent = `${r.command} · ${r.requires_confirmation ? 'needs your confirmation' : 'safe to run'} · digest ${r.digest.slice(0, 12)}…` +
+          (r.warnings.length ? ' · ' + r.warnings.join('; ') : '') + (r.ambiguity.length ? ' · ambiguous: choose one first' : '');
+        el('fmCmdConfirm').hidden = r.command === 'UNKNOWN' || r.ambiguity.length > 0;
+        if (r.command === 'UNKNOWN' || r.ambiguity.length) { cmdBadge(r.command === 'UNKNOWN' ? 'NOT UNDERSTOOD' : 'AMBIGUOUS', 'chip-warn'); cmdSay('', ''); return; }
+        if (r.requires_confirmation) { cmdBadge('AWAITING CONFIRMATION', 'chip-warn'); el('fmCmdConfirm').focus(); cmdSay('Nothing has happened yet. Confirm to run it.', ''); return; }
+      } catch (e) { cmdBadge('FAILED', 'chip-bad'); cmdSay(errText(e), 'err'); return; }
+    }
+    if (!pendingCmd) return;
+    cmdBadge('EXECUTING', 'chip-warn');
+    try {
+      const r = await api('/api/commands/execute', { text: pendingCmd.text, source: pendingCmd.source, digest: pendingCmd.interp.digest, confirmed: !!confirmed || undefined,
+                                                      document_id: el('fmDoc').value || undefined });
+      cmdBadge('DONE', 'chip-ok'); cmdSay(`Done: ${r.interpretation.summary}`, 'ok'); el('fmCmdOut').hidden = true; pendingCmd = null;
+      const res = r.result || {};
+      if (res.id && res.intent_text) { mission = res; lastState = mission.state; watching = true; render(); poll(); }
+      else if (res.mission && res.mission.id) { mission = res.mission; lastState = mission.state; render(); }
+      else if (res.deleted) { mission = null; render(); }
+      loadHistory().catch(() => {}); loadSkills().catch(() => {}); loadDocs().catch(() => {});
+    } catch (e) { cmdBadge('FAILED', 'chip-bad'); cmdSay(errText(e), 'err'); await refresh().catch(() => {}); }
+  }
+  el('fmCmdGo').onclick = () => runCommand(false);
+  el('fmCmd').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runCommand(false); } });
+  el('fmCmdConfirm').onclick = () => runCommand(true);
+  el('fmCmdDismiss').onclick = () => { pendingCmd = null; el('fmCmdOut').hidden = true; cmdBadge('IDLE'); cmdSay('Dismissed. Nothing was run.', ''); };
+
+  async function loadSkills() {
+    const r = await api('/api/brief-skills'), ul = el('fmSkills');
+    ul.replaceChildren();
+    if (!r.skills.length) { ul.innerHTML = '<li class="muted">No skills yet. Finish a mission, then say “save this process as a skill”.</li>'; return; }
+    r.skills.forEach(k => {
+      const li = document.createElement('li'), b = document.createElement('button');
+      b.type = 'button';
+      b.innerHTML = `<span class="fm-hist-title">${esc(k.name)}</span><span class="chip chip-muted">${k.spec.steps.length} steps</span><small>Runs on the brief selected above · saved from ${esc(k.spec.saved_from)}</small>`;
+      b.title = 'Run this saved process on the selected brief (a fresh mission that still needs your approval)';
+      b.onclick = () => act(async () => {
+        const id = el('fmDoc').value;
+        if (!id) { say('Choose a source brief first.', 'err'); return; }
+        try { mission = await api(`/api/brief-skills/${k.id}/run`, { document_id: id }); lastState = mission.state; watching = true; renderedDigest = null; render(); poll(); say(`Skill “${k.name}” started on the selected brief.`, 'ok'); }
+        catch (e) { say(errText(e), 'err'); }
+      });
+      li.append(b); ul.append(li);
+    });
+  }
+
   const grow = () => { const t = el('fmIntent'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight + 2, 260) + 'px'; };
   el('fmIntent').addEventListener('input', grow);
 
@@ -555,6 +686,7 @@ window.addEventListener('load', () => {
 
   /* ---------------- start-up ---------------- */
   window.ResolveVoice.attach({ btn: el('fmMic'), badge: el('fmMicBadge'), note: el('fmMicNote'), target: el('fmIntent') });
+  window.ResolveVoice.attach({ btn: el('fmCmdMic'), badge: el('fmCmdMicBadge'), note: el('fmCmdMicNote'), target: el('fmCmd') });
   render(); grow();
   applyMode().then(initAccount).catch(() => {});
   loadProjects().catch(() => {});
@@ -565,4 +697,5 @@ window.addEventListener('load', () => {
     if (['RUNNING', 'COMPOSING'].includes(m.state)) { watching = true; poll(); }
   }).catch(() => {});
   loadHistory().catch(() => {});
+  loadSkills().catch(() => {});
 });

@@ -217,3 +217,22 @@ textarea.fm-log{width:100%;resize:vertical}
   .auth-form{padding:20px}
 }
 @media (prefers-reduced-motion:reduce){.card,.btn,.fm-steps li{transition:none}.btn:hover:not(:disabled){transform:none}}
+
+/* ---- live computer, commands, skills */
+.fm-check-opt{display:flex;gap:10px;align-items:flex-start;margin:10px 0 0;font-size:14px}
+.fm-check-opt input{margin-top:3px}
+.fm-computer{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
+.fm-screen{margin:0;border:1px solid var(--line);border-radius:12px;background:var(--inset);overflow:hidden;min-height:180px;display:grid;place-items:center;box-shadow:inset 0 1px 3px rgba(90,70,30,.06)}
+.fm-screen img{display:block;width:100%;height:auto}
+.fm-screen figcaption{padding:20px;text-align:center}
+.fm-steps-live{list-style:none;margin:8px 0;padding:0;display:grid;gap:4px;max-height:220px;overflow:auto;font-size:13px}
+.fm-steps-live li{display:flex;gap:8px;align-items:baseline;padding:4px 8px;border-radius:8px;background:var(--inset)}
+.fm-steps-live li.bad{background:var(--bad-bg,#F8E6E2)}
+.fm-steps-live code{font-size:12px}
+.fm-cmd-out{margin:12px 0;padding:12px 14px;border:1px solid var(--line-2);border-radius:12px;background:var(--panel)}
+.fm-cmd-summary{margin:0 0 4px;font-weight:600}
+#fmCmd{flex:1 1 260px;min-width:0}
+@media (max-width:760px){.fm-computer{grid-template-columns:minmax(0,1fr)}}
+.fm-steps-live li{flex-wrap:wrap}
+.fm-steps-live code{white-space:nowrap;background:transparent;padding:0}
+.fm-steps-live li span.small{flex:1 1 140px;min-width:0;overflow-wrap:anywhere}
