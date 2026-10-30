@@ -59,6 +59,12 @@ Evidence: `harness/evidence/G*.md`, `harness/evidence/screens/`.
 - **Mission Control UI Polish**: Added Cloud Computer live frame view, Connected Apps manager, Privacy & Data portal, workspace switcher, and push-to-talk voice button in `web/index.html` and `web/static/app.js`.
 - **Evidence Documentation & Screenshots**: Generated complete Gate evidence files `harness/evidence/G10.md` through `G16.md` and captured 10 full-resolution screenshots in `harness/evidence/screens/`.
 
+## Sprint 2026-10-30b (this session)
+- Baseline reproduced: 361 passed / 12 skipped / 0 failed (Linux, Chromium from /opt/pw-browsers).
+- Added browser.find/select/wait/extract/verify/close, per-session Playwright worker thread, three controlled apps, five computer tasks, `/api/computer/run`. New tests: 18 (real Chromium) + 3 (HTTP). Mutation checks recorded in docs/COMPUTER_TASKS.md.
+- Real STT: BLOCKED. vosk installs; model download hosts unreachable from this sandbox.
+- Not done this session (honest list): UI panel for computer tasks, live-microphone validation, public deployment, per-tenant VM isolation, benchmark of naive vs guarded vs IEEC on the new apps, visual regression screenshots of new panels.
+
 ## Blocked
 - None. Local test suites, Playwright headless browser tests, and live server integration pass 100%.
 

@@ -248,6 +248,7 @@ class Catalog(unittest.TestCase):
     def test_standard_catalog_is_complete_and_flags_consequential_tools(self):
         reg = default_registry()
         expected = {'browser.navigate', 'browser.click', 'browser.type', 'browser.scroll', 'browser.inspect', 'browser.capture', 'browser.download',
+                    'browser.find', 'browser.select', 'browser.wait', 'browser.extract', 'browser.verify', 'browser.close',
                     'document.read', 'document.transform', 'document.generate', 'document.verify', 'workspace.create', 'workspace.export',
                     'mission.pause', 'mission.cancel', 'approval.request', 'evidence.record'}
         self.assertEqual(set(reg.names()), expected)

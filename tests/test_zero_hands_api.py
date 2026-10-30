@@ -149,7 +149,7 @@ class ZeroHandsApi(unittest.TestCase):
     def test_tool_registry_over_http_is_typed_permissioned_and_observable(self):
         a = self.user(); brief = self.brief(a)
         s, r, _ = self.srv.req('GET', '/api/tools', headers=a)
-        self.assertEqual(s, 200); self.assertEqual(len(r['tools']), 17)
+        self.assertEqual(s, 200); self.assertEqual(len(r['tools']), 23)
         s, r, _ = self.srv.req('POST', '/api/tools/call', {'name': 'document.read', 'args': {'document_id': brief['id']}}, headers=a)
         self.assertTrue(r['ok'], r); self.assertIn('Inventory', r['data']['text'])
         s, r, _ = self.srv.req('POST', '/api/tools/call', {'name': 'document.read', 'args': {'document_id': '../x'}}, headers=a)

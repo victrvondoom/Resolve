@@ -110,7 +110,7 @@ class DiagnosticsAgentTests(unittest.TestCase):
 
         def kill(step):
             if step['n'] == 2:
-                holder['s']._page.close()
+                holder['s']._on_worker(holder['s']._page.close)   # Playwright objects are bound to the session's worker thread
         CloudBrowserSession.__init__ = spy
         try:
             r = run_diagnostics(self.base + '/demo-app/', policy=self.policy, on_step=kill)

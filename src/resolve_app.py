@@ -27,7 +27,7 @@ import uia_adapter
 from web_api import WebApi
 from tenant_auth import TenantAuthManager, TenantError
 from sandbox_manager import SandboxManager, SandboxError, SandboxSecurityError
-from cloud_browser import CloudBrowserPool, CloudBrowserError
+from cloud_browser import CloudBrowserPool, CloudBrowserError, CloudBrowserSession
 from effect_graph import EffectDependencyGraph, NodeType, EdgeType
 from connectors import ConnectorRegistry, ConnectorError
 from privacy_engine import PrivacyEngine
@@ -35,6 +35,8 @@ from document_studio import DocumentStudio, DocumentError
 from brief_mission import BriefMissionStore, MissionError, BUNDLED_PROJECTS, load_bundled
 from command_router import interpret as interpret_command
 from demo_webapp import DemoWebApp
+from computer_tasks import BROWSER_CAPS, ComputerTaskRunner, TaskRefused, browser_services
+from controlled_apps import serve_controlled
 from net_policy import NetPolicy, origin_of
 from tool_registry import ToolContext, default_registry
 from project_store import ProjectStore, ProjectError, fingerprint
@@ -287,6 +289,42 @@ class Handler(BaseHTTPRequestHandler):
         else:   # READ_RESULT
             result = brief_missions.get(a['mission_id'], uid, wid)
         return {'interpretation': interp, 'executed': cmd, 'result': result}
+
+    def handle_computer_run(self, user: dict, data: dict) -> dict:
+        """Run ONE supported computer task in a real Chromium against this tenant's own controlled apps (own port, own database).
+        Capabilities are fixed here; consequential tasks return a proposal first and write only when its exact digest is presented."""
+        require(diagnostics_wanted(), 503, 'computer tasks are disabled on this deployment (they launch Chromium in this process)')
+        command = data.get('command')
+        require(isinstance(command, str) and 3 <= len(command) <= 400, 422, 'command must be 3 to 400 characters')
+        digest_in = data.get('approved_digest')
+        require(digest_in is None or (isinstance(digest_in, str) and re.fullmatch(r'[0-9a-f]{64}', digest_in)), 422, 'approved_digest must be a sha256 hex string')
+        uid, wid = user['user_id'], user['workspace_id']
+        require(rate_limiter.allow('computer', uid, 20), 429, 'too many computer tasks')
+        root = Path(document_studio.base_dir) / 'computer' / uid
+        root.mkdir(parents=True, exist_ok=True)
+        with _diag_slots:
+            server, base, apps = serve_controlled(str(root / 'apps.sqlite3'))
+            session = None
+            try:
+                import tempfile
+                session = CloudBrowserSession(f'cmp_{uid[:20]}', uid, tempfile.mkdtemp(prefix='cmp_', dir=root), policy=NetPolicy(allowed_origins=frozenset({origin_of(base)})))
+                trail: list[dict] = []
+                ctx = ToolContext(user_id=uid, workspace_id=wid, mission_id=None, capabilities=BROWSER_CAPS, services=browser_services(session),
+                                  record=lambda rec: (trail.append(rec), f'tool_{len(trail)}')[1])
+                runner = ComputerTaskRunner(tool_registry, ctx, {'pm': base, 'research': base, 'crm': base}, apps.verify)
+                try:
+                    result = runner.run(command, approved_digest=digest_in)
+                except TaskRefused as exc:
+                    raise ApiError(422, f'{exc.code}: {exc.message}')
+                frame = session.capture_frame()
+                result['frame'] = {'data_url': frame.get('frame'), 'url': frame.get('url'), 'title': frame.get('title')}
+                result['evidence'] = [{k: r.get(k) for k in ('tool', 'ok', 'error_code', 'args_sha256')} for r in trail]
+                result['app_origin'] = origin_of(base)
+                return result
+            finally:
+                if session:
+                    session.close()
+                server.shutdown()
 
     def handle_tool_call(self, user: dict, data: dict) -> dict:
         """Typed tool call. Capabilities are fixed here, server-side; nothing in the arguments or in page content can add one."""
@@ -628,6 +666,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, self.handle_command(path.endswith('execute'), user, data))
             if path == '/api/tools/call':
                 return self.send_json(200, self.handle_tool_call(user, data))
+            if path == '/api/computer/run':
+                out = self.handle_computer_run(user, data)
+                return self.send_json(409 if out.get('status') == 'REFUSED' else 200, out)
             m_bma = re.fullmatch(r'/api/brief-missions/([A-Za-z0-9_-]+)/(approve|cancel|revise|print-event|delete|edit-architecture|pause|resume)', path)
             if m_bma:
                 mid, action = m_bma.groups()

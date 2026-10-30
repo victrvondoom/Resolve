@@ -9,7 +9,10 @@
 - [x] Cream theme + flagship UI + account gate, real-browser E2E with screenshots
 - [x] Upload-your-own-project analysis (multi-language), editable architecture, live history, mode-driven UI, real contact resolution
 - [x] UI/UX pass: cream landing, account menu + sign-out, real workspace switcher, stepper, responsive mobile, phone PDF fallback, truthful privacy page (`test_ux_e2e`)
-- [ ] Real STT provider verified with live speech
+- [x] Generalized browser tools: `browser.find/select/wait/extract/verify/close` (+ existing 7) bound to a real Chromium session; every Playwright call runs on the session's own worker thread (fixes "cannot switch thread" for any caller but the creator)
+- [x] Three controlled apps with persisted records (project board, research portal, contact workspace) and five supported computer tasks with exact-digest approval, stale-target refusal and database-side verification (`tests/test_computer_tasks.py`, `tests/test_computer_api.py`, mutation-checked)
+- [ ] `/api/computer/run` has no UI panel yet (API only)
+- [ ] Real STT provider verified with live speech (BLOCKED here: `vosk` installs but model hosts `alphacephei.com`, `huggingface.co` are unreachable from this sandbox, so no real transcription could run)
 - [ ] Public deployment reachable by judges
 - [ ] GitHub Actions run green
 - [ ] Wispr Flow Insights screenshot (user), two-minute video (user)

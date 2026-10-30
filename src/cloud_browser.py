@@ -7,6 +7,7 @@ import os
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -65,7 +66,25 @@ class CloudBrowserSession:
         self.cursor_pos = [100, 100]
         self.last_action = "INITIALIZED"
         self.is_paused = False
-        self._init_browser()
+        # Playwright's sync API is bound to the thread that created it. Every Playwright call therefore runs on this
+        # session's own single worker thread, so any request thread (or the tool registry's timeout thread) can use it.
+        self._exec = ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"pw-{sandbox_id[:12]}")
+        self._pw_thread: int | None = None
+        self._on_worker(self._init_browser)
+
+    def _on_worker(self, fn, *args, **kwargs):
+        if self._pw_thread is not None and threading.get_ident() == self._pw_thread:
+            return fn(*args, **kwargs)
+
+        def run():
+            self._pw_thread = threading.get_ident()
+            return fn(*args, **kwargs)
+        try:
+            return self._exec.submit(run).result(timeout=90)
+        except FutureTimeout as exc:
+            raise CloudBrowserError("the browser did not respond in time", 504) from exc
+        except RuntimeError as exc:   # executor shut down
+            raise CloudBrowserError("The browser session is closed", 410) from exc
 
     def _init_browser(self) -> None:
         try:
@@ -362,6 +381,93 @@ class CloudBrowserSession:
         with self._lock:
             return self._require_page().inner_text("body", timeout=DEFAULT_ACTION_TIMEOUT_MS) if self._page else ""
 
+    # ---- generalized semantic operations (DOM-level, not physical cursor movement)
+    def find(self, text: str | None = None, role: str | None = None, selector: str | None = None, limit: int = 20) -> dict:
+        """Locate visible elements by visible text, ARIA role or CSS selector. Returns stable handles (a unique CSS
+        path) plus the text of each match and its row/context text, so a caller can disambiguate by context."""
+        with self._lock:
+            page = self._require_page()
+            try:
+                return {"url": page.url, "matches": page.evaluate(
+                    """([text, role, selector, limit]) => {
+                      const vis = e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+                      const path = e => { const parts = []; for (let n = e; n && n.nodeType === 1 && n !== document.body; n = n.parentElement) { let i = 1; for (let p = n.previousElementSibling; p; p = p.previousElementSibling) if (p.tagName === n.tagName) i++; parts.unshift(n.tagName.toLowerCase() + ':nth-of-type(' + i + ')'); } return 'body > ' + parts.join(' > '); };
+                      let els = selector ? [...document.querySelectorAll(selector)] : [...document.querySelectorAll('a,button,input,select,textarea,tr,li,h1,h2,h3,[role],[data-testid],td,th,p,span,div')];
+                      if (role) els = els.filter(e => (e.getAttribute('role') || ({A:'link',BUTTON:'button',INPUT:'textbox',SELECT:'combobox',TR:'row',LI:'listitem'})[e.tagName] || '') === role);
+                      if (text) { const t = text.toLowerCase(); els = els.filter(e => (e.innerText || e.value || '').toLowerCase().includes(t)); if (!role && !selector) els = els.filter(e => ![...e.children].some(c => (c.innerText || '').toLowerCase().includes(t))); }
+                      return els.filter(vis).slice(0, limit).map(e => ({ handle: path(e), tag: e.tagName.toLowerCase(), id: e.id || null, testid: e.getAttribute('data-testid'), text: (e.innerText || e.value || '').trim().slice(0, 200), context: ((e.closest('tr,li,article,section') || e.parentElement || e).innerText || '').trim().slice(0, 300) }));
+                    }""", [text, role, selector, limit])}
+            except Exception as exc:
+                raise self._pw_error(exc, "find") from exc
+
+    def select_option(self, selector: str, value: str, timeout_ms: int = DEFAULT_ACTION_TIMEOUT_MS) -> dict:
+        with self._lock:
+            if self.is_paused:
+                raise CloudBrowserError("Browser is paused")
+            page = self._require_page()
+            self.last_action = f"SELECT {selector}"
+            try:
+                chosen = page.locator(selector).select_option(value, timeout=timeout_ms)
+                return {"status": "SUCCESS", "action": self.last_action, "selected": chosen}
+            except Exception as exc:
+                raise self._pw_error(exc, f"select in {selector}") from exc
+
+    def wait_for(self, selector: str | None = None, text: str | None = None, timeout_ms: int = 8000) -> dict:
+        """Wait until a selector is visible or the text appears. Raises a 504 CloudBrowserError on timeout (never a silent pass)."""
+        with self._lock:
+            page = self._require_page()
+            try:
+                if selector:
+                    page.locator(selector).first.wait_for(state="visible", timeout=timeout_ms)
+                elif text:
+                    page.get_by_text(text, exact=False).first.wait_for(state="visible", timeout=timeout_ms)
+                else:
+                    page.wait_for_load_state("load", timeout=timeout_ms)
+                return {"status": "SUCCESS", "url": page.url}
+            except Exception as exc:
+                raise self._pw_error(exc, "waiting") from exc
+
+    def extract(self, selector: str | None = None, limit: int = 8000) -> dict:
+        """Text of an element (or the page) and the rows of the first table within it. Untrusted data."""
+        with self._lock:
+            page = self._require_page()
+            try:
+                return page.evaluate(
+                    """([selector, limit]) => { const root = selector ? document.querySelector(selector) : document.body; if (!root) return {found: false};
+                      const rows = [...root.querySelectorAll('table tr')].slice(0, 200).map(r => [...r.children].map(c => (c.innerText || '').trim()));
+                      return {found: true, url: location.href, text: (root.innerText || '').slice(0, limit), rows}; }""", [selector, limit])
+            except Exception as exc:
+                raise self._pw_error(exc, "extract") from exc
+
+    def verify_state(self, selector: str | None = None, text: str | None = None, url_contains: str | None = None) -> dict:
+        """Check an observable condition on the live page. Returns each requested check and an overall boolean."""
+        with self._lock:
+            page = self._require_page()
+            try:
+                checks = {}
+                if url_contains is not None:
+                    checks["url_contains"] = url_contains in page.url
+                if selector is not None:
+                    checks["selector_visible"] = page.locator(selector).count() > 0 and page.locator(selector).first.is_visible()
+                if text is not None:
+                    checks["text_present"] = text.lower() in (page.inner_text("body", timeout=DEFAULT_ACTION_TIMEOUT_MS) or "").lower()
+                return {"checks": checks, "verified": bool(checks) and all(checks.values()), "url": page.url}
+            except Exception as exc:
+                raise self._pw_error(exc, "verify") from exc
+
+    def download_via(self, selector: str, timeout_ms: int = 15000) -> dict:
+        """Click a download link and wait for the captured file (name, size, sha256 of the real bytes)."""
+        before = len(self.downloads)
+        self.click_selector(selector)
+        end = time.time() + timeout_ms / 1000
+        while time.time() < end:
+            d = self.downloads
+            if len(d) > before:
+                last = d[-1]
+                return {"name": last["name"], "size": last["size"], "sha256": last["sha256"]}
+            time.sleep(0.1)
+        raise CloudBrowserError("download did not complete in time", 504)
+
     def pause(self) -> bool:
         with self._lock:
             self.is_paused = True
@@ -375,6 +481,13 @@ class CloudBrowserSession:
             return True
 
     def close(self) -> None:
+        try:
+            self._on_worker(self._close_on_worker)
+        except CloudBrowserError:
+            pass
+        self._exec.shutdown(wait=False)
+
+    def _close_on_worker(self) -> None:
         with self._lock:
             try:
                 if self._context:
@@ -429,3 +542,16 @@ class CloudBrowserPool:
                 s.close()
             self._sessions.clear()
 
+
+def _bind_to_worker(name: str):
+    inner = getattr(CloudBrowserSession, name)
+
+    def wrapper(self, *args, **kwargs):
+        return self._on_worker(inner, self, *args, **kwargs)
+    wrapper.__name__, wrapper.__doc__ = inner.__name__, inner.__doc__
+    setattr(CloudBrowserSession, name, wrapper)
+
+
+for _name in ("navigate", "capture_jpeg", "inspect", "has_selector", "click_selector", "type_selector", "wait_idle", "capture_frame",
+              "click", "type_text", "scroll", "extract_text", "find", "select_option", "wait_for", "extract", "verify_state", "download_via"):
+    _bind_to_worker(_name)
