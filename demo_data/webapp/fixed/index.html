@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inventory Portal (fixed, no faults)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/demo-app/style.css">
+</head>
+<body>
+<main>
+  <h1>Inventory Portal</h1>
+  <p class="note">The same portal with every fault fixed: a clean application must produce zero error findings.</p>
+  <form id="login-form" autocomplete="off">
+    <label>User <input id="user" name="user" type="text"></label>
+    <label>Password <input id="pass" name="pass" type="password"></label>
+    <button id="submit" type="submit">Sign in</button>
+  </form>
+  <p><button id="load-inventory" type="button">Load inventory</button>
+     <a id="download-csv" href="/demo-app/download/report.csv" download>Download report</a></p>
+  <pre id="out" aria-live="polite">Not signed in.</pre>
+</main>
+<script src="/demo-app/fixed/app.js"></script>
+</body>
+</html>
