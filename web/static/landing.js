@@ -1,4 +1,4 @@
-/* RESOLVE landing page: raw-WebGL "causal ledger" constellation + live data from the local API.
+/* RESOLVE landing page: raw-WebGL "causal ledger" constellation on the cream background + live data from the API.
    No external libraries; works offline. */
 (function () {
   'use strict';
@@ -17,9 +17,10 @@
   var seed = 7;
   function rnd() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
 
+  // Palette tuned for the light cream background (normal alpha blending, darker cores).
   var COLORS = {
-    intent: [0.96, 0.77, 0.42], entity: [0.49, 0.95, 0.81], version: [0.71, 0.61, 1.0],
-    effect: [0.42, 0.89, 0.56], ledger: [0.55, 0.61, 1.0], ghost: [0.45, 0.5, 0.62]
+    intent: [0.72, 0.54, 0.24], entity: [0.36, 0.48, 0.36], version: [0.43, 0.50, 0.58],
+    effect: [0.25, 0.42, 0.26], ledger: [0.64, 0.59, 0.51], ghost: [0.80, 0.76, 0.70]
   };
 
   function buildGraph() {
@@ -54,7 +55,7 @@
     // dust
     for (var d = 0; d < 160; d++) {
       var th = rnd() * Math.PI * 2, ph = Math.acos(2 * rnd() - 1), rr = 3.2 + rnd() * 3.5;
-      add([Math.sin(ph) * Math.cos(th) * rr, Math.cos(ph) * rr * 0.6, Math.sin(ph) * Math.sin(th) * rr], [0.6, 0.66, 0.85], 2 + rnd() * 2.5);
+      add([Math.sin(ph) * Math.cos(th) * rr, Math.cos(ph) * rr * 0.6, Math.sin(ph) * Math.sin(th) * rr], [0.78, 0.72, 0.62], 2 + rnd() * 2.5);
     }
     return { nodes: nodes, edges: edges.filter(function (e) { return e[2] >= 0.5; }), faint: edges.filter(function (e) { return e[2] < 0.5; }) };
   }
@@ -62,8 +63,8 @@
   var VS_POINT = 'attribute vec3 aPos;attribute vec3 aCol;attribute float aSize;uniform mat4 uMVP;uniform float uScale;varying vec3 vCol;varying float vFade;' +
     'void main(){vec4 p=uMVP*vec4(aPos,1.0);gl_Position=p;gl_PointSize=clamp(aSize*uScale/p.w,1.0,64.0);vCol=aCol;vFade=clamp(1.35-(p.w-5.0)*0.18,0.25,1.0);}';
   var FS_POINT = 'precision mediump float;varying vec3 vCol;varying float vFade;uniform float uAlpha;' +
-    'void main(){vec2 q=gl_PointCoord-0.5;float d=length(q)*2.0;if(d>1.0)discard;float core=smoothstep(0.35,0.0,d);float glow=exp(-d*d*5.0);' +
-    'gl_FragColor=vec4(vCol*(glow+core*0.9),(glow*0.85+core)*vFade*uAlpha);}';
+    'void main(){vec2 q=gl_PointCoord-0.5;float d=length(q)*2.0;if(d>1.0)discard;float core=smoothstep(0.42,0.0,d);float halo=exp(-d*d*4.0);' +
+    'gl_FragColor=vec4(vCol,(halo*0.45+core*0.95)*vFade*uAlpha);}';
   var VS_LINE = 'attribute vec3 aPos;attribute vec3 aCol;uniform mat4 uMVP;varying vec3 vCol;varying float vFade;' +
     'void main(){vec4 p=uMVP*vec4(aPos,1.0);gl_Position=p;vCol=aCol;vFade=clamp(1.3-(p.w-5.0)*0.2,0.15,1.0);}';
   var FS_LINE = 'precision mediump float;varying vec3 vCol;varying float vFade;uniform float uAlpha;void main(){gl_FragColor=vec4(vCol,uAlpha*vFade);}';
@@ -172,9 +173,9 @@
       var view = translate(wide ? 1.9 : 0, wide ? 0.05 : 0.6, wide ? -7.6 : -9.4);
       var mvp = mul(perspective(0.78, aspect, 0.1, 60), mul(view, model));
       gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-      drawLines(faintBuf, g.faint.length * 2, mvp, 0.3);
-      drawLines(edgeBuf, g.edges.length * 2, mvp, 0.75);
+      gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);   // additive glow would vanish on cream
+      drawLines(faintBuf, g.faint.length * 2, mvp, 0.25);
+      drawLines(edgeBuf, g.edges.length * 2, mvp, 0.5);
       var scale = Math.max(H / 900, 0.7) * 34;
       drawPoints(nodeBuf, g.nodes.length, mvp, scale, 0.95);
       // pulses
@@ -213,11 +214,22 @@
     });
   }
 
-  var health = document.getElementById('health-chip');
-  getJSON('/api/health').then(function (h) {
+  var health = document.getElementById('health-chip'), metaMode = document.getElementById('meta-mode'),
+      metaSpeech = document.getElementById('meta-speech'), footMode = document.getElementById('foot-mode');
+  var browserSpeech = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+  var healthReady = getJSON('/api/health');
+  healthReady.then(function (h) {
+    var prod = h.mode === 'production', f = h.features || {};
     health.textContent = (h.status === 'ok' ? 'online' : esc(h.status)) + (h.version ? ' · v' + h.version : '');
     health.className = 'chip ' + (h.status === 'ok' ? 'chip-ok' : 'chip-warn');
-  }).catch(function () { health.textContent = 'unavailable'; health.className = 'chip chip-warn'; });
+    metaMode.textContent = prod ? 'Hosted · private accounts' : 'Local demo · 127.0.0.1';
+    metaSpeech.textContent = f.speech_server ? 'Server speech-to-text' : browserSpeech ? 'Browser speech service' : 'Type, or dictate with Wispr Flow';
+    footMode.textContent = prod ? 'Hosted deployment with private accounts. No API keys required to try it.' : 'Local prototype on 127.0.0.1. Runs offline, no API keys.';
+  }).catch(function () {
+    health.textContent = 'unavailable'; health.className = 'chip chip-warn';
+    metaMode.textContent = metaSpeech.textContent = 'unknown';
+    footMode.textContent = 'Server status unavailable.';
+  });
 
   var POLICY_INFO = {
     A_naive: 'Baseline: first name match, first report, trusts the app response, retries on silence.',
@@ -225,7 +237,10 @@
     C_ieec_csl: 'RESOLVE: IEEC binding + Causal State Ledger, driven through the browser.'
   };
   var table = document.getElementById('bench-table'), body = document.getElementById('bench-body'), note = document.getElementById('bench-note');
-  getJSON('/api/web/benchmark').then(function (b) {
+  healthReady.catch(function () { return {}; }).then(function (h) {
+    if (h && h.mode === 'production') throw new Error('route disabled in production');
+    return getJSON('/api/web/benchmark');
+  }).then(function (b) {
     var per = b && b.per_policy;
     if (!per || typeof per !== 'object' || !Object.keys(per).length) throw new Error('no per-policy data');
     body.innerHTML = Object.keys(per).map(function (name) {
@@ -242,8 +257,11 @@
     note.textContent = 'Note from the recorded run: ' + (b.note || 'none recorded') + (b.seeds ? ' Seeds: ' + b.seeds.join(', ') + '.' : '');
     table.dataset.state = 'loaded';
   }).catch(function (e) {
-    body.innerHTML = '<tr><td colspan="6"><span class="unavailable">Benchmark data unavailable</span> <span class="muted">(' + esc(e.message) + '). Run <code>python benchmarks/web_bench.py</code> to record a result.</span></td></tr>';
-    note.textContent = 'Note: unavailable.';
+    var hosted = /disabled in production/.test(e.message || '');
+    body.innerHTML = '<tr><td colspan="6"><span class="unavailable">Benchmark data unavailable' + (hosted ? ' on this hosted deployment' : '') + '</span> <span class="muted">' +
+      (hosted ? 'The fixture benchmark runs in local demo mode because it uses the shared demo ledger. Run <code>python benchmarks/web_bench.py</code> locally to reproduce it.'
+              : '(' + esc(e.message) + '). Run <code>python benchmarks/web_bench.py</code> to record a result.') + '</span></td></tr>';
+    note.textContent = hosted ? 'Note: the recorded fixture run is shown in local demo mode only.' : 'Note: unavailable.';
     table.dataset.state = 'unavailable';
   });
 })();

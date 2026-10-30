@@ -11,10 +11,19 @@
 <a class="skip" href="#main">Skip to content</a>
 <header class="topbar">
   <a class="brand" href="/" aria-label="RESOLVE home page"><img src="/static/mark.svg" alt="" width="26" height="26"><span>RESOLVE</span><small>Mission Control</small></a>
-  <div class="topbar-status" role="status" aria-live="polite">
-    <span class="chip chip-muted" id="healthChip"><span class="led" aria-hidden="true"></span><span id="health">connecting…</span></span>
-    <select id="workspaceSwitcher" aria-label="Select workspace" class="num-in" style="font-size:12px;padding:3px 8px;margin-left:8px;display:none;"></select>
-    <button id="userAccountPill" class="btn btn-small" title="Manage account" style="margin-left:8px;"><span id="userEmailBadge">demo@resolve.local</span></button>
+  <div class="topbar-status">
+    <span class="chip chip-muted" id="healthChip" role="status" aria-live="polite"><span class="led" aria-hidden="true"></span><span id="health">connecting…</span></span>
+    <label class="sr-only" for="workspaceSwitcher">Workspace</label>
+    <select id="workspaceSwitcher" class="ws-switch" hidden></select>
+    <div class="account">
+      <button id="userAccountPill" class="btn btn-small account-pill" aria-haspopup="menu" aria-expanded="false" aria-controls="accountMenu" title="Account"><span class="avatar" id="userAvatar" aria-hidden="true">·</span><span id="userEmailBadge">Signing in…</span></button>
+      <div id="accountMenu" class="account-menu" role="menu" hidden>
+        <p class="small muted" id="accountWho"></p>
+        <a role="menuitem" class="menu-item" href="#privacy">Privacy &amp; data</a>
+        <button role="menuitem" class="menu-item" id="newWorkspaceBtn" type="button">New workspace…</button>
+        <button role="menuitem" class="menu-item" id="signOutBtn" type="button">Sign out</button>
+      </div>
+    </div>
   </div>
   <div class="topbar-actions">
     <button id="estop" class="btn btn-danger" title="Cancel pending agent tasks and revoke the cursor lease">Emergency stop</button>
@@ -42,61 +51,91 @@
       <li><a href="#view-privacy" data-view="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Privacy &amp; data</a></li>
       <li><a href="#view-ledger" data-view="ledger"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg>Ledger &amp; registry</a></li>
     </ul>
-    <p class="sidebar-note" id="sidebarNote">Checking server mode…</p>
+    <div class="sidebar-note" id="sidebarNote" aria-live="polite">Checking server mode…</div>
   </nav>
 
   <main id="main" tabindex="-1">
     <!-- ============ FLAGSHIP: BRIEF -> VERIFIED PDF ============ -->
     <section class="view" id="view-flagship" data-view="flagship" aria-labelledby="h-flagship" hidden>
       <div class="view-head"><div><h1 id="h-flagship">Flagship mission</h1>
-        <p class="muted">Speak or type one goal. Two workers read your brief and analyze a project (the bundled sample or your own upload) at the same time, a planner proposes a corrected architecture, you approve the exact plan, and a verifier re-reads the generated PDF before anything is marked confirmed.</p></div></div>
+        <p class="muted lead">Speak or type one goal. RESOLVE reads your brief and analyzes your code in parallel, proposes a corrected architecture for you to approve, then writes a PDF and independently verifies it before calling it done.</p></div></div>
+      <ol class="fm-steps" id="fmSteps" aria-label="Mission progress">
+        <li data-step="1" aria-current="step"><span class="fm-step-n" aria-hidden="true">1</span><span><b>Instruction</b><small>Brief and project</small></span></li>
+        <li data-step="2"><span class="fm-step-n" aria-hidden="true">2</span><span><b>Workers</b><small>Read, analyze, plan</small></span></li>
+        <li data-step="3"><span class="fm-step-n" aria-hidden="true">3</span><span><b>Your approval</b><small>Exact plan digest</small></span></li>
+        <li data-step="4"><span class="fm-step-n" aria-hidden="true">4</span><span><b>Verified PDF</b><small>Read-back checked</small></span></li>
+      </ol>
       <div class="grid">
         <section class="card span6 hero-card" aria-labelledby="h-fm-1">
-          <div class="card-head"><h2 id="h-fm-1">1. Your instruction</h2><span id="fmMicBadge" class="chip chip-muted small" role="status">CHECKING MIC…</span></div>
-          <label class="label" for="fmIntent">Instruction (editable; nothing is sent until you press Start)</label>
-          <textarea id="fmIntent" rows="3">Resolve, inspect my project brief, analyze the implementation issues, create a corrected architecture, generate a polished report and prepare it for print.</textarea>
-          <div class="row" style="gap:8px;margin:8px 0">
-            <button class="btn" id="fmMic" disabled title="Checking microphone and speech engine…">Push to talk</button>
-            <button class="btn" id="fmSample" title="Creates the bundled sample project brief as a PDF in your private workspace">Load sample brief</button>
-          </div>
-          <p id="fmMicNote" class="msg" style="display:none" aria-live="polite"></p>
-          <label class="label" for="fmDoc">Source brief (bound by document id + SHA-256, never by name)</label>
-          <select id="fmDoc"><option value="">No PDFs yet — load the sample brief or upload one in Documents</option></select>
-          <label class="label" for="fmProject">Project to analyze (parsed statically, never executed)</label>
-          <select id="fmProject" aria-describedby="fmProjectInfo"></select>
-          <div class="row" style="gap:8px;margin:6px 0"><label class="btn" for="fmProjectFile" id="fmProjectUploadLabel">Upload project .zip</label><input type="file" id="fmProjectFile" accept=".zip,application/zip" class="sr-only"><button class="btn btn-danger" id="fmProjectDelete" disabled title="Select one of your uploaded projects to delete it">Delete project</button></div>
-          <p class="muted small" id="fmProjectInfo">Loading projects…</p>
-          <div class="row" style="gap:8px"><button class="btn btn-primary" id="fmStart">Start mission</button><button class="btn" id="fmCancel" disabled title="No running mission">Cancel</button></div>
+          <div class="card-head"><h2 id="h-fm-1">Your instruction</h2><span id="fmMicBadge" class="chip chip-muted small" role="status">CHECKING MIC…</span></div>
+          <label class="label" for="fmIntent">What should RESOLVE do?</label>
+          <textarea id="fmIntent" rows="3" aria-describedby="fmIntentHint">Resolve, inspect my project brief, analyze the implementation issues, create a corrected architecture, generate a polished report and prepare it for print.</textarea>
+          <div class="fm-inline"><button class="btn" id="fmMic" disabled title="Checking microphone and speech engine…"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ico"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Push to talk</button><small class="muted" id="fmIntentHint">Editable. Nothing is sent until you press Start. Wispr Flow can dictate straight into this box.</small></div>
+          <p id="fmMicNote" class="msg" hidden aria-live="polite"></p>
+          <fieldset class="fm-field">
+            <legend>Source brief</legend>
+            <div class="fm-inline"><label class="sr-only" for="fmDoc">Source brief PDF</label><select id="fmDoc"><option value="">No PDFs yet</option></select><button class="btn" id="fmSample" title="Creates the bundled sample project brief as a PDF in your private workspace">Load sample brief</button></div>
+            <small class="muted">Bound by document id and SHA-256, never by file name. Upload your own PDF under Documents.</small>
+          </fieldset>
+          <fieldset class="fm-field">
+            <legend>Project to analyze</legend>
+            <div class="fm-inline"><label class="sr-only" for="fmProject">Project</label><select id="fmProject" aria-describedby="fmProjectInfo"></select><label class="btn" for="fmProjectFile" id="fmProjectUploadLabel">Upload .zip</label><input type="file" id="fmProjectFile" accept=".zip,application/zip" class="sr-only"><button class="btn btn-danger" id="fmProjectDelete" disabled title="Select one of your uploaded projects to delete it">Delete</button></div>
+            <small class="muted" id="fmProjectInfo">Loading projects…</small>
+          </fieldset>
+          <div class="fm-actions"><button class="btn btn-primary btn-lg" id="fmStart" disabled title="Load the sample brief or choose a PDF first">Start mission</button><button class="btn" id="fmCancel" disabled title="No running mission">Cancel</button></div>
           <p id="fmStatus" class="msg" role="status" aria-live="polite"></p>
         </section>
         <section class="card span6" aria-labelledby="h-fm-2">
-          <div class="card-head"><h2 id="h-fm-2">2. Workers (from recorded events)</h2><span id="fmState" class="chip chip-muted">NO MISSION</span></div>
-          <ol id="fmNodes" class="fm-nodes" aria-label="Worker tasks"><li class="muted">Start a mission to see real worker execution.</li></ol>
-          <details><summary class="small muted">Event log</summary><pre id="fmEvents" class="fm-log" tabindex="0">—</pre></details>
-        </section>
-        <section class="card span12" aria-labelledby="h-fm-hist">
-          <div class="card-head"><h2 id="h-fm-hist">Your missions</h2><button class="btn" id="fmHistRefresh">Refresh</button></div>
-          <ul id="fmHistory" class="fm-hist" aria-label="Mission history"><li class="muted">No missions yet.</li></ul>
+          <div class="card-head"><h2 id="h-fm-2">Workers</h2><span id="fmState" class="chip chip-muted">NO MISSION</span></div>
+          <p class="muted small fm-sub">Every status and timestamp below comes from events the server recorded.</p>
+          <ol id="fmNodes" class="fm-nodes" aria-label="Worker tasks"></ol>
+          <p id="fmOverlap" class="small fm-overlap" hidden></p>
+          <details class="fm-details"><summary class="small">Event log</summary><pre id="fmEvents" class="fm-log" tabindex="0">—</pre></details>
         </section>
         <section class="card span12" id="fmPlanCard" aria-labelledby="h-fm-3" hidden>
-          <div class="card-head"><h2 id="h-fm-3">3. Plan awaiting your approval</h2><span class="chip chip-warn">DRAFT · rule-based, not an LLM</span></div>
+          <div class="card-head"><h2 id="h-fm-3" tabindex="-1">Plan awaiting your approval</h2><span class="chip chip-warn">DRAFT · rule-based, not an LLM</span></div>
           <p class="muted small" id="fmPlanMeta"></p>
+          <div class="fm-sev" id="fmSeverity" aria-label="Issues by severity"></div>
           <div class="fm-split">
-            <div><h3 class="fm-h">Issues with evidence</h3><div class="tablewrap"><table class="fm-table"><thead><tr><th>ID</th><th>Severity</th><th>Where</th><th>Violates</th></tr></thead><tbody id="fmIssues"></tbody></table></div></div>
-            <div><h3 class="fm-h">Corrected architecture</h3><div id="fmDiagram" class="fm-diagram" role="img" aria-label="Architecture diagram"></div><details open><summary class="small muted">Edit the architecture (Mermaid flowchart) — changing it creates a new plan digest you must approve</summary>
-              <label class="sr-only" for="fmMermaid">Mermaid source</label><textarea id="fmMermaid" class="fm-log" rows="10" spellcheck="false"></textarea>
-              <div class="row" style="gap:8px;margin-top:6px"><button class="btn" id="fmApplyEdit">Apply edit</button><span id="fmEditMsg" class="msg" role="status" aria-live="polite"></span></div></details></div>
+            <div><h3 class="fm-h">Issues with evidence</h3><div class="tablewrap"><table class="fm-table"><thead><tr><th scope="col">ID</th><th scope="col">Severity</th><th scope="col">Where</th><th scope="col">Violates</th></tr></thead><tbody id="fmIssues"></tbody></table></div></div>
+            <div><div class="fm-h-row"><h3 class="fm-h">Corrected architecture</h3><button class="btn btn-small" id="fmEditToggle" aria-expanded="false" aria-controls="fmEditor">Edit</button></div>
+              <div id="fmDiagram" class="fm-diagram" role="img" aria-label="Architecture diagram"></div>
+              <small id="fmDiagramHint" class="muted" hidden>Scroll sideways inside the diagram to see all of it.</small>
+              <p class="small muted fm-legend"><span class="key cur"></span>current module <span class="key new"></span>proposed component <span class="key dash"></span>proposed link</p>
+              <div id="fmEditor" class="fm-editor" hidden>
+                <label class="label" for="fmMermaid">Architecture as a Mermaid flowchart</label>
+                <textarea id="fmMermaid" class="fm-log" rows="10" spellcheck="false" aria-describedby="fmEditHelp"></textarea>
+                <small class="muted" id="fmEditHelp">Add or remove nodes and arrows. Applying creates a new plan digest, so only the edited plan can be approved, and the edit appears in the PDF.</small>
+                <div class="fm-inline"><button class="btn" id="fmApplyEdit">Apply edit</button><span id="fmEditMsg" class="msg" role="status" aria-live="polite"></span></div>
+              </div></div>
           </div>
-          <div class="row" style="gap:8px;margin-top:10px"><button class="btn btn-primary" id="fmApprove">Approve this exact plan</button><button class="btn" id="fmRevise" title="Re-runs analysis with your edited instruction; any earlier approval becomes invalid">Revise instruction &amp; re-plan</button></div>
+          <div class="fm-approve"><div><button class="btn btn-primary btn-lg" id="fmApprove">Approve this exact plan</button><button class="btn" id="fmRevise" title="Re-runs analysis with your edited instruction; any earlier approval becomes invalid">Revise instruction &amp; re-plan</button></div>
+            <small class="muted">Approval is bound to this plan's digest. If anything changes afterwards, it must be approved again.</small></div>
         </section>
         <section class="card span12" id="fmResultCard" aria-labelledby="h-fm-4" hidden>
-          <div class="card-head"><h2 id="h-fm-4">4. Verified result</h2><span id="fmResultChip" class="chip chip-muted"></span></div>
-          <ul id="fmChecks" class="fm-checks"></ul>
-          <p class="small"><b>Output SHA-256</b> <code id="fmHash"></code></p>
-          <p class="small"><b>Provenance</b> <span id="fmProv"></span></p>
-          <div class="row" style="gap:8px;margin:8px 0"><button class="btn btn-primary" id="fmDownload">Download PDF</button><button class="btn" id="fmPrint">Print…</button><button class="btn btn-danger" id="fmDelete">Delete mission &amp; PDF</button></div>
-          <iframe id="fmPreview" class="doc-preview" title="Generated PDF preview"></iframe>
+          <div class="card-head"><h2 id="h-fm-4" tabindex="-1">Verified result</h2><span id="fmResultChip" class="chip chip-muted"></span></div>
+          <div class="fm-result">
+            <div>
+              <h3 class="fm-h">Independent checks</h3>
+              <ul id="fmChecks" class="fm-checks"></ul>
+              <p class="small muted" id="fmChecksNote"></p>
+            </div>
+            <div>
+              <h3 class="fm-h">Output</h3>
+              <div class="fm-hash"><code id="fmHash"></code><button class="btn btn-small" id="fmCopyHash" title="Copy the output SHA-256">Copy</button></div>
+              <dl class="fm-prov" id="fmProv"></dl>
+              <div class="fm-actions"><button class="btn btn-primary" id="fmDownload">Download PDF</button><button class="btn" id="fmPrint">Print…</button><button class="btn btn-danger" id="fmDelete">Delete mission &amp; PDF</button></div>
+            </div>
+          </div>
+          <div class="fm-preview-wrap">
+            <iframe id="fmPreview" class="doc-preview" title="Generated PDF preview"></iframe>
+            <div id="fmPreviewFallback" class="fm-preview-fallback" hidden><p>This browser can't show PDFs inline.</p><button class="btn" id="fmOpenPdf">Open the PDF</button></div>
+          </div>
           <p class="muted small" id="fmPrintNote">“Print…” opens your browser's print dialog. RESOLVE cannot confirm that a physical printer completed a job.</p>
+        </section>
+        <section class="card span12" aria-labelledby="h-fm-hist">
+          <div class="card-head"><h2 id="h-fm-hist">Your missions</h2><button class="btn btn-small" id="fmHistRefresh">Refresh</button></div>
+          <ul id="fmHistory" class="fm-hist" aria-label="Mission history"><li class="muted">No missions yet.</li></ul>
         </section>
       </div>
     </section>
@@ -276,8 +315,8 @@
           </div>
           <button class="btn btn-primary" id="docTransform">Create transformed PDF</button>
           <p id="docStatus" class="msg" role="status" aria-live="polite">Select a document to begin.</p>
-
-          <iframe id="docPreview" class="doc-preview" title="Selected PDF preview"></iframe>
+          <div class="doc-preview-head"><h2>PDF preview</h2><div class="doc-actions"><button class="btn" id="docDownload" disabled title="Select a document to download">Download</button><button class="btn" id="docPrint" disabled title="Select a document to print">Print…</button></div></div>
+          <div class="fm-preview-wrap"><iframe id="docPreview" class="doc-preview" title="Selected PDF preview"></iframe><div id="docPreviewEmpty" class="fm-preview-fallback"><p>Select a PDF on the left to preview it here.</p></div></div>
           <p class="muted small">“Print…” opens your browser's print dialog. RESOLVE cannot confirm that a physical printer completed a job.</p>
         </section>
         <section class="card span12" aria-labelledby="h-doc-report">
@@ -420,8 +459,8 @@
     <section class="view" id="view-connectors" data-view="connectors" aria-labelledby="h-connectors" hidden>
       <div class="view-head">
         <div>
-          <h1 id="h-connectors">Connected personal integrations</h1>
-          <p class="muted">Authorized third-party integrations with scoped permissions. Credentials are encrypted and isolated strictly to your private workspace.</p>
+          <h1 id="h-connectors">Connected apps <span class="chip chip-warn">SIMULATED</span></h1>
+          <p class="muted">These connectors use built-in fixture data to exercise scope checks and tenant isolation. There is no real OAuth, no external account is contacted, and no credentials are stored.</p>
         </div>
         <button class="btn btn-small" id="connectorsReload">Refresh connections</button>
       </div>
@@ -461,17 +500,20 @@
       <div class="view-head">
         <div>
           <h1 id="h-privacy">Privacy, data ownership &amp; deletion</h1>
-          <p class="muted">Complete user sovereignty: view stored metadata, download an export bundle with cryptographic checksum, or permanently delete personal data and accounts.</p>
+          <p class="muted">See what this deployment stores for you, export it as JSON with a SHA-256 checksum, or delete a workspace or your whole account.</p>
         </div>
         <button class="btn btn-small" id="privacyReload">Refresh summary</button>
       </div>
       <div class="grid">
         <section class="card span6" aria-labelledby="h-priv-summary">
           <div class="card-head"><h2 id="h-priv-summary">Storage &amp; footprint</h2><span class="chip chip-ok" id="privStorageBadge">0.0 MB</span></div>
-          <ul class="stats-list" style="list-style:none;padding:0;margin:12px 0;">
-            <li class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-2);"><span>Active Sandboxes</span><strong id="privActiveSandboxes">0</strong></li>
-            <li class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-2);"><span>Connected Integrations</span><strong id="privConnectedCount">0</strong></li>
-            <li class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-2);"><span>Disk Space Allocated</span><strong id="privStorageBytes">0 KB</strong></li>
+          <ul class="stats-list">
+            <li><span>Documents (PDF)</span><strong id="privDocs">0</strong></li>
+            <li><span>Missions</span><strong id="privMissions">0</strong></li>
+            <li><span>Uploaded projects</span><strong id="privProjects">0</strong></li>
+            <li><span>Sandboxes</span><strong id="privActiveSandboxes">0</strong></li>
+            <li><span>Simulated connectors linked</span><strong id="privConnectedCount">0</strong></li>
+            <li><span>Storage used</span><strong id="privStorageBytes">0 KB</strong></li>
           </ul>
           <div class="row" style="margin-top:16px;">
             <button class="btn btn-primary" id="privExportBtn">Export all my data (JSON)</button>
@@ -479,23 +521,23 @@
         </section>
 
         <section class="card span6" aria-labelledby="h-priv-retention">
-          <div class="card-head"><h2 id="h-priv-retention">Retention policy disclosures</h2></div>
-          <div class="small muted" style="line-height:1.6;">
-            <p><strong>Active Data:</strong> Stored locally/in your cloud container until explicitly deleted by you.</p>
-            <p><strong>Sandbox Browser Profiles:</strong> Destroyed immediately when sandbox is terminated.</p>
-            <p><strong>Session Tokens:</strong> Cryptographically generated; expire in 7 days or upon logout.</p>
-            <p><strong>System Backups:</strong> Offsite disaster snapshots retain encrypted tombstone metadata for up to 30 days before immutable purge.</p>
-          </div>
+          <div class="card-head"><h2 id="h-priv-retention">How long data is kept</h2></div>
+          <dl class="retention small">
+            <dt>Your content</dt><dd>Documents, missions and uploaded projects stay until you delete them.</dd>
+            <dt>Audio</dt><dd>Recordings are transcribed in memory and never stored.</dd>
+            <dt>Sessions</dt><dd>Random tokens that expire after 7 days or when you sign out.</dd>
+            <dt>Backups</dt><dd>RESOLVE keeps no backups of its own. If the host snapshots its disk, the host's retention applies.</dd>
+          </dl>
         </section>
 
-        <section class="card span12 danger-card" style="border:1px solid #ff4757;border-radius:10px;" aria-labelledby="h-priv-danger">
-          <div class="card-head"><h2 id="h-priv-danger" style="color:#ff4757;">Danger zone: permanent data destruction</h2></div>
-          <p class="small muted">These actions immediately destroy running sandboxes, delete database rows, wipe storage namespaces, and revoke credentials. This cannot be undone.</p>
-          <div class="row" style="gap:16px;margin-top:12px;">
+        <section class="card span12 danger-card" aria-labelledby="h-priv-danger">
+          <div class="card-head"><h2 id="h-priv-danger">Delete data</h2></div>
+          <p class="small muted">Deletion cancels running work, removes the stored files and database rows, and cannot be undone.</p>
+          <div class="fm-actions">
             <button class="btn btn-danger" id="privDeleteWorkspaceBtn">Delete active workspace</button>
             <button class="btn btn-danger" id="privDeleteAccountBtn">Permanently delete my account</button>
           </div>
-          <pre class="log" id="deletionReceiptLog" style="margin-top:12px;">No deletion requested yet.</pre>
+          <pre class="log" id="deletionReceiptLog">No deletion requested yet.</pre>
         </section>
       </div>
     </section>
@@ -509,17 +551,21 @@
       </div>
     </section>
 
-    <footer class="foot muted small">No external messages are sent; the outbox is SIMULATED DELIVERY. Native input requires an interactive Windows session (WINDOWS_NATIVE_TESTS_NOT_RUN on Linux build hosts). Data is stored in the local SQLite database.</footer>
+    <footer class="foot muted small" id="appFooter">No external messages are sent; the outbox is SIMULATED DELIVERY. Native input requires an interactive Windows session (WINDOWS_NATIVE_TESTS_NOT_RUN on Linux build hosts). Data is stored in the local SQLite database.</footer>
   </main>
 </div>
-<dialog id="authDialog" aria-labelledby="authTitle">
-  <form method="dialog" id="authForm" class="auth-form">
-    <h2 id="authTitle">Sign in to RESOLVE</h2>
-    <p class="muted small">Your documents and missions are private to your account. Judges: use “Create demo account” (disposable, deletable from Privacy &amp; data).</p>
+<dialog id="authDialog" aria-labelledby="authTitle" aria-describedby="authLead">
+  <form id="authForm" class="auth-form" novalidate>
+    <div class="auth-brand"><img src="/static/mark.svg" alt="" width="28" height="28"><span>RESOLVE</span></div>
+    <h2 id="authTitle">Welcome</h2>
+    <p id="authLead" class="muted small">Everything you create here is private to your account, and you can delete it at any time.</p>
+    <button class="btn btn-primary btn-block" id="authDemo" type="button">Try it now: create a demo account</button>
+    <small class="muted">A disposable account with a random password. Ideal for judges and first-time visitors.</small>
+    <div class="auth-divider"><span>or use your email</span></div>
     <label class="label" for="authEmail">Email</label><input id="authEmail" type="email" autocomplete="username" required>
-    <label class="label" for="authPassword">Password (10+ characters)</label><input id="authPassword" type="password" autocomplete="current-password" minlength="10" required>
+    <label class="label" for="authPassword">Password <span class="label-note">(10+ characters)</span></label><input id="authPassword" type="password" autocomplete="current-password" minlength="10" required>
     <p id="authMsg" class="msg" role="alert"></p>
-    <div class="row" style="gap:8px"><button class="btn btn-primary" id="authLogin" type="button">Sign in</button><button class="btn" id="authRegister" type="button">Create account</button><button class="btn" id="authDemo" type="button">Create demo account</button></div>
+    <div class="auth-actions"><button class="btn" id="authLogin" type="submit">Sign in</button><button class="btn" id="authRegister" type="button">Create account</button></div>
   </form>
 </dialog>
 <script src="/static/flagship.js"></script>

@@ -31,7 +31,10 @@ from effect_graph import EffectDependencyGraph, NodeType, EdgeType
 from connectors import ConnectorRegistry, ConnectorError
 from privacy_engine import PrivacyEngine
 from document_studio import DocumentStudio, DocumentError
-
+from brief_mission import BriefMissionStore, MissionError, BUNDLED_PROJECTS, load_bundled
+from project_store import ProjectStore, ProjectError, fingerprint
+from voice_engine import VoiceEngine, VoiceError
+from server_security import ServerSecurity, RateLimiter, SECURITY_HEADERS, ConfigError, client_ip
 
 DB = Path(os.environ.get('RESOLVE_DB', ROOT / 'data' / 'resolve.sqlite3'))
 ledger = Ledger(DB)
@@ -170,7 +173,7 @@ class Handler(BaseHTTPRequestHandler):
         auth = self.headers.get('Authorization', '')
         token = auth[7:].strip() if auth.startswith('Bearer ') else self.headers.get('X-Resolve-Token', '').strip()
         require(bool(token), 401, 'session token required')
-
+        if not SECURITY.production and secrets.compare_digest(token, SESSION_TOKEN):
             return default_demo
         try:
             return tenant_auth_mgr.validate_session(token)
@@ -252,6 +255,10 @@ class Handler(BaseHTTPRequestHandler):
                 report = ROOT / 'data' / 'benchmarks' / 'aggregate.json'
                 require(report.exists(), 404, 'no benchmark run has been recorded')
                 return self.send_json(200, json.loads(report.read_text(encoding='utf-8')))
+            if path == '/api/workspaces' and parse_qs(parsed.query).get('tenant'):
+                # The signed-in user's own workspaces (the concept catalog below is a different thing).
+                user = self.document_user()
+                return self.send_json(200, {'workspaces': tenant_auth_mgr.list_workspaces(user['user_id']), 'active_workspace_id': user['workspace_id']})
             if path == '/api/workspaces':
                 workspace = parse_qs(parsed.query).get('workspace', [None])[0]
                 if workspace:
@@ -279,7 +286,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == '/api/auth/me':
                 user = self.get_session()
-                return self.send_json(200, user)
+                return self.send_json(200, {k: v for k, v in user.items() if k != 'token'})   # the client already holds its token
             if path == '/api/sandboxes':
                 user = self.get_session()
                 sandboxes = sandbox_mgr.list_sandboxes(user['user_id'])
@@ -378,7 +385,11 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(404, 'not found')
         except ApiError as exc:
             self.send_json(exc.status, {'error': exc.message})
-
+        except MissionError as exc:
+            self.send_json(exc.status_code, {'error': exc.message, **({'candidates': exc.candidates} if exc.candidates else {})})
+        except VoiceError as exc:
+            self.send_json(exc.status_code, {'error': exc.message, 'code': exc.code})
+        except (TenantError, SandboxError, CloudBrowserError, ConnectorError, DocumentError, ProjectError) as exc:
             self.send_json(getattr(exc, 'status_code', 400), {'error': exc.message if hasattr(exc, 'message') else str(exc)})
         except Exception as exc:
             self.send_json(503, {'error': str(exc)})
@@ -398,7 +409,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(200, session)
 
             self.check_origin(mutation=True)
-
+            data = self.body(max_size=7 * 1024 * 1024 if path in ('/api/documents/upload', '/api/projects/upload') else 3 * 1024 * 1024 if path == '/api/voice/transcribe-audio' else 32768)
             user = self.get_session()
 
             if path == '/api/documents/upload':
@@ -414,7 +425,44 @@ class Handler(BaseHTTPRequestHandler):
                     str(data.get('operation', '')), data.get('document_ids', []),
                     data.get('expected_sha256', {}), degrees=data.get('degrees'), pages=data.get('pages'))
                 return self.send_json(201, {'document': doc})
-
+            if path == '/api/projects/upload':
+                try:
+                    raw = base64.b64decode(data.get('content_base64', ''), validate=True)
+                except (ValueError, binascii.Error):
+                    raise ApiError(400, 'invalid base64 archive')
+                require(rate_limiter.allow('project', user['user_id'], 10), 429, 'too many project uploads; retry shortly')
+                return self.send_json(201, {'project': project_store.add(user['user_id'], user['workspace_id'], str(data.get('name', 'project.zip')), raw)})
+            m_pd = re.fullmatch(r'/api/projects/([A-Za-z0-9_-]+)/delete', path)
+            if m_pd:
+                project_store.delete(user['user_id'], user['workspace_id'], m_pd.group(1))
+                return self.send_json(200, {'deleted': m_pd.group(1)})
+            if path == '/api/documents/sample-brief':
+                return self.send_json(201, {'document': brief_missions.seed_sample_brief(user['user_id'], user['workspace_id'])})
+            m_dd = re.fullmatch(r'/api/documents/([A-Za-z0-9_-]+)/delete', path)
+            if m_dd:
+                document_studio.delete_document(user['user_id'], user['workspace_id'], m_dd.group(1))
+                return self.send_json(200, {'deleted': m_dd.group(1)})
+            if path == '/api/brief-missions':
+                require(rate_limiter.allow('mission', user['user_id'], 10), 429, 'too many missions started; retry shortly')
+                mission = brief_missions.start(user['user_id'], user['workspace_id'], str(data.get('intent_text', '')),
+                    document_id=data.get('document_id'), document_name=data.get('document_name'),
+                    expected_sha256=data.get('expected_sha256'), project=str(data.get('project', 'sample_project')))
+                return self.send_json(202, mission)
+            m_bma = re.fullmatch(r'/api/brief-missions/([A-Za-z0-9_-]+)/(approve|cancel|revise|print-event|delete|edit-architecture)', path)
+            if m_bma:
+                mid, action = m_bma.groups()
+                uid, wid = user['user_id'], user['workspace_id']
+                if action == 'approve':
+                    return self.send_json(200, brief_missions.approve(mid, uid, wid, str(data.get('plan_digest', ''))))
+                if action == 'cancel':
+                    return self.send_json(200, brief_missions.cancel(mid, uid, wid))
+                if action == 'revise':
+                    return self.send_json(200, brief_missions.revise(mid, uid, wid, str(data.get('intent_text', ''))))
+                if action == 'edit-architecture':
+                    return self.send_json(200, brief_missions.edit_architecture(mid, uid, wid, data.get('mermaid')))
+                if action == 'print-event':
+                    return self.send_json(200, brief_missions.record_print_dialog(mid, uid, wid))
+                return self.send_json(200, brief_missions.delete(mid, uid, wid, delete_output=data.get('delete_output', True) is not False))
             if path == '/api/documents/report':
                 doc = document_studio.create_report(user['user_id'], user['workspace_id'],
                     str(data.get('title', 'Report')), str(data.get('text', '')))
@@ -527,7 +575,7 @@ class Handler(BaseHTTPRequestHandler):
                 elif options:
                     feedback = f"{len(options)} contacts match. Which one: " + '; '.join(f"{o['name']} ({o['context']})" for o in options) + '?'
                 else:
-
+                    feedback = 'I could not match a contact. Please name the contact and their account.'
                 response = {
                     "transcription": text,
                     "source": "submitted_text",
@@ -536,7 +584,10 @@ class Handler(BaseHTTPRequestHandler):
                     "is_correction": is_correction,
                     "intent": "UPDATE_AND_FOLLOWUP",
                     "resolved_entity": resolved_contact,
-
+                    "candidates": options,
+                    "confidence": None,
+                    "recommended_action": "simulated_send_and_update_followup" if resolved_contact else "needs_clarification",
+                    "spoken_feedback": feedback,
                 }
                 return self.send_json(200, response)
             path = urlparse(self.path).path
@@ -622,7 +673,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(exc.status_code, {'error': exc.message, **({'candidates': exc.candidates} if exc.candidates else {})})
         except ApiError as exc:
             self.send_json(exc.status, {'error': exc.message})
-
+        except (TenantError, SandboxError, CloudBrowserError, ConnectorError, DocumentError, ProjectError) as exc:
             self.send_json(getattr(exc, 'status_code', 400), {'error': exc.message if hasattr(exc, 'message') else str(exc)})
         except AmbiguousEntity as exc:
             self.send_json(409, {'error': str(exc), 'candidates': exc.candidates})

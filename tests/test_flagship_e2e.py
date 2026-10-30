@@ -74,6 +74,8 @@ class FlagshipE2E(unittest.TestCase):
                     b = p.chromium.launch(executable_path=exe, args=['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', f'--use-file-for-fake-audio-capture={wav}'])
                     ctx = b.new_context(viewport={'width': 1360, 'height': 900}, accept_downloads=True, permissions=['microphone'])
                     page = ctx.new_page()
+                    # Pin the capability instead of inheriting the browser build's: headless shells have no PDF viewer, full Chromium does.
+                    ctx.add_init_script("Object.defineProperty(Navigator.prototype, 'pdfViewerEnabled', {get: () => true})")
                     page.on('pageerror', lambda e: errors.append(f'pageerror: {e}'))
                     page.on('console', lambda m: errors.append(f'console: {m.text}') if m.type == 'error' else None)
                     page.on('dialog', lambda d: d.accept())   # the informed-consent confirm() for off-server STT
@@ -97,7 +99,7 @@ class FlagshipE2E(unittest.TestCase):
                     self.assertIn(b'RIFF', FakeStt.received[0]); self.assertIn(b'WAVE', FakeStt.received[0])
                     self.assertGreater(len(FakeStt.received[0]), 16000 * 2 * 1)   # >= ~1 s of 16 kHz PCM16 actually captured
                     self.assertIn('Transcript ready', page.inner_text('#fmMicNote'))
-                    self.assertEqual(page.locator('#fmNodes li.muted').count(), 1)  # transcript alone does NOT start a mission
+                    expect(page.locator('#fmState')).to_have_text('NO MISSION')   # a transcript alone does NOT start a mission
                     # sample brief + mission
                     page.click('#fmSample')
                     expect(page.locator('#fmDoc')).not_to_have_value('')
@@ -187,6 +189,7 @@ class DynamicFlowE2E(unittest.TestCase):
                     self.assertIn('shop.zip', page.inner_text('#fmPlanMeta'))
                     old_digest = page.inner_text('#fmPlanMeta')
                     # edit the architecture in the page; the digest must change and the edit must reach the PDF
+                    page.click('#fmEditToggle')
                     src = page.input_value('#fmMermaid') + '\n    new_cache["Response cache"]:::proposed'
                     page.fill('#fmMermaid', src); page.click('#fmApplyEdit')
                     expect(page.locator('#fmEditMsg')).to_contain_text('Applied')
