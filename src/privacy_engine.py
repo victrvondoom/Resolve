@@ -64,12 +64,19 @@ class PrivacyEngine:
                 for f in p.rglob('*'):
                     if f.is_file():
                         total_storage_bytes += f.stat().st_size
-        total_storage_bytes += sum(d['size_bytes'] for d in self.documents.list_documents(user_id, workspace_id))
+        documents = self.documents.list_documents(user_id, workspace_id)
+        total_storage_bytes += sum(d['size_bytes'] for d in documents)
+        projects = self.project_store.list(user_id, workspace_id) if self.project_store else []
+        total_storage_bytes += sum(p['size_bytes'] for p in projects)
+        missions = self.mission_store.list(user_id, workspace_id) if self.mission_store else []
 
         return {
             "user_id": user_id,
             "workspace_id": workspace_id,
             "active_sandboxes": len(sandboxes),
+            "documents_count": len(documents),
+            "missions_count": len(missions),
+            "projects_count": len(projects),
             "connected_apps_count": connected_count,
             "storage_used_bytes": total_storage_bytes,
             "storage_used_mb": round(total_storage_bytes / (1024 * 1024), 2),
@@ -77,7 +84,7 @@ class PrivacyEngine:
                 "active_data": "Retained until deleted by user",
                 "session_tokens": "Expires in 7 days or on logout",
                 "sandbox_profiles": "Destroyed immediately upon sandbox deletion",
-                "backups": "Encrypted system snapshots retain deleted metadata for up to 30 days before purge"
+                "backups": "RESOLVE keeps no backups of its own. If the hosting provider snapshots the disk, that provider's retention applies."
             }
         }
 
@@ -161,7 +168,7 @@ class PrivacyEngine:
             status="COMPLETED",
             purged_items={"workspace_id": workspace_id, "destroyed_sandboxes": destroyed_sbx, "documents_removed": True, "missions_removed": missions_removed, "projects_removed": projects_removed},
             timestamp=now,
-            retention_notice="Workspace metadata and isolated sandboxes permanently erased.",
+            retention_notice="The workspace and its documents, missions, uploaded projects and sandboxes were deleted from active storage.",
             sha256_proof=proof
         )
 
@@ -205,7 +212,7 @@ class PrivacyEngine:
                 "projects_removed": projects_removed
             },
             timestamp=now,
-            retention_notice="All personal credentials, browser sessions, and workspace storage have been permanently erased. Offsite backup snapshots expire in 30 days.",
+            retention_notice="Account, sessions, documents, missions, uploaded projects, sandboxes and connector records were deleted from active storage. RESOLVE keeps no backups of its own; any hosting-provider disk snapshots follow that provider's retention.",
             sha256_proof=proof
         )
 

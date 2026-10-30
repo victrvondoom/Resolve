@@ -106,7 +106,7 @@ class TenantAuthManager:
         user_id = f"usr_{uuid.uuid4().hex[:12]}"
         ws_id = f"ws_{uuid.uuid4().hex[:12]}"
         now = time.time()
-        name = display_name or email.split('@')[0].capitalize()
+        name = (str(display_name).strip()[:40] if display_name else '') or email.split('@')[0].capitalize()[:40]
 
         with self._get_conn() as conn:
             try:
@@ -225,9 +225,12 @@ class TenantAuthManager:
             return [dict(r) for r in rows]
 
     def create_workspace(self, user_id: str, name: str) -> dict:
-        name = name.strip()
-        if not name:
-            raise TenantError("Workspace name required", status_code=400)
+        name = (name or "").strip()
+        if not name or len(name) > 60:
+            raise TenantError("Workspace name must be 1-60 characters", status_code=400)
+        with self._get_conn() as conn:
+            if conn.execute("SELECT COUNT(*) AS c FROM workspaces WHERE owner_user_id = ?", (user_id,)).fetchone()['c'] >= 10:
+                raise TenantError("Workspace limit reached (10); delete one first", status_code=429)
         ws_id = f"ws_{uuid.uuid4().hex[:12]}"
         now = time.time()
         with self._get_conn() as conn:
@@ -243,6 +246,12 @@ class TenantAuthManager:
             count = conn.execute("SELECT COUNT(*) as c FROM workspaces WHERE owner_user_id = ?", (user_id,)).fetchone()['c']
             if count <= 1:
                 raise TenantError("Cannot delete your only workspace. Delete account to remove all data.", status_code=400)
+            # Sessions inside the deleted workspace move to a surviving one FIRST: sessions cascade-delete with their
+            # workspace, so deleting your *active* workspace used to silently log you out.
+            survivor = conn.execute("SELECT id FROM workspaces WHERE owner_user_id = ? AND id != ? ORDER BY created_at ASC LIMIT 1",
+                                    (user_id, workspace_id)).fetchone()
+            if survivor:
+                conn.execute("UPDATE sessions SET workspace_id = ? WHERE user_id = ? AND workspace_id = ?", (survivor['id'], user_id, workspace_id))
             res = conn.execute("DELETE FROM workspaces WHERE id = ? AND owner_user_id = ?", (workspace_id, user_id))
             return res.rowcount > 0
 

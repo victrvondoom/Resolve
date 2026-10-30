@@ -37,3 +37,19 @@ Also fixed: CI `portable` job ran browser tests without the runner-compatible sa
 | Dead mic when no server STT | Browser speech fallback, labelled, per-use consent | E2E (badge) |
 | Only the latest mission visible; static sidebar text; dead demo screens/buttons offered in production | Live mission history; sidebar note, nav and controls driven by `/api/health` mode + features | E2E |
 | `hidden` attribute overridden by `.btn` CSS (buttons meant to be hidden stayed visible) | global `[hidden]{display:none!important}` | E2E |
+
+## Round 3: UI/UX pass (found by looking at real screenshots, fixed, pinned by tests)
+| What users saw | Actual cause | Fix | Test |
+|---|---|---|---|
+| Workspace switcher listed "Trust and Safety", "Commerce"… | `/api/workspaces?tenant=1` ignored `tenant` and returned the 80-concept catalog; switching sent `undefined` | Real per-user workspace list + active id | `test_account_api`, `test_ux_e2e` |
+| Deleting your active workspace logged you out | Sessions `ON DELETE CASCADE` with their workspace | Sessions move to a surviving workspace before the delete | `test_account_api`, `test_ux_e2e` |
+| Privacy page promised "offsite snapshots… 30 days" | Invented text; no backups exist | Truthful retention text in UI, summary and receipts | `test_account_api`, `test_ux_e2e` |
+| "Connected apps" offered Google Drive/GitHub, "credentials are encrypted" | Connectors are fixture data with no OAuth or credentials | Hidden in production; labelled SIMULATED in demo mode | `test_ux_e2e` |
+| Files sandbox buttons returned 404 in production | Backed by disabled shared-ledger routes | Not offered in production | `test_ux_e2e` |
+| Account pill "Manage account" did nothing; showed `demo@resolve.local` before sign-in | No handler; static placeholder | Account menu (privacy, new workspace, sign out) and a live identity | `test_ux_e2e` |
+| `/api/auth/me` echoed the session token | Returned the whole session row | Token removed | `test_account_api` |
+| Mobile issue table showed "I S S - 1" letter by letter | Table squeezed into 390 px | Responsive two-line cards | `test_ux_e2e` |
+| Black PDF box on phones | Phones have no inline PDF viewer | `pdfViewerEnabled` fallback with "Open the PDF"; no hidden iframe pointed at a PDF | `test_ux_e2e` |
+| Architecture links that did not exist (proposed node "pointing" at another proposed node) | A layer wrapped onto two rows; edges ran into the lower row | Layers stay on one row; boxes shrink, then the diagram scrolls | visual check |
+| Privacy/Documents/Flagship showed stale data after switching views | Data loaded once at page start | Views refresh when shown | `test_ux_e2e` |
+| Landing page (judges' first view) was a dark neon theme about the old CRM demo, claimed Wispr was used for development notes, and showed a red benchmark error in production | Never updated | Cream redesign around the flagship, live server facts, no unverified Wispr claim, benchmark explained in hosted mode | `test_landing_ui` |

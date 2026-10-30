@@ -48,6 +48,7 @@ function showView(name, focus) {
   views.forEach(v => { v.hidden = v.dataset.view !== name; });
   navLinks.forEach(a => { if (a.dataset.view === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   if (focus) { const h = document.querySelector(`#view-${name} h1`); if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); } window.scrollTo(0, 0); }
+  document.dispatchEvent(new CustomEvent('resolve:view', { detail: name }));   // views refresh their data when shown
 }
 navLinks.forEach(a => a.addEventListener('click', ev => { ev.preventDefault(); history.replaceState(null, '', '#' + a.dataset.view); showView(a.dataset.view, true); }));
 window.addEventListener('hashchange', () => showView(location.hash.slice(1), true));
@@ -641,33 +642,9 @@ api('/api/web/benchmark').then(b => {
 
 /* ---------------- multi-tenant cloud & account manager ---------------- */
 (function () {
-  let currentUser = null, activeSandboxId = null;
+  let activeSandboxId = null;
 
-  async function loadUser() {
-    try {
-      currentUser = await api('/api/auth/me');
-      if ($('#userEmailBadge')) $('#userEmailBadge').textContent = currentUser.email || 'demo@resolve.local';
-      loadWorkspaces();
-    } catch (e) {
-      console.warn('Could not load user profile', e);
-    }
-  }
-
-  async function loadWorkspaces() {
-    try {
-      const res = await api('/api/workspaces?tenant=1');
-      if (res && res.workspaces && $('#workspaceSwitcher')) {
-        $('#workspaceSwitcher').style.display = 'inline-block';
-        $('#workspaceSwitcher').innerHTML = res.workspaces.map(w => `<option value="${esc(w.id)}" ${w.id === res.active_workspace_id ? 'selected' : ''}>${esc(w.name)}</option>`).join('');
-        $('#workspaceSwitcher').onchange = async () => {
-          await api('/api/workspaces/switch', { workspace_id: $('#workspaceSwitcher').value });
-          location.reload();
-        };
-      }
-    } catch (e) {
-      console.warn('Could not load workspaces', e);
-    }
-  }
+  /* Account pill, workspace switcher and sign-out live in flagship.js (shell code shared by every view). */
 
   /* ---------------- cloud computer controller ---------------- */
   async function ensureSandbox() {
@@ -837,19 +814,32 @@ api('/api/web/benchmark').then(b => {
   }
 
   /* ---------------- privacy & data controller ---------------- */
+  const kb = (bytes) => bytes < 1024 * 1024 ? Math.max(0, Math.round(bytes / 1024)) + ' KB' : (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  function showReceipt(text, kind) { const log = $('#deletionReceiptLog'); if (log) { log.textContent = text; log.className = 'log ' + (kind || ''); } }
+  function describeReceipt(r) {
+    const items = Object.entries(r.purged_items || {}).map(([k, v]) => `  ${k.replace(/_/g, ' ')}: ${Array.isArray(v) ? v.length : v}`).join('\n');
+    return `${r.target_type} deletion ${r.status} · receipt ${r.receipt_id}\n${items}\n${r.retention_notice}\nproof (SHA-256): ${r.sha256_proof}`;
+  }
   async function loadPrivacy() {
     try {
       const s = await api('/api/privacy/summary');
-      if ($('#privStorageBadge')) $('#privStorageBadge').textContent = s.storage_used_mb + ' MB';
-      if ($('#privActiveSandboxes')) $('#privActiveSandboxes').textContent = s.active_sandboxes;
-      if ($('#privConnectedCount')) $('#privConnectedCount').textContent = s.connected_apps_count;
-      if ($('#privStorageBytes')) $('#privStorageBytes').textContent = Math.round(s.storage_used_bytes / 1024) + ' KB';
+      const set = (id, v) => { if ($(id)) $(id).textContent = v; };
+      set('#privStorageBadge', kb(s.storage_used_bytes));
+      set('#privDocs', s.documents_count ?? 0); set('#privMissions', s.missions_count ?? 0); set('#privProjects', s.projects_count ?? 0);
+      set('#privActiveSandboxes', s.active_sandboxes); set('#privConnectedCount', s.connected_apps_count); set('#privStorageBytes', kb(s.storage_used_bytes));
+      const ws = await api('/api/workspaces?tenant=1').catch(() => null), btn = $('#privDeleteWorkspaceBtn');
+      if (btn && ws) {
+        const only = ws.workspaces.length <= 1;
+        btn.disabled = only;
+        btn.title = only ? 'This is your only workspace. Delete your account to remove everything.' : 'Delete the current workspace and everything in it';
+      }
     } catch (e) {
-      console.warn('Privacy summary error', e);
+      showReceipt('Could not load the privacy summary: ' + errText(e), 'err');
     }
   }
 
   if ($('#privacyReload')) $('#privacyReload').onclick = loadPrivacy;
+  document.addEventListener('resolve:view', (e) => { if (e.detail === 'privacy') loadPrivacy(); });
 
   if ($('#privExportBtn')) {
     $('#privExportBtn').onclick = async () => {
@@ -870,30 +860,31 @@ api('/api/web/benchmark').then(b => {
 
   if ($('#privDeleteWorkspaceBtn')) {
     $('#privDeleteWorkspaceBtn').onclick = async () => {
-      if (!confirm('Are you sure you want to permanently delete this workspace and all its sandboxes?')) return;
+      if (!confirm('Delete this workspace with all its documents, missions, projects and sandboxes? This cannot be undone.')) return;
       try {
         const res = await api('/api/privacy/delete-workspace', {});
-        if ($('#deletionReceiptLog')) $('#deletionReceiptLog').textContent = JSON.stringify(res, null, 2);
-        loadPrivacy();
+        showReceipt(describeReceipt(res), 'ok');
+        setTimeout(() => location.reload(), 1500);   // you are moved to your remaining workspace
       } catch (e) {
-        alert('Workspace deletion error: ' + errText(e));
+        showReceipt('Workspace deletion failed: ' + errText(e), 'err');
       }
     };
   }
 
   if ($('#privDeleteAccountBtn')) {
     $('#privDeleteAccountBtn').onclick = async () => {
-      if (!confirm('PERMANENT DESTRUCTION: All user data, sandboxes, and credentials will be purged immediately. Continue?')) return;
+      if (!confirm('Permanently delete your account and everything in it? This cannot be undone.')) return;
       try {
         const res = await api('/api/privacy/delete-account', {});
-        if ($('#deletionReceiptLog')) $('#deletionReceiptLog').textContent = JSON.stringify(res, null, 2);
-        alert('Account permanently deleted. You will now be logged out.');
-        setTimeout(() => location.reload(), 2000);
+        showReceipt(describeReceipt(res) + '\n\nSigning you out…', 'ok');
+        try { sessionStorage.removeItem('resolve_token'); } catch (_) { /* nothing stored */ }
+        setTimeout(() => { location.href = '/app'; }, 2500);
       } catch (e) {
-        alert('Account deletion error: ' + errText(e));
+        showReceipt('Account deletion failed: ' + errText(e), 'err');
       }
     };
   }
+
 
   /* ---------------- push-to-talk voice controller ----------------
      Real capture: getUserMedia -> 16 kHz mono PCM WAV -> POST /api/voice/transcribe-audio.
@@ -901,7 +892,7 @@ api('/api/web/benchmark').then(b => {
   function attachVoice({ btn, badge, note, target }) {
   const voice = { rec: null, health: null };
   const setMic = (cls, text, title) => { const b = badge; if (b) { b.className = 'chip ' + cls + ' small'; b.textContent = text; if (title) b.title = title; } };
-  const micMsg = (text) => { const n = note; if (n) { n.style.display = text ? 'block' : 'none'; n.textContent = text; } };
+  const micMsg = (text) => { const n = note; if (n) { n.hidden = !text; n.style.display = text ? 'block' : 'none'; n.textContent = text; } };
   function encodeWav(chunks, inRate) {
     const len = chunks.reduce((n, c) => n + c.length, 0), merged = new Float32Array(len);
     let o = 0; for (const c of chunks) { merged.set(c, o); o += c.length; }
@@ -998,7 +989,6 @@ api('/api/web/benchmark').then(b => {
     }
   }
 
-  loadUser();
   loadConnectors();
   loadPrivacy();
 })();
@@ -1051,7 +1041,19 @@ api('/api/web/benchmark').then(b => {
       meta.textContent = (d.page_count ? d.page_count + ' pages · ' : '') +
         (d.size_bytes ? Math.ceil(d.size_bytes / 1024) + ' KB · ' : '') +
         (d.sha256 ? 'SHA-256 ' + d.sha256.slice(0, 12) + '…' : '');
-      description.append(name, meta); label.append(input, description); list.append(label);
+      description.append(name, meta); label.append(input, description);
+      const row = document.createElement('div'); row.className = 'doc-row';
+      const del = document.createElement('button'); del.type = 'button'; del.className = 'btn btn-small btn-quiet'; del.textContent = 'Delete';
+      del.setAttribute('aria-label', 'Delete ' + (d.name || 'document')); del.title = 'Delete this PDF from your workspace';
+      del.onclick = async () => {
+        if (!confirm('Delete ' + (d.name || 'this PDF') + '? Missions that used it keep their own outputs.')) return;
+        try {
+          await request('/api/documents/' + encodeURIComponent(idOf(d)) + '/delete', {});
+          if (active && idOf(active) === idOf(d)) clearPreview();
+          await refresh(); report('Deleted ' + (d.name || 'the PDF') + '.');
+        } catch (e) { report(e.message, true); }
+      };
+      row.append(label, del); list.append(row);
     });
   }
   async function refresh(selectId) {
@@ -1061,6 +1063,13 @@ api('/api/web/benchmark').then(b => {
     else selected = selected.filter(id => documents.some(d => idOf(d) === id));
     renderList();
     if (selected.length === 1) await preview(selected[0]);
+  }
+  function clearPreview() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null; active = null;
+    $('#docPreview').removeAttribute('src');
+    $('#docPreviewEmpty').hidden = false;
+    $('#docDownload').disabled = true; $('#docPrint').disabled = true;
   }
   async function preview(id) {
     const d = documents.find(x => idOf(x) === String(id));
@@ -1072,12 +1081,14 @@ api('/api/web/benchmark').then(b => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       previewUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
       $('#docPreview').src = previewUrl;
+      $('#docPreviewEmpty').hidden = true;
       active = d;
       $('#docDownload').disabled = false;
       $('#docPrint').disabled = false;
       report('Previewing ' + (d.name || d.filename || 'PDF') + '.');
     } catch (e) { report('Preview unavailable: ' + e.message, true); }
   }
+  document.addEventListener('resolve:view', (e) => { if (e.detail === 'documents') refresh().catch(err => report(err.message, true)); });
   $('#docRefresh').onclick = async () => { try { busy(true); await refresh(); } catch (e) { report(e.message, true); } finally { busy(false); } };
   $('#docUploadBtn').onclick = async () => {
     const file = $('#docUpload').files[0];

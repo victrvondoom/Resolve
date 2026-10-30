@@ -97,7 +97,7 @@ class FlagshipE2E(unittest.TestCase):
                     self.assertIn(b'RIFF', FakeStt.received[0]); self.assertIn(b'WAVE', FakeStt.received[0])
                     self.assertGreater(len(FakeStt.received[0]), 16000 * 2 * 1)   # >= ~1 s of 16 kHz PCM16 actually captured
                     self.assertIn('Transcript ready', page.inner_text('#fmMicNote'))
-                    self.assertEqual(page.locator('#fmNodes li.muted').count(), 1)  # transcript alone does NOT start a mission
+                    expect(page.locator('#fmState')).to_have_text('NO MISSION')   # a transcript alone does NOT start a mission
                     # sample brief + mission
                     page.click('#fmSample')
                     expect(page.locator('#fmDoc')).not_to_have_value('')
@@ -187,6 +187,7 @@ class DynamicFlowE2E(unittest.TestCase):
                     self.assertIn('shop.zip', page.inner_text('#fmPlanMeta'))
                     old_digest = page.inner_text('#fmPlanMeta')
                     # edit the architecture in the page; the digest must change and the edit must reach the PDF
+                    page.click('#fmEditToggle')
                     src = page.input_value('#fmMermaid') + '\n    new_cache["Response cache"]:::proposed'
                     page.fill('#fmMermaid', src); page.click('#fmApplyEdit')
                     expect(page.locator('#fmEditMsg')).to_contain_text('Applied')
