@@ -149,9 +149,9 @@ class IdentityBindingTests(Base):
     def test_wrong_source_in_output_is_rejected_by_verifier(self):
         real = bm.compose_pdf
 
-        def wrong_source(plan, mission):
+        def wrong_source(plan, mission, *rest):
             forged = {**plan, 'source': {**plan['source'], 'sha256': 'f' * 64}}
-            return real(forged, mission)
+            return real(forged, mission, *rest)
         with mock.patch.object(bm, 'compose_pdf', wrong_source):
             m = self.run_full()
         self.assertEqual(m['state'], 'FAILED')
