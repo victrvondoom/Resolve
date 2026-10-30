@@ -83,7 +83,7 @@ class ZeroHandsE2E(unittest.TestCase):
         else:   # the run was fast enough to finish before the pause: the server must have said so, not silently pretended
             self.assertIn('only a running mission can be paused', page.inner_text('#fmCmdMsg'))
         page.wait_for_selector('#fmPlanCard:not([hidden])', timeout=60000)
-        expect(page.locator('#fmOverlap')).to_contain_text('the reader, the analyzer and the browser diagnostics ran at the same time')
+        expect(page.locator('#fmOverlap')).to_contain_text(re.compile(r'up to [23] of 3 workers .*ran at the same time'))
         expect(page.locator('#fmIssues')).to_contain_text('HTTP 500')
         expect(page.locator('#fmComputerChip')).to_have_text('SESSION CLOSED')
         self.shot(page, 'plan-with-runtime-findings-desktop.png')

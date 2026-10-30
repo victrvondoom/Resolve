@@ -275,13 +275,15 @@ window.addEventListener('load', () => {
     });
     const par = [by.DOCUMENT_READER, by.REPOSITORY_ANALYZER, withDiag ? by.BROWSER_DIAGNOSTICS : null].filter(Boolean), ov = el('fmOverlap');
     if (par.length >= 2 && par.every(n => n.finished_at)) {
-      const overlap = Math.min(...par.map(n => n.finished_at)) - Math.max(...par.map(n => n.started_at));
-      const who = par.length === 3 ? 'the reader, the analyzer and the browser diagnostics' : 'the reader and the analyzer';
+      // sweep line over the recorded start/finish times: the most workers that were running at the same instant
+      const pts = par.flatMap(n => [[n.started_at, 1], [n.finished_at, -1]]).sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+      let cur = 0, peak = 0; pts.forEach(([, d]) => { cur += d; peak = Math.max(peak, cur); });
+      const work = par.reduce((t, n) => t + (n.finished_at - n.started_at), 0), wall = Math.max(...par.map(n => n.finished_at)) - Math.min(...par.map(n => n.started_at));
       ov.hidden = false;
-      ov.className = 'small fm-overlap' + (overlap > 0 ? ' ok' : '');
-      ov.textContent = overlap > 0
-        ? `Measured: ${who} ran at the same time, overlapping for ${ms(overlap)} ms.`
-        : `Measured: ${who} did not overlap this time (gap of ${ms(-overlap)} ms).`;
+      ov.className = 'small fm-overlap' + (peak > 1 ? ' ok' : '');
+      ov.textContent = peak > 1
+        ? `Measured: up to ${peak} of ${par.length} workers (reader, analyzer${par.length === 3 ? ', browser diagnostics' : ''}) ran at the same time; ${ms(work)} ms of work took ${ms(wall)} ms of wall time.`
+        : `Measured: the workers did not overlap this time (${ms(work)} ms of work, ${ms(wall)} ms wall time).`;
     } else ov.hidden = true;
     el('fmEvents').textContent = ((m && m.events) || []).map(e => `${clock(e.ts)}  ${e.kind.padEnd(24)} ${e.node}${e.worker ? '  [' + e.worker + ']' : ''}`).join('\n') || '—';
   }
