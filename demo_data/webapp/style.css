@@ -1,0 +1,8 @@
+body{margin:0;background:#F8F5EE;color:#272722;font:16px/1.5 system-ui,sans-serif}
+main{max-width:640px;margin:32px auto;padding:0 16px}
+.note{color:#737168}
+form{display:grid;gap:10px;margin:16px 0}
+label{display:grid;gap:4px}
+input{padding:8px;border:1px solid #DED7CC;border-radius:8px;background:#FFFCF7}
+button,a#download-csv{padding:8px 14px;border:1px solid #8A9C89;border-radius:8px;background:#FFFCF7;color:#272722;text-decoration:none;cursor:pointer}
+pre{background:#F0EAE0;padding:12px;border-radius:8px;min-height:3em;white-space:pre-wrap}
