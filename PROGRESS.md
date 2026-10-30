@@ -71,3 +71,9 @@ GATE: voice computer / brief mission | PASS (simulator + real Chromium; WINDOWS_
 - Commands: `python -m pytest tests -q` → 361 passed, 12 skipped, 0 failed (full run 443 s). New: test_mission_sprint (14), test_zero_hands_api (5), test_zero_hands_e2e (2), test_diagnostics_agent (14), test_tool_registry + test_command_router (61).
 - Not verified / blocked: real STT, native Windows input, physical printing, public deployment, Wispr Flow usage (user-owned). Briefs' branch names not created; designated branch only.
 - Next command: `python src/resolve_app.py`, follow docs/JUDGE_DEMO.md.
+
+## Operation Open Computer — audit checkpoint (2026-10-30, Haiku 5.5 session)
+- Baseline: branch `claude/beautiful-bardeen-fw59qp` at `008b13d` (matches remote). Clean tree before this note.
+- G17 real speech: BLOCKED in this environment. `pip install vosk` works, but no Vosk model is available: `RESOLVE_VOSK_MODEL` unset, `alphacephei.com` model host unreachable (HTTP 000), and no PyPI model package exists. `VoiceEngine.health()` correctly reports `available: false`. No STT was run, so no real transcription is claimed.
+- Not started in this session: generalized browser executor, held-out task sites, planner interface, cream frontend changes, public deployment, Wispr evidence. These need multiple sessions and were not begun, to avoid unverified partial work.
+- Next command (once a model is supplied): `RESOLVE_VOSK_MODEL=/path/to/vosk-model-small-en-us-0.15 python src/resolve_app.py`
