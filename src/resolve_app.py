@@ -7,6 +7,7 @@ import binascii
 import os
 import re
 import secrets
+import threading
 import sqlite3
 import sys
 from dataclasses import asdict
@@ -32,6 +33,10 @@ from connectors import ConnectorRegistry, ConnectorError
 from privacy_engine import PrivacyEngine
 from document_studio import DocumentStudio, DocumentError
 from brief_mission import BriefMissionStore, MissionError, BUNDLED_PROJECTS, load_bundled
+from command_router import interpret as interpret_command
+from demo_webapp import DemoWebApp
+from net_policy import NetPolicy, origin_of
+from tool_registry import ToolContext, default_registry
 from project_store import ProjectStore, ProjectError, fingerprint
 from voice_engine import VoiceEngine, VoiceError
 from server_security import ServerSecurity, RateLimiter, SECURITY_HEADERS, ConfigError, client_ip
@@ -61,6 +66,37 @@ privacy_engine.browser_pool = cloud_browser_pool
 SECURITY = ServerSecurity.from_env()
 rate_limiter = RateLimiter()
 voice_engine = VoiceEngine()
+demo_webapp = DemoWebApp()
+tool_registry = default_registry()
+_diag_slots = threading.BoundedSemaphore(2)       # at most two real Chromium diagnostics runs at once
+
+
+def diagnostics_wanted() -> bool:
+    """Demo mode: on when Playwright is importable. Production: only on explicit RESOLVE_DIAGNOSTICS=1 (it launches Chromium in this process,
+    pointed ONLY at the bundled demo app; arbitrary-URL browsing stays gated by the cloud-browser isolation setting)."""
+    flag = os.environ.get('RESOLVE_DIAGNOSTICS', '').strip()
+    if flag == '0' or (SECURITY.production and flag != '1'):
+        return False
+    try:
+        import playwright.sync_api  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def enable_diagnostics(port: int) -> bool:
+    """Give the mission engine a runner that drives a real Chromium against /demo-app/ on THIS server (exact-origin allowlist, nothing else)."""
+    if not diagnostics_wanted():
+        return False
+    from diagnostics_agent import run_diagnostics
+    base = f'http://127.0.0.1:{port}'
+    policy = NetPolicy(allowed_origins=frozenset({origin_of(base)}))
+
+    def runner(should_continue, on_step):
+        with _diag_slots:
+            return run_diagnostics(base + '/demo-app/', policy=policy, should_continue=should_continue, on_step=on_step)
+    brief_missions.configure_diagnostics(runner, base + '/demo-app/')
+    return True
 # Routes backed by the single shared demo ledger (not tenant-scoped): demo mode only.
 LEGACY_GLOBAL_PREFIXES = ('/api/state', '/api/stream', '/api/web/', '/api/approvals', '/api/evidence', '/api/mission', '/api/missions/',
                           '/api/benchmark', '/api/skills', '/api/windows', '/api/uia', '/api/session', '/api/action/', '/api/resolve', '/api/resume',
@@ -97,10 +133,27 @@ def latest_report(ledger: Ledger, context: str) -> dict:
 class Handler(BaseHTTPRequestHandler):
     server_version = 'RESOLVE/0.2'
 
+    _bare = False
+
     def end_headers(self):
-        for k, v in SECURITY_HEADERS.items():
-            self.send_header(k, v)
+        if not self._bare:
+            for k, v in SECURITY_HEADERS.items():
+                self.send_header(k, v)
         super().end_headers()
+
+    def serve_demo_app(self, method: str) -> None:
+        """The controlled faulty web app. Only the server's own browser agent (loopback) may load it; it carries no tenant data."""
+        require(self.client_address[0] in {'127.0.0.1', '::1'}, 403, 'the demo web app is only served to the local diagnostics agent')
+        size = int(self.headers.get('Content-Length', '0') or 0)
+        body = self.rfile.read(min(size, 65536)) if size > 0 else b''
+        status, headers, payload = demo_webapp.handle(method, self.path, body, dict(self.headers))
+        self._bare = True
+        self.send_response(status)
+        for k, v in headers.items():
+            self.send_header(k, v)
+        self.send_header('Content-Length', str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
 
     def log_message(self, fmt, *args):
         print('%s - %s' % (self.address_string(), fmt % args))
@@ -180,11 +233,101 @@ class Handler(BaseHTTPRequestHandler):
         except TenantError as exc:
             raise ApiError(401, exc.message)
 
+    # ---- spoken/typed commands: interpret (pure) -> confirm -> execute against CURRENT state, bound by digest
+    @staticmethod
+    def command_state(user: dict) -> dict:
+        uid, wid = user['user_id'], user['workspace_id']
+        missions = brief_missions.list(uid, wid)                       # newest first
+        active = next((m for m in missions if m['state'] in ('RUNNING', 'AWAITING_APPROVAL', 'COMPOSING')), None)
+        slim = lambda m: m and {k: m.get(k) for k in ('id', 'state', 'intent_revision', 'paused', 'source_doc_id', 'output_doc_id', 'output_sha256')}
+        docs = [{'id': d['id'], 'name': d['name'], 'sha256': d['sha256']} for d in document_studio.list_documents(uid, wid) if d.get('operation') != 'brief_report']
+        return {'active_mission': slim(active), 'latest_output_mission': slim(next((m for m in missions if m['state'] == 'CONFIRMED' and m.get('output_doc_id')), None)),
+                'last_mission': slim(missions[0] if missions else None), 'documents': docs,
+                'skills': [{'id': k['id'], 'name': k['name']} for k in brief_missions.list_skills(uid, wid)]}
+
+    def handle_command(self, execute: bool, user: dict, data: dict) -> dict:
+        uid, wid = user['user_id'], user['workspace_id']
+        text, source = str(data.get('text', '')), str(data.get('source', 'text'))
+        require(source in ('text', 'voice'), 400, 'source must be text or voice')
+        interp = interpret_command(text, self.command_state(user), source=source)
+        if not execute:
+            return {'interpretation': interp}
+        require(data.get('digest') == interp['digest'], 409, 'the situation changed since this command was interpreted (stale digest); please confirm again')
+        require(interp['command'] != 'UNKNOWN', 422, interp['summary'])
+        require(not interp['ambiguity'], 409, 'the command is ambiguous; choose one option first')
+        require(data.get('confirmed') is True or not interp['requires_confirmation'], 409, 'this command needs explicit confirmation')
+        a, cmd = interp['args'], interp['command']
+        if cmd == 'START_MISSION':
+            docs = a.get('document_candidates') or []
+            require(len(docs) >= 1, 409, 'no document is available; upload or create the sample brief first')
+            require(len(docs) == 1 or data.get('document_id') in docs, 409, 'several documents exist; choose one by id', )
+            steps = a['steps'] if all(x in ('read_brief', 'analyze_code', 'inspect_web', 'architecture', 'report', 'print') for x in a['steps']) else None
+            steps = list(dict.fromkeys(['read_brief', 'analyze_code', 'architecture', 'report', *(steps or [])]))
+            result = brief_missions.start(uid, wid, text, document_id=data.get('document_id') or docs[0], steps=steps, source=source, interpretation_digest=interp['digest'])
+        elif cmd == 'PAUSE':
+            result = brief_missions.pause(a['mission_id'], uid, wid)
+        elif cmd == 'RESUME':
+            result = brief_missions.resume(a['mission_id'], uid, wid)
+        elif cmd == 'CANCEL':
+            result = brief_missions.cancel(a['mission_id'], uid, wid)
+        elif cmd == 'REVISE_DOCUMENT':
+            cur = brief_missions.get(a['mission_id'], uid, wid)
+            require(cur['intent_revision'] == a['intent_revision'], 409, 'the mission was revised since this command was interpreted')
+            result = brief_missions.revise(a['mission_id'], uid, wid, cur['intent_text'] + f" (user switched the brief to {a.get('document_name')})", document_id=a['document_id'])
+        elif cmd == 'DELETE_REPORT':
+            cur = brief_missions.get(a['mission_id'], uid, wid)
+            require(cur.get('output_doc_id') == a['document_id'] and cur.get('output_sha256') == a.get('output_sha256'), 409, 'the report changed since this command was interpreted')
+            result = brief_missions.delete(a['mission_id'], uid, wid, delete_output=True)
+        elif cmd == 'SAVE_SKILL':
+            result = {'skill': brief_missions.save_skill(uid, wid, a['name'], a['mission_id'])}
+        elif cmd == 'RUN_SKILL':
+            result = brief_missions.run_skill(uid, wid, a['skill_id'], document_id=data.get('document_id') or (self.command_state(user)['documents'] or [{}])[0].get('id'))
+        elif cmd == 'RESUME_PROJECT':
+            result = brief_missions.resume_info(uid, wid)
+        else:   # READ_RESULT
+            result = brief_missions.get(a['mission_id'], uid, wid)
+        return {'interpretation': interp, 'executed': cmd, 'result': result}
+
+    def handle_tool_call(self, user: dict, data: dict) -> dict:
+        """Typed tool call. Capabilities are fixed here, server-side; nothing in the arguments or in page content can add one."""
+        uid, wid = user['user_id'], user['workspace_id']
+        caps = frozenset({'document:read', 'document:write', 'mission:control', 'approval:request', 'evidence:write', 'workspace:manage'})
+        mid = data.get('mission_id') if isinstance(data.get('mission_id'), str) else None
+        services = {
+            'document.read': lambda c, a: {'text': document_studio.extract_text(uid, wid, a['document_id'])[:20000]},
+            'document.transform': lambda c, a: {'document': document_studio.transform(uid, wid, a['operation'], a['document_ids'], a['expected_sha256'], degrees=a.get('degrees'), pages=a.get('pages'))},
+            'document.generate': lambda c, a: {'document': document_studio.create_report(uid, wid, a['title'], a['text'])},
+            'document.verify': lambda c, a: {'sha256_matches': document_studio.get_document(uid, wid, a['document_id'])['sha256'] == a['expected_sha256'],
+                                             'pages': len(__import__('pypdf').PdfReader(__import__('io').BytesIO(document_studio.read_pdf(uid, wid, a['document_id']))).pages)},
+            'workspace.create': lambda c, a: {'workspace': tenant_auth_mgr.create_workspace(uid, a['name'])},
+            'workspace.export': lambda c, a: {'documents': len(document_studio.list_documents(uid, wid)), 'missions': len(brief_missions.list(uid, wid)),
+                                              'skills': len(brief_missions.list_skills(uid, wid))},
+            'mission.pause': lambda c, a: {'mission': brief_missions.pause(a['mission_id'], uid, wid)},
+            'mission.cancel': lambda c, a: {'mission': brief_missions.cancel(a['mission_id'], uid, wid)},
+            'approval.request': lambda c, a: self._approval_request(uid, wid, a),
+        }
+        if mid:
+            services['evidence.record'] = lambda c, a: {'evidence_id': brief_missions.record_evidence(mid, brief_missions.get(mid, uid, wid)['intent_revision'], 'note', a['kind'], a['note'].encode(), 'text/plain')}
+        trail: list[dict] = []
+        ctx = ToolContext(user_id=uid, workspace_id=wid, mission_id=mid, capabilities=caps, services=services, record=lambda rec: (trail.append(rec), f'tool_{len(trail)}')[1])
+        args = data.get('args') if isinstance(data.get('args'), dict) else {}
+        res = tool_registry.call(ctx, str(data.get('name', '')), args)
+        return {'tool': res.tool, 'ok': res.ok, 'data': res.data, 'error': res.error, 'started_at': res.started_at, 'ended_at': res.ended_at,
+                'args_sha256': res.args_sha256, 'evidence_ref': res.evidence_ref}
+
+    @staticmethod
+    def _approval_request(uid, wid, a):
+        m = brief_missions.get(a['mission_id'], uid, wid)
+        require(m['state'] == 'AWAITING_APPROVAL' and m['plan'] and m['plan']['digest'] == a['plan_digest'], 409, 'no matching plan is awaiting approval')
+        return {'awaiting_user_approval': True, 'plan_digest': a['plan_digest'], 'note': 'a tool can only request approval; the user must approve in the UI'}
+
     def do_GET(self):
         try:
             if urlparse(self.path).path in {'/api/health', '/api/system/health'}:  # platform probes use arbitrary Host headers; nothing sensitive
                 return self.send_json(200, {'status': 'ok', 'name': 'RESOLVE', 'version': '0.2', 'database': 'sqlite-wal', 'mode': SECURITY.mode,
                                             'features': {'speech_server': voice_engine.health()['available'], 'cloud_browser': SECURITY.cloud_browser_enabled}})
+            if urlparse(self.path).path.startswith('/demo-app/'):
+                return self.serve_demo_app('GET')
             self.check_origin()
             parsed = urlparse(self.path)
             path = parsed.path
@@ -318,6 +461,26 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/brief-missions':
                 user = self.document_user()
                 return self.send_json(200, {'missions': brief_missions.list(user['user_id'], user['workspace_id'])})
+            m_ev = re.fullmatch(r'/api/brief-missions/([A-Za-z0-9_-]+)/evidence/([A-Za-z0-9_-]+)', path)
+            if m_ev:
+                user = self.document_user()
+                data_b, mime = brief_missions.read_evidence(m_ev.group(1), m_ev.group(2), user['user_id'], user['workspace_id'])
+                self.send_response(200)
+                self.send_header('Content-Type', mime)
+                self.send_header('Cache-Control', 'private, no-store')
+                self.send_header('Content-Length', str(len(data_b)))
+                self.end_headers()
+                return self.wfile.write(data_b)
+            if path == '/api/brief-skills':
+                user = self.document_user()
+                return self.send_json(200, {'skills': brief_missions.list_skills(user['user_id'], user['workspace_id'])})
+            if path == '/api/brief-resume':
+                user = self.document_user()
+                return self.send_json(200, brief_missions.resume_info(user['user_id'], user['workspace_id']))
+            if path == '/api/tools':
+                self.document_user()
+                return self.send_json(200, {'tools': [{'name': t.name, 'summary': t.summary, 'capability': t.capability, 'timeout_s': t.timeout_s, 'consequential': t.consequential,
+                                                       'input': {k: {'type': f.type, 'required': f.required} for k, f in t.input.items()}} for t in map(tool_registry.get, tool_registry.names())]})
             m_bm = re.fullmatch(r'/api/brief-missions/([A-Za-z0-9_-]+)', path)
             if m_bm:
                 user = self.document_user()
@@ -397,6 +560,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             path = urlparse(self.path).path
+            if path.startswith('/demo-app/'):
+                return self.serve_demo_app('POST')
             if path in {'/api/auth/register', '/api/auth/login'}:
                 self.check_origin(mutation=True, public_auth=True)
                 require(rate_limiter.allow('auth', client_ip(self.client_address[0], self.headers.get('X-Forwarded-For', ''), SECURITY.trusted_proxy), SECURITY.auth_rate_per_min), 429, 'too many authentication attempts; retry later')
@@ -446,9 +611,24 @@ class Handler(BaseHTTPRequestHandler):
                 require(rate_limiter.allow('mission', user['user_id'], 10), 429, 'too many missions started; retry shortly')
                 mission = brief_missions.start(user['user_id'], user['workspace_id'], str(data.get('intent_text', '')),
                     document_id=data.get('document_id'), document_name=data.get('document_name'),
-                    expected_sha256=data.get('expected_sha256'), project=str(data.get('project', 'sample_project')))
+                    expected_sha256=data.get('expected_sha256'), project=str(data.get('project', 'sample_project')),
+                    steps=data.get('steps') if isinstance(data.get('steps'), list) else None, source=str(data.get('source', 'text')),
+                    interpretation_digest=data.get('interpretation_digest') if isinstance(data.get('interpretation_digest'), str) else None)
                 return self.send_json(202, mission)
-            m_bma = re.fullmatch(r'/api/brief-missions/([A-Za-z0-9_-]+)/(approve|cancel|revise|print-event|delete|edit-architecture)', path)
+            if path == '/api/brief-skills':
+                return self.send_json(201, {'skill': brief_missions.save_skill(user['user_id'], user['workspace_id'], str(data.get('name', '')), str(data.get('mission_id', '')))})
+            m_sk = re.fullmatch(r'/api/brief-skills/([A-Za-z0-9_-]+)/(run|delete)', path)
+            if m_sk:
+                if m_sk.group(2) == 'delete':
+                    return self.send_json(200, brief_missions.delete_skill(user['user_id'], user['workspace_id'], m_sk.group(1)))
+                require(rate_limiter.allow('mission', user['user_id'], 10), 429, 'too many missions started; retry shortly')
+                return self.send_json(202, brief_missions.run_skill(user['user_id'], user['workspace_id'], m_sk.group(1), document_id=data.get('document_id'),
+                                                                    document_name=data.get('document_name'), project=data.get('project'), intent_suffix=str(data.get('intent_suffix', ''))))
+            if path in ('/api/commands/interpret', '/api/commands/execute'):
+                return self.send_json(200, self.handle_command(path.endswith('execute'), user, data))
+            if path == '/api/tools/call':
+                return self.send_json(200, self.handle_tool_call(user, data))
+            m_bma = re.fullmatch(r'/api/brief-missions/([A-Za-z0-9_-]+)/(approve|cancel|revise|print-event|delete|edit-architecture|pause|resume)', path)
             if m_bma:
                 mid, action = m_bma.groups()
                 uid, wid = user['user_id'], user['workspace_id']
@@ -457,7 +637,11 @@ class Handler(BaseHTTPRequestHandler):
                 if action == 'cancel':
                     return self.send_json(200, brief_missions.cancel(mid, uid, wid))
                 if action == 'revise':
-                    return self.send_json(200, brief_missions.revise(mid, uid, wid, str(data.get('intent_text', ''))))
+                    return self.send_json(200, brief_missions.revise(mid, uid, wid, str(data.get('intent_text', '')), document_id=data.get('document_id')))
+                if action == 'pause':
+                    return self.send_json(200, brief_missions.pause(mid, uid, wid))
+                if action == 'resume':
+                    return self.send_json(200, brief_missions.resume(mid, uid, wid))
                 if action == 'edit-architecture':
                     return self.send_json(200, brief_missions.edit_architecture(mid, uid, wid, data.get('mermaid')))
                 if action == 'print-event':
@@ -823,6 +1007,8 @@ def main():
         raise SystemExit(f'refusing to start: {exc}')
     address = (SECURITY.bind_host, int(os.environ.get('RESOLVE_PORT', '8765')))
     server = ThreadingHTTPServer(address, Handler)
+    diag = enable_diagnostics(server.server_port)
+    print(f'browser diagnostics: {"enabled (real Chromium vs bundled demo app)" if diag else "disabled"}')
     print(f'RESOLVE local server at http://{address[0]}:{address[1]}  database={DB}')
     try:
         server.serve_forever()
