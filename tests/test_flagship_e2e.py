@@ -74,6 +74,8 @@ class FlagshipE2E(unittest.TestCase):
                     b = p.chromium.launch(executable_path=exe, args=['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', f'--use-file-for-fake-audio-capture={wav}'])
                     ctx = b.new_context(viewport={'width': 1360, 'height': 900}, accept_downloads=True, permissions=['microphone'])
                     page = ctx.new_page()
+                    # Pin the capability instead of inheriting the browser build's: headless shells have no PDF viewer, full Chromium does.
+                    ctx.add_init_script("Object.defineProperty(Navigator.prototype, 'pdfViewerEnabled', {get: () => true})")
                     page.on('pageerror', lambda e: errors.append(f'pageerror: {e}'))
                     page.on('console', lambda m: errors.append(f'console: {m.text}') if m.type == 'error' else None)
                     page.on('dialog', lambda d: d.accept())   # the informed-consent confirm() for off-server STT
