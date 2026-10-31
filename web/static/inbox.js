@@ -4,7 +4,8 @@
 (function () {
   const IB = { mode: 'LIVE', tz: 'UTC', tzConfigured: false, filter: 'all', sort: 'date', q: '', page: 1, since: 0, cfilter: 'open',
                threadId: null, commitmentId: null, draftId: null, approval: null, replayTimer: null, lastBrief: null };
-  try { const m = sessionStorage.getItem('resolve_inbox_mode'); IB.mode = ['REPLAY', 'LOCAL'].includes(m) ? m : 'LIVE'; } catch (_) { /* storage blocked */ }
+  IB.conn = null; IB.modeChosen = false;
+  try { const m = sessionStorage.getItem('resolve_inbox_mode'); if (['REPLAY', 'LOCAL', 'LIVE'].includes(m)) { IB.mode = m; IB.modeChosen = true; } } catch (_) { /* storage blocked */ }
 
   const KIND_LABEL = { REQUEST_TO_USER: 'Request to you', PROMISE_BY_USER: 'Your promise', PROMISE_BY_OTHER: 'Promised to you',
                        DEPENDENCY: 'Dependency', FOLLOW_UP: 'Follow-up', UNRESOLVED_OBLIGATION: 'Unresolved obligation',
@@ -54,7 +55,8 @@
     return Math.round(s / 86400) + ' days ago';
   };
   const chip = (text, cls) => `<span class="ib-chip ${cls || ''}">${E(text)}</span>`;
-  const modeChip = () => IB.mode === 'REPLAY' ? chip('REPLAY · SYNTHETIC', 'sim') : IB.mode === 'LOCAL' ? chip('LOCAL · LOCAL MAIL SERVER', 'hi') : chip('LIVE · GMAIL', 'ok');
+  const modeChip = () => IB.mode === 'REPLAY' ? chip('REPLAY · SYNTHETIC', 'sim') : IB.mode === 'LOCAL' ? chip('Local mail · this computer only', 'hi')
+    : IB.conn && IB.conn.gmail === 'CONNECTED' ? chip('Gmail · ' + (IB.conn.gmailAccount || 'connected'), 'ok') : chip('No Gmail connected', 'warn');
   const engineChip = (inf) => chip(inf && inf.mode === 'MODEL_ENABLED' ? 'Model configured: ' + (inf.model || '') + ' (advisory analysis; triage uses rules)' : 'Engine: RULES_ONLY (no model inference)', '');
   const priorityChip = (p) => chip(p === 'HIGH' ? 'High priority' : p === 'LOW' ? 'Low priority' : 'Normal priority', p === 'HIGH' ? 'hi' : '');
   const timingChip = (t) => ({ OVERDUE: chip('Overdue', 'bad'), DUE_TODAY: chip('Due today', 'warn'), DUE_SOON: chip('Due soon', 'warn'),
@@ -70,7 +72,7 @@
   const body = (view) => $(`[data-ib-body="${view}"]`);
   const tools = (html) => $$('[data-ib-tools]').forEach((el) => { el.innerHTML = html; });
   const modeTools = () => `<div class="ib-mode" role="group" aria-label="Data mode">
-      <button type="button" data-ib="mode" data-value="LIVE" aria-pressed="${IB.mode === 'LIVE'}">Live</button>
+      <button type="button" data-ib="mode" data-value="LIVE" aria-pressed="${IB.mode === 'LIVE'}">Gmail</button>
       <button type="button" data-ib="mode" data-value="LOCAL" aria-pressed="${IB.mode === 'LOCAL'}">Local mail</button>
       <button type="button" data-ib="mode" data-value="REPLAY" aria-pressed="${IB.mode === 'REPLAY'}">Replay (synthetic)</button></div>`;
 
@@ -81,6 +83,28 @@
       IB.tz = s.timezone || 'UTC';
       IB.tzConfigured = !!s.timezone_configured;
     } catch (_) { /* keep UTC; the settings view says it is not configured */ }
+    // first visit: choose the mode from what really exists (one shared promise, so quick navigation cannot race it)
+    IB.modeP = IB.modeP || chooseMode();
+    await IB.modeP;
+    try {
+      const c = await call('GET', '/api/inbox/connections');
+      IB.conn = { gmail: (c.gmail || {}).status, gmailAccount: (c.gmail || {}).account || '', local: (c.local || {}).status, localAccount: (c.local || {}).account || '' };
+    } catch (_) { /* connection state unavailable: the screens show their own error */ }
+  }
+  async function chooseMode() {
+    if (IB.modeChosen) return;
+    IB.modeChosen = true;
+    try {
+      const c = await call('GET', '/api/inbox/connections');
+      const l = c.local || {};
+      if ((c.gmail || {}).status === 'CONNECTED') IB.mode = 'LIVE';          // Google sign-in is optional, never required
+      else if (l.status && l.status !== 'NOT_CONFIGURED') {
+        IB.mode = 'LOCAL';
+        if (l.status === 'NOT_CONNECTED') {         // a real, empty mailbox on the local mail server: no account, no internet
+          try { await call('POST', '/api/inbox/connections/local/create', { name: 'me' }); } catch (_) { /* the Connections page offers the form */ }
+        }
+      }
+    } catch (_) { /* leave the default; screens report their own errors */ }
   }
 
   /* ------------------------------------------------------------ Morning brief */
@@ -109,8 +133,8 @@
           ? empty('No local mailbox connected', 'Create a mailbox on the local mail server in Connections, deliver a test message to it, then sync.',
                   `<p><a class="btn btn-primary" href="#connections" data-ib="nav" data-route="#connections">Open Connections</a></p>`)
           : IB.mode === 'LIVE'
-          ? empty('Your inbox is not connected yet', brief.connection_status === 'NOT_CONNECTED' ? 'Connect Gmail with read-only access to see what needs attention. Nothing is read until you connect.' : 'Your Gmail connection needs attention. Check Connections.',
-                  `<p><a class="btn btn-primary" href="#connections" data-ib="nav" data-route="#connections">Open Connections</a> <a class="btn" href="#replay" data-ib="nav" data-route="#replay">Try the replay lab</a></p>`)
+          ? empty('No inbox connected', brief.connection_status === 'NOT_CONNECTED' ? 'Gmail is optional. You can work with the local mail server (no account, no internet) or connect Gmail with read-only access. Nothing is read until you choose.' : 'Your Gmail connection needs attention. Check Connections.',
+                  `<p><button class="btn btn-primary" type="button" data-ib="mode" data-value="LOCAL">Use local mail</button> <a class="btn" href="#connections" data-ib="nav" data-route="#connections">Connection options</a> <a class="btn" href="#replay" data-ib="nav" data-route="#replay">Try the replay lab</a></p>`)
           : empty('No replay started', 'Open the replay lab to run the synthetic morning.', `<p><a class="btn btn-primary" href="#replay" data-ib="nav" data-route="#replay">Open the replay lab</a></p>`));
         return;
       }
@@ -365,6 +389,29 @@
     } catch (e) { el.innerHTML = banner() + errorBox(e); }
   }
 
+  const PROVIDER = () => IB.mode === 'LOCAL' ? 'Local mail (local addresses only)' : IB.mode === 'REPLAY' ? 'Replay (simulated, nothing delivered)' : 'Gmail';
+  async function renderOutbox() {
+    tools(modeTools());
+    const el = body('outbox');
+    el.innerHTML = banner() + loading('your outbox');
+    try {
+      const list = (await call('GET', '/api/inbox/drafts?' + q())).drafts;
+      const groups = [
+        ['APPROVED', 'Approved, not yet sent', 'Waiting for you to press send on the exact approved text.'],
+        ['UNCERTAIN', 'Uncertain: not confirmed', 'Delivery could not be proven. This is shown as NOT sent. RESOLVE checks read-only and never resends on its own.'],
+        ['SENT_VERIFIED', 'Sent and verified', 'Read back from the provider and matched to the approved content. Provider: ' + PROVIDER() + '.'],
+        ['SAVED_TO_GMAIL', 'Saved as a provider draft', 'Stored as a draft in the mailbox and read back. Not sent.']];
+      const item = (d) => `<li class="ib-item"><div class="ib-item-head"><a class="ib-item-title" href="#draft:${E(d.id)}" data-ib="nav" data-route="#draft:${E(d.id)}">${E(d.subject || 'Reply')}</a></div>
+          <div class="ib-meta">To ${E(d.recipient)} · version ${E(d.version)} · ${E(when(d.updated_at))}</div></li>`;
+      const html = groups.map(([st, title, note]) => {
+        const rows = list.filter((d) => d.status === st);
+        return rows.length ? `<section class="ib-panel"><h3>${E(title)} <span class="ib-chip">${rows.length}</span></h3><p class="muted">${E(note)}</p><ul class="ib-list">${rows.map(item).join('')}</ul></section>` : '';
+      }).join('');
+      el.innerHTML = banner() + (html || empty('Nothing in the outbox', 'Messages appear here after you approve a reply in Drafts. Nothing is sent without your approval of the exact text.',
+        `<p><a class="btn btn-primary" href="#drafts" data-ib="nav" data-route="#drafts">Open drafts</a></p>`));
+    } catch (e) { el.innerHTML = banner() + errorBox(e); }
+  }
+
   async function renderDraft() {
     tools(modeTools());
     const el = body('draft');
@@ -451,7 +498,7 @@
     const el = body('rules');
     el.innerHTML = `<section class="ib-panel"><h3>1–7 · How to use this page</h3>
       <ol class="ib-steps"><li>Focus the instruction field below.</li><li>Dictate with Wispr Flow (or type).</li><li>Review the resulting text.</li><li>Click Parse instructions.</li><li>Inspect the structured rule preview.</li><li>Correct anything inaccurate.</li><li>Activate only the rules you approve.</li></ol>
-      <p class="ib-hint">RESOLVE has no Wispr Flow integration. Wispr Flow types into this text box like any keyboard. RESOLVE receives only the text.</p>
+      <p class="ib-hint">Dictate here with Wispr Flow or any dictation tool: it types into this box like a keyboard, and RESOLVE receives only the resulting text.</p>
       <form data-ib-form="rules-parse"><div class="ib-field dictate"><label for="ibRulesText">Instructions</label><textarea id="ibRulesText" name="text" spellcheck="true" rows="6" placeholder="Tell RESOLVE how you want your inbox handled."></textarea></div>
         <div class="ib-actions"><button class="btn btn-primary" type="submit">Parse instructions</button><button class="btn" type="button" data-ib="example">Insert the example instruction</button></div></form>
       <div id="ibRulesPreview" aria-live="polite"></div></section>
@@ -825,12 +872,12 @@
   }
 
   function rerender() {
-    const v = (location.hash.slice(1) || 'morning').split(':')[0];
+    const v = (location.hash.slice(1) || 'workbench').split(':')[0];
     return renderView(v);
   }
   function renderView(v) {
     const map = { morning: renderMorning, inbox: renderInbox, thread: renderThread, commitments: renderCommitments, commitment: renderCommitment,
-                  drafts: renderDrafts, draft: renderDraft, activity: renderActivity, rules: renderRules, connections: renderConnections,
+                  drafts: renderDrafts, outbox: renderOutbox, draft: renderDraft, activity: renderActivity, rules: renderRules, connections: renderConnections,
                   settings: renderSettings, replay: renderReplay };
     if (!map[v]) return;
     return map[v]();
@@ -867,14 +914,14 @@
   document.addEventListener('resolve:view', (ev) => {
     const name = String(ev.detail || '').split(':')[0];
     applyHash();
-    if (!['morning', 'inbox', 'thread', 'commitments', 'commitment', 'drafts', 'draft', 'activity', 'rules', 'connections', 'settings', 'replay'].includes(name)) return;
+    if (!['morning', 'inbox', 'thread', 'outbox', 'commitments', 'commitment', 'drafts', 'draft', 'activity', 'rules', 'connections', 'settings', 'replay'].includes(name)) return;
     loadSettings().then(() => renderView(name));
   });
   window.addEventListener('hashchange', () => { applyHash(); });
   applyHash();
   // app.js dispatches resolve:view before this file loads, so the first screen is rendered here
-  const first = (location.hash.slice(1) || 'morning').split(':')[0];
-  if (['morning', 'inbox', 'thread', 'commitments', 'commitment', 'drafts', 'draft', 'activity', 'rules', 'connections', 'settings', 'replay'].includes(first)) {
+  const first = (location.hash.slice(1) || 'workbench').split(':')[0];
+  if (['morning', 'inbox', 'thread', 'outbox', 'commitments', 'commitment', 'drafts', 'draft', 'activity', 'rules', 'connections', 'settings', 'replay'].includes(first)) {
     loadSettings().then(() => renderView(first));
   }
 })();

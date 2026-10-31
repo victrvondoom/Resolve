@@ -116,3 +116,17 @@
 - [ ] GitHub Actions run observed green (NOT MEASURED)
 - [ ] Wispr Flow Insights screenshot and two-minute demo recording (NOT STARTED — user-owned evidence)
 - [ ] Live Gmail and MODEL_ENABLED results (BLOCKED/NOT MEASURED: need OAuth credentials / model endpoint)
+
+## UI rescue 2026-10-31
+- [x] App opens with no Google, no key and no internet; external requests blocked in `tests/test_offline_local_mode.py`
+- [x] Connector label comes from real connection state; Gmail never shown as connected unless connected
+- [x] Two areas (Workbench default, Operations); old routes still work
+- [x] Outbox view; Workbench home reads live server state
+- [x] Inbox stylesheets restored (merge regression)
+- [x] README/landing/app wording about Wispr Flow corrected (used on the project; no SDK)
+- [ ] React/TypeScript frontend and npm build (NOT STARTED)
+- [ ] 3D architecture visualizer reflecting real service health (NOT STARTED)
+- [ ] Agent timeline with parsed results; skill editor and runner; evidence gallery; research reports from supplied PDFs (NOT STARTED)
+- [ ] Benchmark workspace with a Run action; model selector that switches the backend model (NOT STARTED)
+- [ ] `.eml`/`.mbox` import; failed-delivery history in the Outbox (NOT STARTED)
+- [ ] Narrated, subtitled demo video (PARTLY: regenerated with captions from the new UI, no audio)

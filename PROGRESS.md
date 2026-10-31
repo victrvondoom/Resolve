@@ -1,5 +1,11 @@
 # Progress
 
+## UI rescue stage 1 — 2026-10-31 (branch `claude/gracious-ride-qzs42x`)
+GATE: local-first UI | **PARTIAL** (stage 1 done and tested; the larger redesign items are NOT STARTED, see `docs/HANDOFF_NEXT_ACCOUNT.md` section G).
+- Reproduced first: with Google variables unset and external requests blocked the app loaded cleanly; the real failures were dropped stylesheet links (merge `5b2aebf`), a Gmail-first default with a dead end, a hard-coded "LIVE · GMAIL" label, and a flat 24-link nav.
+- Fixed: stylesheets, truthful connector label, local mailbox auto-connected on first use, Workbench/Operations areas, Workbench home read live from `/api/tools`, `/api/skills`, `/api/agents`, `/api/web/status`, Outbox view, Wispr wording (Wispr Flow was used on the project; there is no SDK integration).
+- Tests: `tests/test_offline_local_mode.py` (7) blocks all external requests; browser tests moved to `tests/ui_nav.py`. `python -m pytest tests -q -rs` → **700 passed, 24 skipped, 0 failed** (716 s; the same 12 STT-model, 3 tkinter and 9 Windows-native skips).
+
 ## Release closeout — 2026-10-31 (branch `claude/gracious-ride-qzs42x`, fast-forwarded to `claude/dazzling-johnson-m8trhu` @ `359c3bf`)
 GATE: release closeout (computer benchmark + verification) | **PASS (portable/Linux)** · Vosk/Docker re-verification **BLOCKED in this sandbox** · `WINDOWS_NATIVE_TESTS_NOT_RUN`.
 - Benchmark WIP finished and wired in: `benchmarks/computer_bench.py`, `tests/test_computer_bench.py`, test-mode hooks in `src/controlled_apps.py`. The shipped patch failed one hunk only because a lint commit had dropped an `f` prefix on a context line; it was applied via a corrected temp copy (identical changes). `wip/` removed.

@@ -6,6 +6,10 @@
 <link rel="icon" href="/static/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/app.css">
 <link rel="stylesheet" href="/static/cream.css">
+<link rel="stylesheet" href="/static/bubble.css">
+<link rel="stylesheet" href="/static/brand-theme.css">
+<link rel="stylesheet" href="/static/inbox.css">
+<link rel="stylesheet" href="/static/workbench.css">
 
 </head>
 <body>
@@ -31,45 +35,50 @@
     <button id="resume" class="btn" title="Clear the emergency stop so agents and input can run again">Resume control</button>
   </div>
 </header>
-<div id="statusStrip" class="status-strip" role="region" tabindex="0" aria-label="Runtime capabilities"><span class="chip chip-muted">Loading runtime status…</span></div>
+<details class="status-fold"><summary>System status <span id="statusSummary" class="chip chip-muted">checking…</span></summary><div id="statusStrip" class="status-strip" role="region" tabindex="0" aria-label="Runtime capabilities"><span class="chip chip-muted">Loading runtime status…</span></div></details>
 
 <div class="shell" id="dashboard">
   <nav class="sidebar" aria-label="RESOLVE sections">
-    <p class="nav-label" id="navInboxLabel">Inbox operator</p>
-    <ul class="nav-main" aria-labelledby="navInboxLabel">
-      <li><a href="#morning" data-view="morning"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 18 0M12 3v2M5.6 5.6l1.4 1.4M18.4 5.6l-1.4 1.4M2 17h20"/></svg>Morning brief</a></li>
-      <li><a href="#inbox" data-view="inbox"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 14h5l2 3h4l2-3h5"/></svg>Inbox</a></li>
-      <li><a href="#commitments" data-view="commitments"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Commitments</a></li>
-      <li><a href="#drafts" data-view="drafts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H7l-3 3z"/><path d="M8 9h8M8 12h5"/></svg>Drafts</a></li>
-      <li><a href="#activity" data-view="activity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l3-7 3 14 3-7h3"/></svg>Activity</a></li>
-      <li><a href="#rules" data-view="rules"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voice rules</a></li>
-    </ul>
-    <p class="nav-label" id="navAccountLabel">Account</p>
-    <ul class="nav-main" aria-labelledby="navAccountLabel">
-      <li><a href="#connections" data-view="connections"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M11 18H8a2 2 0 0 1-2-2V9"/></svg>Connections</a></li>
-      <li><a href="#settings" data-view="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Privacy &amp; settings</a></li>
-      <li><a href="#replay" data-view="replay"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>Replay lab</a></li>
-    </ul>
-    <details class="nav-more">
-      <summary>Advanced tools <span class="nav-count">14</span></summary>
-      <ul class="nav-sub">
-      <li><a href="#view-flagship" data-view="flagship"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.8 5.5 21l2-7.5L2 9h7z"/></svg>Flagship mission</a></li>
-      <li><a href="#view-cloud" data-view="cloud"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Cloud computer</a></li>
-      <li><a href="#view-computer" data-view="computer"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M9 7l6 3-2.6.9L11.5 14z"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8" y1="21" x2="16" y2="21"/></svg>Live computer</a></li>
-      <li><a href="#view-skills" data-view="skills"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/></svg>Skills</a></li>
-      <li><a href="#view-documents" data-view="documents"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l5 5v15H6zM14 2v5h5M9 12h7M9 16h7"/></svg>Documents &amp; print</a></li>
-      <li><a href="#view-evidence" data-view="evidence"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Evidence &amp; receipts</a></li>
-      <li><a href="#view-privacy" data-view="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Privacy &amp; data (developer)</a></li>
-      <li><a href="#view-approvals" data-view="approvals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Approval inbox <span id="approvalBadge" class="chip chip-warn small" style="margin-left:auto;display:none;padding:1px 6px;">0</span></a></li>
-      <li><a href="#view-agents" data-view="agents"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 8l3.5 8M16.5 8L13 16"/></svg>Agents</a></li>
-      <li><a href="#view-files" data-view="files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11H3z"/></svg>Files sandbox</a></li>
-      <li><a href="#view-bench" data-view="bench"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Benchmarks</a></li>
-      <li><a href="#view-sim" data-view="sim"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voice &amp; simulator</a></li>
-      <li><a href="#view-windows" data-view="windows"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v12H3zM8 21h8M12 17v4"/></svg>Windows native</a></li>
-      <li><a href="#view-mission" data-view="mission"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Mission control (IEEC)</a></li>
-      <li><a href="#view-ledger" data-view="ledger"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg>Ledger &amp; registry</a></li>
+    <div class="area-switch" role="tablist" aria-label="Workspace area">
+      <button type="button" role="tab" data-area-btn="workbench" aria-selected="true">Workbench</button>
+      <button type="button" role="tab" data-area-btn="operations" aria-selected="false">Operations</button>
+    </div>
+    <div data-area="workbench" role="tabpanel">
+      <p class="nav-label">Tools and agents</p>
+      <ul class="nav-main">
+      <li><a href="#workbench" data-view="workbench"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Advanced Tools</a></li>
+<li><a href="#view-agents" data-view="agents"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 8l3.5 8M16.5 8L13 16"/></svg>Agents</a></li>
+<li><a href="#view-computer" data-view="computer"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M9 7l6 3-2.6.9L11.5 14z"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8" y1="21" x2="16" y2="21"/></svg>Live computer</a></li>
+<li><a href="#view-cloud" data-view="cloud"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Cloud computer</a></li>
+<li><a href="#view-skills" data-view="skills"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/></svg>Skills</a></li>
+<li><a href="#view-documents" data-view="documents"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l5 5v15H6zM14 2v5h5M9 12h7M9 16h7"/></svg>Documents &amp; research</a></li>
+<li><a href="#view-files" data-view="files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11H3z"/></svg>Files sandbox</a></li>
+<li><a href="#view-evidence" data-view="evidence"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Evidence &amp; traces</a></li>
+<li><a href="#view-bench" data-view="bench"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Benchmarks</a></li>
+<li><a href="#view-sim" data-view="sim"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voice simulator</a></li>
+<li><a href="#view-windows" data-view="windows"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v12H3zM8 21h8M12 17v4"/></svg>Windows native</a></li>
+<li><a href="#view-flagship" data-view="flagship"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.8 5.5 21l2-7.5L2 9h7z"/></svg>Flagship mission</a></li>
+<li><a href="#view-mission" data-view="mission"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Mission control (IEEC)</a></li>
+<li><a href="#view-ledger" data-view="ledger"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg>Tool registry &amp; ledger</a></li>
       </ul>
-    </details>
+    </div>
+    <div data-area="operations" role="tabpanel" hidden>
+      <p class="nav-label">Inbox &amp; commitments</p>
+      <ul class="nav-main">
+      <li><a href="#morning" data-view="morning"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 18 0M12 3v2M5.6 5.6l1.4 1.4M18.4 5.6l-1.4 1.4M2 17h20"/></svg>Morning brief</a></li>
+<li><a href="#inbox" data-view="inbox"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 14h5l2 3h4l2-3h5"/></svg>Inbox</a></li>
+<li><a href="#outbox" data-view="outbox"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>Outbox</a></li>
+<li><a href="#commitments" data-view="commitments"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Commitments</a></li>
+<li><a href="#drafts" data-view="drafts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H7l-3 3z"/><path d="M8 9h8M8 12h5"/></svg>Drafts</a></li>
+<li><a href="#view-approvals" data-view="approvals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Approval inbox <span id="approvalBadge" class="chip chip-warn small" style="margin-left:auto;display:none;padding:1px 6px;">0</span></a></li>
+<li><a href="#activity" data-view="activity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l3-7 3 14 3-7h3"/></svg>Activity</a></li>
+<li><a href="#rules" data-view="rules"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voice rules</a></li>
+<li><a href="#connections" data-view="connections"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M11 18H8a2 2 0 0 1-2-2V9"/></svg>Connections</a></li>
+<li><a href="#replay" data-view="replay"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>Replay lab</a></li>
+<li><a href="#view-privacy" data-view="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Privacy &amp; data</a></li>
+<li><a href="#settings" data-view="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Settings</a></li>
+      </ul>
+    </div>
     <div class="sidebar-note" id="sidebarNote" aria-live="polite">Checking server mode…</div>
   </nav>
 
@@ -94,6 +103,14 @@
     <section class="view ib-view" id="view-commitment" data-view="commitment" aria-labelledby="h-commitment" hidden>
       <div class="view-head ib-head"><div><p class="eyebrow"><a href="#commitments" data-ib="nav" data-route="#commitments">← Back to commitments</a></p><h1 id="h-commitment">Commitment</h1></div><div class="ib-tools" data-ib-tools></div></div>
       <div data-ib-body="commitment" aria-live="polite"></div>
+    </section>
+    <section class="view" id="view-workbench" data-view="workbench" aria-labelledby="h-workbench" hidden>
+      <div class="view-head"><div><p class="eyebrow">Workbench</p><h1 id="h-workbench">Advanced Tools</h1><p class="muted">Operate tools, agents and computers by voice or text. Every action is approved first and checked afterwards. What you see here is read live from this server.</p></div></div>
+      <div id="wbBody" aria-live="polite"><p class="ib-loading">Reading this server…</p></div>
+    </section>
+    <section class="view ib-view" id="view-outbox" data-view="outbox" aria-labelledby="h-outbox" hidden>
+      <div class="view-head ib-head"><div><p class="eyebrow">Messages going out</p><h1 id="h-outbox">Outbox</h1><p class="muted">Approved, sent, verified and uncertain messages. A message counts as sent only after it is read back from the provider.</p></div><div class="ib-tools" data-ib-tools></div></div>
+      <div data-ib-body="outbox" aria-live="polite"></div>
     </section>
     <section class="view ib-view" id="view-drafts" data-view="drafts" aria-labelledby="h-drafts" hidden>
       <div class="view-head ib-head"><div><p class="eyebrow">Reply review</p><h1 id="h-drafts">Drafts</h1><p class="muted">Prepared replies. Nothing is sent until you approve the exact text shown.</p></div><div class="ib-tools" data-ib-tools></div></div>
@@ -782,5 +799,6 @@
 <script src="/static/app.js"></script>
 <script src="/static/inbox.js"></script>
 <script src="/static/computer.js"></script>
+<script src="/static/workbench.js"></script>
 </body>
 </html>

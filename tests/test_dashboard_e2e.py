@@ -11,6 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_web_api_g1 import HAVE_PW, Server, free_port
+from ui_nav import click_nav
 
 CHROMIUM = '/opt/pw-browsers/chromium'
 
@@ -100,7 +101,7 @@ class DashboardE2E(unittest.TestCase):
                     self.assertIn('Use the Jordan Lee in Operations.', json.dumps(srv.get(f'/api/web/missions/{mid}').get('utterances', [])))
                     # agents: supervisor timeline uses real timestamps from the server
                     page.evaluate("document.querySelectorAll('.nav-more').forEach(d => d.open = true)")  # 'More tools' is collapsed by default
-                    page.click('.sidebar a[data-view="agents"]')
+                    click_nav(page, 'agents')
                     page.wait_for_selector('#agentRoster li b')
                     page.click('#supervise')
                     page.wait_for_selector('#taskTimeline .tl-row', timeout=60000)
@@ -109,7 +110,7 @@ class DashboardE2E(unittest.TestCase):
                     self.assertNotIn('NaN', page.locator('#taskTimeline').inner_text())
                     # skills: record -> approve exact version -> replay under a layout shift
                     page.evaluate("document.querySelectorAll('.nav-more').forEach(d => d.open = true)")  # 'More tools' is collapsed by default
-                    page.click('.sidebar a[data-view="skills"]')
+                    click_nav(page, 'skills')
                     page.click('#skillRecord')
                     page.wait_for_function("document.getElementById('webSkillLog').textContent.startsWith('Recorded')", timeout=90000)
                     page.wait_for_selector('#webSkills button[data-act="approve"]:not([disabled])')
@@ -127,7 +128,7 @@ class DashboardE2E(unittest.TestCase):
                     sandbox = Path(tmp) / 'fx' / 'sandbox'
                     dup = sandbox / 'reports' / 'q3-ops-final (copy).txt'
                     page.evaluate("document.querySelectorAll('.nav-more').forEach(d => d.open = true)")  # 'More tools' is collapsed by default
-                    page.click('.sidebar a[data-view="files"]')
+                    click_nav(page, 'files')
                     self.assertTrue(page.locator('#filesApply').is_disabled())
                     for bid, label in (('filesSeed', 'Seed demo files'), ('filesPlan', 'Plan')):
                         page.click('#' + bid)

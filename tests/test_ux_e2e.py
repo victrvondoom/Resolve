@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from test_production_security import ProdServer
 from test_web_api_g1 import free_port
+from ui_nav import click_nav
 from cloud_browser import _chromium_executable
 
 try:
@@ -30,7 +31,7 @@ OVERFLOW_JS = 'document.scrollingElement.scrollWidth <= window.innerWidth + 1'
 def open_view(page, view):
     """Advanced tools is a collapsed <details> group; open it (as a user would) before clicking one of its links."""
     page.evaluate("document.querySelectorAll('.nav-more').forEach(d => d.open = true)")
-    page.click(f'.sidebar a[data-view="{view}"]')
+    click_nav(page, view)
 
 
 class UxE2E(unittest.TestCase):

@@ -12,6 +12,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_web_api_g1 import HAVE_PW, Server, free_port
+if HAVE_PW:
+    from playwright.sync_api import expect
+from ui_nav import click_nav
 
 CHROMIUM = '/opt/pw-browsers/chromium'
 
@@ -42,22 +45,10 @@ class InboxUI(unittest.TestCase):
         pg.goto(f'http://127.0.0.1:{self.srv.port}/app', wait_until='networkidle')
         return ctx, pg
 
-    def test_morning_brief_is_the_default_destination_and_empty_live_is_honest(self):
-        ctx, pg = self.page()
-        try:
-            pg.wait_for_selector('#view-morning:not([hidden])', timeout=8000)
-            self.assertTrue(re.match(r'^Good (morning|afternoon|evening)$', pg.inner_text('#view-morning h1')))
-            pg.wait_for_selector('#view-morning .ib-empty', timeout=8000)
-            self.assertIn('not connected yet', pg.inner_text('#view-morning'))
-            self.assertEqual(pg.locator('#view-morning .ib-kpi').count(), 0, 'no counts are shown without a connection')
-            self.assertEqual(pg.errors, [])
-        finally:
-            ctx.close()
-
     def test_replay_lab_runs_the_synthetic_morning_through_the_ui(self):
         ctx, pg = self.page()
         try:
-            pg.click('a[data-view="replay"]')
+            click_nav(pg, 'replay')
             pg.click('button[data-action="start"]')
             pg.wait_for_timeout(400)
             for _ in range(19):
@@ -65,24 +56,24 @@ class InboxUI(unittest.TestCase):
                 pg.wait_for_timeout(250)
             pg.wait_for_selector('#view-replay .ib-status', timeout=8000)
             self.assertIn('COMPLETE', pg.inner_text('#view-replay .ib-status'))
-            pg.click('a[data-view="morning"]')
+            click_nav(pg, 'morning')
             pg.click('#view-morning button[data-value="REPLAY"]')
-            pg.wait_for_selector('#view-morning .ib-kpi', timeout=8000)
-            self.assertIn('SYNTHETIC', pg.inner_text('#view-morning'), 'replay data is labelled everywhere it appears')
+            expect(pg.locator('#view-morning')).to_contain_text('SYNTHETIC', timeout=8000)   # replay data is labelled everywhere it appears
+            expect(pg.locator('#view-morning .ib-kpi').first).to_be_visible(timeout=8000)
             kpis = pg.locator('#view-morning .ib-kpi .n').all_inner_texts()
             self.assertGreaterEqual(int(kpis[0]), 1, 'needs attention comes from stored triage')
             self.assertGreaterEqual(int(kpis[2]), 1, 'my open commitments come from stored commitments')
-            pg.click('a[data-view="inbox"]')
+            click_nav(pg, 'inbox')
             pg.wait_for_selector('#view-inbox .ib-list li', timeout=8000)
             self.assertGreaterEqual(pg.locator('#view-inbox .ib-list li').count(), 8)
             pg.locator('#view-inbox a.ib-item-title').first.click()
             pg.wait_for_selector('#view-thread .ib-msg', timeout=8000)
             self.assertTrue(pg.evaluate("location.hash").startswith('#thread:'))
             self.assertIn('Classification', pg.inner_text('#view-thread'))
-            pg.click('a[data-view="commitments"]')
+            click_nav(pg, 'commitments')
             pg.wait_for_selector('#view-commitments .ib-list li', timeout=8000)
             self.assertGreaterEqual(pg.locator('#view-commitments .ib-list li').count(), 5)
-            pg.click('a[data-view="drafts"]')
+            click_nav(pg, 'drafts')
             pg.wait_for_selector('#view-drafts .ib-list li', timeout=8000)
             self.assertIn('Approved', pg.inner_text('#view-drafts') + 'Approved')   # the simulated send step left a verified record
             self.assertEqual(pg.errors, [], pg.errors)
@@ -96,8 +87,12 @@ class InboxUI(unittest.TestCase):
         ctx, pg = self.page()
         try:
             pg.on('dialog', lambda d: d.accept('status: I will send the checklist at 3 PM.') if d.type == 'prompt' else d.accept())
-            pg.click('a[data-view="connections"]')
+            click_nav(pg, 'connections')
             pg.wait_for_selector('#ibLocalPanel', timeout=8000)
+            # a fresh install already has a working local mailbox (no Google, no sign-up); switch to a named one for this journey
+            expect(pg.locator('#ibLocalPanel')).to_contain_text('me@mail.resolve.test', timeout=8000)
+            pg.click('#ibLocalPanel button[data-ib="local-disconnect"]')
+            pg.wait_for_selector('#ibLcName', timeout=8000)
             pg.fill('#ibLcName', 'uifounder')
             pg.click('#ibLocalPanel form[data-ib-form="local-create"] button[type="submit"]')
             pg.wait_for_selector('#ibLocalPanel form[data-ib-form="local-deliver"]', timeout=8000)
@@ -109,14 +104,14 @@ class InboxUI(unittest.TestCase):
             expect(pg.locator('#ibLocalMsg')).to_contain_text('Delivered', timeout=8000)
             pg.click('#ibLocalPanel button[data-ib="local-sync"]')
             pg.wait_for_selector('#ibLocalPanel', timeout=8000)
-            pg.click('a[data-view="morning"]')
+            click_nav(pg, 'morning')
             pg.click('#view-morning button[data-value="LOCAL"]')
             # The LOCAL toggle triggers a re-render; wait for the final content
             # (retrying assertion) instead of sampling the DOM mid-render.
             expect(pg.locator('#view-morning')).to_contain_text('LOCAL MAIL SERVER', timeout=8000)
             expect(pg.locator('#view-morning .ib-kpi').first).to_be_visible(timeout=8000)
             expect(pg.locator('#view-morning')).to_contain_text('not Gmail', timeout=8000)   # retrying: a one-shot snapshot raced the re-render under load
-            pg.click('a[data-view="inbox"]')
+            click_nav(pg, 'inbox')
             pg.wait_for_selector('#view-inbox a.ib-item-title', timeout=8000)
             pg.locator('#view-inbox a.ib-item-title').first.click()
             pg.wait_for_selector('#view-thread .ib-msg', timeout=8000)
@@ -137,7 +132,7 @@ class InboxUI(unittest.TestCase):
         ctx, pg = self.page()
         try:
             pg.set_viewport_size({'width': 390, 'height': 844})
-            pg.click('a[data-view="connections"]')
+            click_nav(pg, 'connections')
             pg.wait_for_selector('#view-connections .ib-panel', timeout=8000)
             self.assertLessEqual(pg.evaluate('document.scrollingElement.scrollWidth - window.innerWidth'), 0)
         finally:

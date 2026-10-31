@@ -19,6 +19,7 @@ from pypdf import PdfReader
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from test_web_api_g1 import Server, free_port
+from ui_nav import click_nav
 from test_document_studio import text_pdf
 
 
@@ -208,7 +209,7 @@ class DocumentStudioUiE2E(unittest.TestCase):
         page.wait_for_selector('#authDialog[open]'); page.click('#authDemo'); page.wait_for_selector('#authDialog', state='hidden')
         # Documents lives in the collapsed "Advanced tools" group; open it as a user would.
         page.evaluate("document.querySelectorAll('.nav-more').forEach(d => d.open = true)")
-        page.click('.sidebar a[data-view="documents"]')
+        click_nav(page, 'documents')
         page.set_input_files('#docUpload', {'name': 'three.pdf', 'mimeType': 'application/pdf', 'buffer': text_pdf(['Page One', 'Page Two', 'Page Three'])})
         page.click('#docUploadBtn')
         expect(page.locator('#docStatus')).to_contain_text('PDF uploaded', timeout=15000)

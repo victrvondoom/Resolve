@@ -24,7 +24,7 @@ Screenshots from real-browser runs: `harness/evidence/screens/flagship-{plan-des
 
 ## Why voice matters
 Spec-to-report work is dictation-shaped: long, structured intent. The page has its own push-to-talk (real `getUserMedia` → 16 kHz WAV → server STT)
-**and** works with **Wispr Flow dictating into the instruction box** — those are separate things; RESOLVE has no Wispr SDK integration and claims none.
+**and** works with **Wispr Flow dictating into the instruction box** — those are separate things. Wispr Flow was used while building this project; RESOLVE has no Wispr SDK integration because it does not need one.
 
 ## Honest limitations
 - **Speech recognition is PARTIAL / unverified end-to-end.** The audio pipeline, consent gate, validation and error paths are tested with a *fake STT server*.

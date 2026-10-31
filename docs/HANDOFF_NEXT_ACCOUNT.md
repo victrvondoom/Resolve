@@ -54,7 +54,7 @@ python -m pytest tests -q -rs                # ~11 min
 Environment used: Linux x86_64 4 vCPU/16 GB, Python 3.13.18, Playwright 1.64.1, Chromium in `/opt/pw-browsers` (verified present), pytest 9.2.0, `vosk` 0.3.45 installed but no model. Running the suite regenerates `docs/screenshots/inbox/13_local_send_verified.png`; revert it with `git checkout` unless you mean to update it.
 
 ## E. Limitations — claims that must NOT be made
-- No live-microphone test; no Wispr Flow integration or evidence; no public deployment; no observed CI run.
+- No live-microphone test; no Wispr Flow Insights screenshot or recording stored in the repo (Wispr Flow itself was used on the project, confirmed by the owner; there is no Wispr SDK integration); no public deployment; no observed CI run.
 - The benchmark compares controlled baselines authored in this repo on controlled local apps (5 seeds/scenario, DOM-level Playwright, harness plays the approver). It is not a comparison with commercial agents and not a Windows cursor-control test.
 - Docker 13/13 and real-Vosk results are historical, not re-measured on this commit.
 - No live Gmail, no MODEL_ENABLED result. Outbox is SIMULATED DELIVERY. `WINDOWS_NATIVE_TESTS_NOT_RUN`.
@@ -66,3 +66,19 @@ Environment used: Linux x86_64 4 vCPU/16 GB, Python 3.13.18, Playwright 1.64.1, 
 4. User: live-mic test (4), Wispr Insights screenshot (2), demo recording (3).
 5. Optional: live Gmail/model (8), Windows (9).
 Never put secrets in the repo or this file.
+
+
+## G. UI rescue, stage 1 (after the benchmark closeout)
+
+Reproduced on a clean local server (Google variables unset, every non-loopback request aborted): the app loaded, with 0 external requests and 0 console errors, so there was no hard internet or OAuth dependency. The real defects were:
+
+| Problem | Actual cause | Fix | Verification |
+|---|---|---|---|
+| Inbox screens looked broken and unstyled | merge `5b2aebf` dropped the `inbox.css`, `brand-theme.css` and `bubble.css` links from `web/index.html` | links restored | screenshots, `tests/test_inbox_ui.py` |
+| Landing page asked for Gmail | default mode was LIVE (Gmail) with a "Connect Gmail" dead end; chip said "LIVE · GMAIL" while nothing was connected | first visit uses the real local mail server (one shared setup promise), label comes from real connection state | `tests/test_offline_local_mode.py` |
+| 24 flat nav links | one sidebar list | two areas, Workbench (default) and Operations; `showView` picks the area that owns a view | `tests/ui_nav.py`, updated UI tests |
+| Wispr contradicted by README/landing/app text | text written as "no integration" without saying Wispr Flow was used | corrected in README, landing page, app hint and docs | grep, `tests/test_landing_ui.py` |
+
+Files: `web/index.html`, `web/static/{app.js,inbox.js,workbench.js,workbench.css}`, `scripts/record_intro_video.py`, `tests/{ui_nav.py,test_offline_local_mode.py,test_inbox_ui.py,test_landing_ui.py,...}`.
+
+**Not done in this pass (status NOT STARTED unless noted):** React/TypeScript migration (needs an npm toolchain and a local build step), 3D architecture visualizer reflecting real service health, command palette, agent execution timeline with parsed results, skill create/edit/run UI, evidence gallery and research-from-PDF reports, benchmark workspace with a Run action (the Benchmarks view still shows an older stored report), real model selector (needs provider adapters wired to a settings store; keys must stay server-side), `.eml`/`.mbox` import, failed-delivery history in the Outbox, narrated video with subtitles, reproducing Windows-only behavior (needs a Windows host).
