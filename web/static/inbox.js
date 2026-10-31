@@ -798,4 +798,9 @@
   });
   window.addEventListener('hashchange', () => { applyHash(); });
   applyHash();
+  // app.js dispatches resolve:view before this file loads, so the first screen is rendered here
+  const first = (location.hash.slice(1) || 'morning').split(':')[0];
+  if (['morning', 'inbox', 'thread', 'commitments', 'commitment', 'drafts', 'draft', 'activity', 'rules', 'connections', 'settings', 'replay'].includes(first)) {
+    loadSettings().then(() => renderView(first));
+  }
 })();
