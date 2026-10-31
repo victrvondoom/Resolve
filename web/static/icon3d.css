@@ -1,0 +1,21 @@
+/* ---- 3D model (icon3d.js) ---- */
+.i3d-host{position:relative;width:100%;max-width:560px;margin:0 auto;aspect-ratio:1/0.9;user-select:none;cursor:grab;touch-action:none;outline:none}
+.i3d-host.dragging{cursor:grabbing}
+.i3d-host:focus-visible{outline:2px solid var(--gold,#C8A977);outline-offset:6px;border-radius:18px}
+.i3d-stage{position:absolute;inset:0;perspective:1100px;display:grid;place-items:center}
+.i3d-box{position:relative;width:0;height:0;transform-style:preserve-3d;transition:transform .12s linear}
+.i3d-face{position:absolute;left:50%;top:50%;margin-left:0;transform-origin:center;backface-visibility:hidden;border-radius:6px}
+.i3d-screen{background:linear-gradient(160deg,#fffefb 0%,#eee7da 100%);border:1px solid #d6cdbd;box-shadow:inset 0 0 0 6px #272722,inset 0 0 40px rgba(138,156,137,.35)}
+.i3d-screen::after{content:"";position:absolute;inset:14px;border-radius:4px;background:radial-gradient(120% 90% at 30% 20%,#fbf8f1 0%,#e7efe4 55%,#dfe8dc 100%);box-shadow:inset 0 2px 8px rgba(90,70,30,.12)}
+.i3d-base{background:linear-gradient(180deg,#fffdf9,#e9e2d4);border:1px solid #d6cdbd}
+.i3d-keys{background:repeating-linear-gradient(90deg,#ece6da 0 14px,#e3dccd 14px 16px);border:1px solid #d6cdbd}
+.i3d-side{background:linear-gradient(90deg,#f2ecdf,#dfd7c6);border:1px solid #d6cdbd}
+.i3d-back{background:linear-gradient(160deg,#d8cfbd,#c9bfa8)}
+.i3d-dims{position:absolute;inset:0;pointer-events:none}
+.i3d-dim{position:absolute;font:600 12px/1 ui-monospace,"SFMono-Regular",Menlo,monospace;color:var(--text);background:rgba(255,253,249,.92);border:1px solid var(--line-2);border-radius:999px;padding:4px 9px;box-shadow:0 2px 6px -3px rgba(90,70,30,.4)}
+.i3d-dim-w{left:50%;bottom:4%;transform:translateX(-50%)}
+.i3d-dim-d{right:3%;top:50%;transform:translateY(-50%) rotate(90deg);transform-origin:center}
+.i3d-dim-h{left:4%;top:50%;transform:translateY(-50%)}
+.i3d-legend{position:absolute;left:0;right:0;bottom:-30px;text-align:center;margin:0}
+.i3d-host{margin-bottom:34px}
+@media (prefers-reduced-motion: reduce){.i3d-box{transition:none}}

@@ -437,6 +437,66 @@ window.addEventListener('load', () => {
     } catch (_) { frameId = null; }
   }
 
+  /* ---------------- live viewer: real captured frames, scrub / play / filmstrip ---------------- */
+  let viewFrames = [], viewIdx = -1, playTimer = null, viewLive = false;
+  const blobUrls = new Map();
+  async function urlFor(ev) {
+    if (!blobUrls.has(ev.id)) {
+      const blob = await blobOf(`/api/brief-missions/${mission.id}/evidence/${ev.id}`);
+      blobUrls.set(ev.id, URL.createObjectURL(blob));
+    }
+    return blobUrls.get(ev.id);
+  }
+  function stopPlay() { if (playTimer) { clearInterval(playTimer); playTimer = null; } el('fmPlay').textContent = 'Play'; el('fmPlay').setAttribute('aria-pressed', 'false'); }
+  async function showViewIdx(i) {
+    if (!viewFrames.length) return;
+    viewIdx = Math.max(0, Math.min(viewFrames.length - 1, i));
+    const ev = viewFrames[viewIdx];
+    el('fmScrub').value = String(viewIdx);
+    document.querySelectorAll('#fmFilmstrip button').forEach((b, k) => b.setAttribute('aria-current', k === viewIdx ? 'true' : 'false'));
+    try {
+      const url = await urlFor(ev);
+      el('fmFrame').src = url; el('fmFrame').hidden = false; el('fmFrameEmpty').hidden = true;
+      el('fmFrameTime').textContent = `${viewIdx + 1} / ${viewFrames.length} · ${ev.label} · ${clock(ev.created_at)}`;
+    } catch (_) { el('fmFrameTime').textContent = 'frame could not be loaded'; }
+  }
+  function updateViewer(frames, live) {
+    const changed = frames.length !== viewFrames.length || (frames[0] && viewFrames[0] && frames[0].id !== viewFrames[0].id);
+    viewFrames = frames; viewLive = live;
+    const scrub = el('fmScrub'), play = el('fmPlay');
+    scrub.max = String(Math.max(0, frames.length - 1));
+    scrub.disabled = play.disabled = frames.length < 2;
+    play.title = frames.length < 2 ? 'Play the captured frames (needs at least two frames)' : 'Play the captured frames in order';
+    scrub.title = frames.length < 2 ? 'Scrub needs at least two frames' : 'Scrub through the captured frames';
+    if (!frames.length) {
+      stopPlay(); viewIdx = -1; el('fmFrame').hidden = true; el('fmFrameEmpty').hidden = false;
+      el('fmFrameTime').textContent = 'no frames yet'; el('fmFilmstrip').replaceChildren(); return;
+    }
+    if (changed) {
+      const strip = el('fmFilmstrip'); strip.replaceChildren();
+      frames.forEach((ev, k) => {
+        const li = document.createElement('li'), b = document.createElement('button');
+        b.type = 'button'; b.title = `${ev.label} · ${clock(ev.created_at)}`;
+        b.innerHTML = `<span class="fm-fs-n">${k + 1}</span><span class="fm-fs-label">${esc(ev.label)}</span>`;
+        b.onclick = () => { stopPlay(); showViewIdx(k); };
+        li.append(b); strip.append(li);
+      });
+    }
+    // while a browser is live, follow the newest frame; otherwise keep the user's position (or start at the end)
+    if (viewLive || viewIdx < 0 || viewIdx >= frames.length || changed && viewIdx === viewFrames.length - 1) showViewIdx(frames.length - 1);
+    else showViewIdx(viewIdx);
+  }
+  el('fmScrub').addEventListener('input', (e) => { stopPlay(); showViewIdx(Number(e.target.value)); });
+  el('fmPlay').onclick = () => {
+    if (playTimer) { stopPlay(); return; }
+    if (viewIdx >= viewFrames.length - 1) showViewIdx(0);
+    el('fmPlay').textContent = 'Pause'; el('fmPlay').setAttribute('aria-pressed', 'true');
+    playTimer = setInterval(() => {
+      if (viewIdx >= viewFrames.length - 1) { stopPlay(); return; }
+      showViewIdx(viewIdx + 1);
+    }, reduceMotion.matches ? 1400 : 750);
+  };
+
   function renderComputer(m) {
     const diag = m && (m.steps || []).includes('inspect_web'), chip = el('fmComputerChip');
     const frames = ((m && m.evidence) || []).filter(e => e.kind === 'frame' && e.rev === m.intent_revision);
@@ -449,11 +509,11 @@ window.addEventListener('load', () => {
       else if (node.status === 'FAILED' || node.status === 'REJECTED_LATE') [label, cls] = ['FAILED', 'chip-bad'];
       else [label, cls] = ['CONNECTING', 'chip-warn'];
     } else if (diag) [label, cls] = ['CONNECTING', 'chip-warn'];
+    // a browser is only LIVE while the mission itself is still running; once the mission has moved on, the session is closed
+    if (m && !['RUNNING', 'COMPOSING'].includes(m.state) && (label === 'LIVE' || label === 'CONNECTING' || label === 'PAUSED')) [label, cls] = ['SESSION CLOSED', 'chip-ok'];
+    if (label === 'LIVE' && !frames.length) [label, cls] = ['CONNECTING', 'chip-warn'];   // live only once a frame has really arrived
     chip.textContent = label; chip.className = 'chip ' + cls;
-    if (!frames.length) {
-      frameId = null; el('fmFrame').hidden = true; el('fmFrameEmpty').hidden = false;
-      if (frameUrl) { URL.revokeObjectURL(frameUrl); frameUrl = null; }
-    } else showFrame(frames[frames.length - 1]);
+    updateViewer(frames, label === 'LIVE');
     const last = steps[steps.length - 1], d = last ? last.detail : {};
     el('fmComputerFacts').innerHTML = diag ? [
       ['Page', d.url ? esc(d.url) : '—'], ['Title', d.title ? esc(d.title) : '—'], ['Last action', last ? esc(d.action || '') + (d.ok === false ? ' (failed)' : '') : '—'],

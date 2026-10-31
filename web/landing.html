@@ -7,6 +7,7 @@
 <meta name="description" content="RESOLVE: speak one goal; parallel workers read your brief and analyze your code, you approve the exact plan, and an independent verifier checks the PDF it produces.">
 <link rel="icon" href="/static/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/landing.css">
+<link rel="stylesheet" href="/static/icon3d.css">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -29,7 +30,8 @@
   <section class="hero" aria-labelledby="hero-title">
     <canvas id="scene" class="scene" role="img" aria-label="Animated graph: intent nodes linked to entity, version and effect nodes, anchored to a ring that stands for the causal state ledger." data-renderer="pending"></canvas>
     <div class="hero-shade" aria-hidden="true"></div>
-    <div class="wrap hero-inner">
+    <div class="wrap hero-inner hero-split">
+      <div class="hero-copy">
       <p class="eyebrow"><span class="dot" aria-hidden="true"></span> Voice-first work, independently verified</p>
       <h1 id="hero-title">Say what you mean.<br><span class="grad">Prove what happened.</span></h1>
       <p class="lede">Speak one goal. RESOLVE reads your project brief and analyzes your code <em>in parallel</em>, proposes a corrected architecture that <em>you approve</em>, then writes a PDF report and <em>independently verifies</em> it was built from the exact brief and code versions you chose.</p>
@@ -43,6 +45,8 @@
         <div><dt>Speech</dt><dd id="meta-speech">checking…</dd></div>
       </dl>
       <p class="legend" aria-hidden="true"><span class="k k-intent"></span>intent <span class="k k-entity"></span>entity <span class="k k-version"></span>version <span class="k k-effect"></span>effect <span class="k k-ledger"></span>ledger</p>
+      </div>
+      <div class="hero-model" data-icon3d></div>
     </div>
   </section>
 
@@ -158,5 +162,6 @@
   </div>
 </footer>
 <script src="/static/landing.js"></script>
+<script src="/static/icon3d.js"></script>
 </body>
 </html>

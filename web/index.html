@@ -103,6 +103,12 @@
           <div class="fm-computer">
             <figure class="fm-screen"><img id="fmFrame" alt="Latest screenshot from the browser RESOLVE is operating" hidden><figcaption id="fmFrameEmpty" class="muted small">No browser is connected. Tick “Also check my web application for errors” and start a mission to watch RESOLVE operate a real browser.</figcaption></figure>
             <div>
+              <div class="fm-viewer-bar" role="group" aria-label="Frame playback">
+                <button class="btn btn-small" id="fmPlay" disabled aria-pressed="false" title="Play the captured frames (needs at least two frames)">Play</button>
+                <input type="range" id="fmScrub" min="0" max="0" value="0" step="1" aria-label="Scrub through captured frames" disabled>
+                <span id="fmFrameTime" class="small muted" aria-live="off">no frames yet</span>
+              </div>
+              <ol id="fmFilmstrip" class="fm-filmstrip" aria-label="Captured frames (select one to view it)"></ol>
               <dl class="fm-prov" id="fmComputerFacts"></dl>
               <ol class="fm-steps-live" id="fmComputerSteps" aria-label="Browser actions taken"></ol>
               <p class="small muted">A real Chromium driven through Playwright against the bundled demo web app. These are DOM-level actions, not Windows cursor control. Frames are stored as evidence in your workspace.</p>
@@ -614,6 +620,7 @@
     <div class="auth-actions"><button class="btn" id="authLogin" type="submit">Sign in</button><button class="btn" id="authRegister" type="button">Create account</button></div>
   </form>
 </dialog>
+<script src="/static/icon3d.js"></script>
 <script src="/static/flagship.js"></script>
 <script src="/static/app.js"></script>
 </body>
