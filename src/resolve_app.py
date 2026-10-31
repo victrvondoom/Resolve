@@ -36,6 +36,7 @@ from brief_mission import BriefMissionStore, MissionError, BUNDLED_PROJECTS, loa
 from command_router import interpret as interpret_command
 from demo_webapp import DemoWebApp
 from write_audit import WriteAudit
+from isolation import ExecutionBlocked
 from document_studio import DocumentError
 from computer_tasks import BROWSER_CAPS, ComputerTaskRunner, TaskRefused, browser_services
 from controlled_apps import serve_controlled
@@ -114,7 +115,7 @@ def browser_for(sbx, user):
     inside the web process is not tenant-grade isolation, so it is refused rather than silently offered."""
     if SECURITY.production and not SECURITY.cloud_browser_enabled:
         raise ApiError(503, 'cloud browser is disabled on this deployment: no isolated per-tenant runtime is configured (RESOLVE_CLOUD_BROWSER_ISOLATION)')
-    return cloud_browser_pool.get_or_create(sbx.id, user['user_id'], sbx.storage_path)
+    return cloud_browser_pool.get_or_create(sbx.id, user['user_id'], sbx.storage_path, user['workspace_id'])
 
 
 def write_boundary(user: dict, operation: str, target_id, fn, digest_of=None):
@@ -499,19 +500,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {k: v for k, v in user.items() if k != 'token'})   # the client already holds its token
             if path == '/api/sandboxes':
                 user = self.get_session()
-                sandboxes = sandbox_mgr.list_sandboxes(user['user_id'])
+                sandboxes = sandbox_mgr.list_sandboxes(user['user_id'], user['workspace_id'])
                 return self.send_json(200, {'sandboxes': [s.public_dict() for s in sandboxes]})
             m_sbx = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)', path)
             if m_sbx:
                 sbx_id = m_sbx.group(1)
                 user = self.get_session()
-                sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'])
+                sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
                 return self.send_json(200, sbx.public_dict())
             m_sbx_fr = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/frame', path)
             if m_sbx_fr:
                 sbx_id = m_sbx_fr.group(1)
                 user = self.get_session()
-                sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'])
+                sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
                 session = browser_for(sbx, user)
                 frame = session.capture_frame()
                 return self.send_json(200, frame)
@@ -746,46 +747,50 @@ class Handler(BaseHTTPRequestHandler):
             m_sbx_act = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/action', path)
             if m_sbx_act:
                 sbx_id = m_sbx_act.group(1)
-                res = sandbox_mgr.execute_in_sandbox(sbx_id, data.get('command', []), caller_user_id=user['user_id'])
+                res = sandbox_mgr.execute_in_sandbox(sbx_id, data.get('command', []), caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
                 return self.send_json(200, res)
             m_sbx_p = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/pause', path)
             if m_sbx_p:
                 sbx_id = m_sbx_p.group(1)
-                sbx = sandbox_mgr.pause_sandbox(sbx_id, caller_user_id=user['user_id'])
+                sbx = sandbox_mgr.pause_sandbox(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
                 try:
-                    cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id']).pause()
+                    cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id']).pause()
                 except Exception:
                     pass
                 return self.send_json(200, sbx.public_dict())
             m_sbx_r = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/resume', path)
             if m_sbx_r:
                 sbx_id = m_sbx_r.group(1)
-                sbx = sandbox_mgr.resume_sandbox(sbx_id, caller_user_id=user['user_id'])
+                sbx = sandbox_mgr.resume_sandbox(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
                 try:
-                    cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id']).resume()
+                    cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id']).resume()
                 except Exception:
                     pass
                 return self.send_json(200, sbx.public_dict())
             m_sbx_d = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/destroy', path)
             if m_sbx_d:
                 sbx_id = m_sbx_d.group(1)
-                cloud_browser_pool.close_session(sbx_id)
-                sandbox_mgr.destroy_sandbox(sbx_id, caller_user_id=user['user_id'])
+                # 1. authorize the exact sandbox (raises 404 for another user's or workspace's sandbox: nothing else has happened yet)
+                sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
+                # 2. close only this caller's browser session for it, 3. destroy, 4. verify cleanup
+                cloud_browser_pool.close_session(sbx_id, user['user_id'], user['workspace_id'])
+                sandbox_mgr.destroy_sandbox(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
+                require(not cloud_browser_pool.close_session(sbx_id, user['user_id'], user['workspace_id']), 500, 'browser session survived destroy')
                 return self.send_json(200, {'status': 'DESTROYED', 'sandbox_id': sbx_id})
             if path == '/api/cloud-browser/navigate':
                 sbx_id = data.get('sandbox_id')
-                sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'])
+                sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
                 session = browser_for(sbx, user)
                 res = session.navigate(data['url'])
                 return self.send_json(200, res)
             if path == '/api/cloud-browser/click':
                 sbx_id = data.get('sandbox_id')
-                session = cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id'])
+                session = cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
                 res = session.click(int(data.get('x', 0)), int(data.get('y', 0)))
                 return self.send_json(200, res)
             if path == '/api/cloud-browser/type':
                 sbx_id = data.get('sandbox_id')
-                session = cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id'])
+                session = cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
                 res = session.type_text(str(data.get('text', '')))
                 return self.send_json(200, res)
             m_conn_c = re.fullmatch(r'/api/connectors/([A-Za-z0-9_-]+)/connect', path)
@@ -938,6 +943,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(exc.status, {'error': exc.message})
         except (TenantError, SandboxError, CloudBrowserError, ConnectorError, DocumentError, ProjectError) as exc:
             self.send_json(getattr(exc, 'status_code', 400), {'error': exc.message if hasattr(exc, 'message') else str(exc)})
+        except ExecutionBlocked as exc:   # refused before any process was created
+            self.send_json(503, {'error': exc.reason, 'status': 'EXECUTION_BLOCKED'})
         except AmbiguousEntity as exc:
             self.send_json(409, {'error': str(exc), 'candidates': exc.candidates})
         except SkillError as exc:

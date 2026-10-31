@@ -48,7 +48,7 @@ class PrivacyEngineTests(unittest.TestCase):
         wid = user["workspace_id"]
 
         sbx = self.sandbox.create_sandbox(uid, wid)
-        receipt = self.engine.delete_sandbox(uid, sbx.id)
+        receipt = self.engine.delete_sandbox(uid, sbx.workspace_id, sbx.id)
         self.assertEqual(receipt.status, "COMPLETED")
         self.assertEqual(receipt.target_id, sbx.id)
         self.assertTrue(len(receipt.sha256_proof) == 64)

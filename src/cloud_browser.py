@@ -47,7 +47,7 @@ class CloudBrowserError(Exception):
 
 class CloudBrowserSession:
     def __init__(self, sandbox_id: str, owner_user_id: str, profile_dir: Path | str, policy: NetPolicy | None = None,
-                 accept_downloads: bool = False):
+                 accept_downloads: bool = False, workspace_id: str = ""):
         self.policy = policy or NetPolicy()
         self.blocked_requests: list[dict] = []
         self._accept_downloads = accept_downloads
@@ -56,6 +56,7 @@ class CloudBrowserSession:
         self._obs_lock = threading.Lock()      # separate from _lock: event handlers run while an action holds _lock
         self.sandbox_id = sandbox_id
         self.owner_user_id = owner_user_id
+        self.workspace_id = workspace_id       # a session belongs to one user AND one workspace
         self.profile_dir = Path(profile_dir)
         self.profile_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
@@ -502,39 +503,51 @@ class CloudBrowserSession:
 
 
 class CloudBrowserPool:
-    """Manages active cloud browser sessions indexed by sandbox_id."""
+    """Active cloud browser sessions, bound to (sandbox, user, workspace). Every lookup requires BOTH identities, and a
+    mismatch is reported exactly like a missing session, so one tenant cannot learn whether another tenant's session exists."""
+
     def __init__(self, policy: NetPolicy | None = None):
         self._policy = policy
         self._sessions: dict[str, CloudBrowserSession] = {}
         self._lock = threading.Lock()
 
-    def get_or_create(self, sandbox_id: str, owner_user_id: str, storage_path: str) -> CloudBrowserSession:
+    @staticmethod
+    def _require_identity(user_id: str, workspace_id: str) -> None:
+        if not user_id or not workspace_id:
+            raise CloudBrowserError("authenticated user and workspace are required", status_code=401)
+
+    def get_or_create(self, sandbox_id: str, owner_user_id: str, storage_path: str, workspace_id: str) -> CloudBrowserSession:
+        self._require_identity(owner_user_id, workspace_id)
         with self._lock:
             if sandbox_id in self._sessions:
                 session = self._sessions[sandbox_id]
-                if session.owner_user_id != owner_user_id:
-                    raise CloudBrowserError(f"User {owner_user_id} unauthorized for session {sandbox_id}", status_code=403)
+                if session.owner_user_id != owner_user_id or session.workspace_id != workspace_id:
+                    raise CloudBrowserError(f"No active browser for sandbox {sandbox_id}", status_code=404)
                 return session
 
             profile_dir = Path(storage_path) / "browser_profile"
-            session = CloudBrowserSession(sandbox_id, owner_user_id, profile_dir, self._policy)
+            session = CloudBrowserSession(sandbox_id, owner_user_id, profile_dir, self._policy, workspace_id=workspace_id)
             self._sessions[sandbox_id] = session
             return session
 
-    def get_session(self, sandbox_id: str, caller_user_id: str | None = None) -> CloudBrowserSession:
+    def get_session(self, sandbox_id: str, caller_user_id: str, caller_workspace_id: str) -> CloudBrowserSession:
+        self._require_identity(caller_user_id, caller_workspace_id)
         with self._lock:
             session = self._sessions.get(sandbox_id)
-            if not session:
+            if not session or session.owner_user_id != caller_user_id or session.workspace_id != caller_workspace_id:
                 raise CloudBrowserError(f"No active browser for sandbox {sandbox_id}", status_code=404)
-            if caller_user_id and session.owner_user_id != caller_user_id:
-                raise CloudBrowserError("Unauthorized access to browser session", status_code=403)
             return session
 
-    def close_session(self, sandbox_id: str) -> None:
+    def close_session(self, sandbox_id: str, caller_user_id: str, caller_workspace_id: str) -> bool:
+        """Closes only a session the caller owns. A rejected call has no side effect: the session stays open."""
+        self._require_identity(caller_user_id, caller_workspace_id)
         with self._lock:
-            session = self._sessions.pop(sandbox_id, None)
-            if session:
-                session.close()
+            session = self._sessions.get(sandbox_id)
+            if not session or session.owner_user_id != caller_user_id or session.workspace_id != caller_workspace_id:
+                return False
+            self._sessions.pop(sandbox_id)
+            session.close()
+            return True
 
     def close_all(self) -> None:
         with self._lock:
