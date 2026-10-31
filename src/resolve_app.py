@@ -421,8 +421,9 @@ class Handler(BaseHTTPRequestHandler):
                     raise ApiError(422, f'{exc.code}: {exc.message}')
                 frame = session.capture_frame()
                 result['frame'] = {'data_url': frame.get('frame'), 'url': frame.get('url'), 'title': frame.get('title')}
-                result['evidence'] = [{k: r.get(k) for k in ('tool', 'ok', 'error_code', 'args_sha256')} for r in trail]
+                result['evidence'] = [{'ref': f'tool_{i}', **{k: r.get(k) for k in ('tool', 'ok', 'error_code', 'args_sha256')}} for i, r in enumerate(trail, 1)]   # ref matches steps[].evidence_ref
                 result['app_origin'] = origin_of(base)
+                result['session'] = {'kind': 'one-shot', 'live': False, 'actions': 'DOM-level (Playwright), not physical cursor movement'}   # closed when this request returns
                 return result
             finally:
                 if session:

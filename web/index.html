@@ -55,6 +55,7 @@
       <ul class="nav-sub">
       <li><a href="#view-flagship" data-view="flagship"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.8 5.5 21l2-7.5L2 9h7z"/></svg>Flagship mission</a></li>
       <li><a href="#view-cloud" data-view="cloud"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Cloud computer</a></li>
+      <li><a href="#view-computer" data-view="computer"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M9 7l6 3-2.6.9L11.5 14z"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8" y1="21" x2="16" y2="21"/></svg>Live computer</a></li>
       <li><a href="#view-skills" data-view="skills"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/></svg>Skills</a></li>
       <li><a href="#view-documents" data-view="documents"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l5 5v15H6zM14 2v5h5M9 12h7M9 16h7"/></svg>Documents &amp; print</a></li>
       <li><a href="#view-evidence" data-view="evidence"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Evidence &amp; receipts</a></li>
@@ -601,6 +602,68 @@
       </div>
     </section>
 
+    <!-- ============ LIVE COMPUTER: /api/computer/run ============ -->
+    <section class="view" id="view-computer" data-view="computer" aria-labelledby="h-computer" hidden>
+      <div class="view-head">
+        <div>
+          <h1 id="h-computer">Live computer</h1>
+          <p class="muted lead">Type or dictate one supported task. RESOLVE runs it in a real Chromium against your own copy of three small demo apps (project board, research portal, contacts) and shows exactly what the server returned. Browser actions are DOM-level (Playwright), not physical cursor movement.</p>
+        </div>
+        <span class="chip chip-muted" id="cmpSession" role="status" title="Whether the server reported a live browser session">NO SESSION</span>
+      </div>
+      <div class="grid">
+        <section class="card span12" aria-labelledby="h-cmp-cmd">
+          <div class="card-head"><h2 id="h-cmp-cmd">Task</h2><span id="cmpMicBadge" class="chip chip-muted small" role="status">CHECKING MIC…</span></div>
+          <label class="label" for="cmpCommand">What should RESOLVE do on the computer?</label>
+          <textarea id="cmpCommand" rows="2" maxlength="400" spellcheck="true">Open Project Atlas and show my overdue tasks.</textarea>
+          <p id="cmpMicNote" class="msg" hidden aria-live="polite"></p>
+          <div class="row">
+            <button class="btn btn-primary" id="cmpRun" type="button">Run task</button>
+            <button class="btn" id="cmpMic" type="button" title="Dictate into the task box">Push to talk</button>
+          </div>
+          <p class="small muted cmp-examples-h">Supported tasks (a bounded rule-based planner, not an open-ended agent):</p>
+          <div class="cmp-examples" id="cmpExamples">
+            <button class="btn btn-small" type="button" data-cmd="Open Project Atlas and show my overdue tasks.">Overdue tasks</button>
+            <button class="btn btn-small" type="button" data-cmd="Find the latest project report and summarize it.">Latest report</button>
+            <button class="btn btn-small" type="button" data-cmd="Update task 'Write launch notes' to done in Project Atlas">Update a task</button>
+            <button class="btn btn-small" type="button" data-cmd="Open the research portal, find the correct document and save a report to my workspace.">Save a report</button>
+            <button class="btn btn-small" type="button" data-cmd="Find Alex">Find Alex</button>
+          </div>
+          <p id="cmpMsg" class="msg" role="status" aria-live="polite"></p>
+        </section>
+        <section class="card span12" id="cmpProposal" aria-labelledby="h-cmp-prop" hidden>
+          <div class="card-head"><h2 id="h-cmp-prop" tabindex="-1">Proposal awaiting your approval</h2><span class="chip chip-warn">NOTHING CHANGED YET</span></div>
+          <p class="small muted">Approving sends this exact digest back. The server re-reads the target and writes only if the digest still matches; otherwise it refuses and writes nothing.</p>
+          <dl class="cmp-kv" id="cmpPropFields"></dl>
+          <p class="small"><span class="muted">Approving runs exactly:</span> <q id="cmpPropCmd"></q></p>
+          <p id="cmpPropStale" class="msg err" hidden>The task box was edited after this proposal. Run the task again to get a new proposal.</p>
+          <div class="row">
+            <button class="btn btn-primary" id="cmpApprove" type="button">Approve exact digest</button>
+            <button class="btn" id="cmpCancel" type="button">Cancel</button>
+          </div>
+        </section>
+        <section class="card span12" id="cmpResult" aria-labelledby="h-cmp-res" hidden>
+          <div class="card-head"><h2 id="h-cmp-res" tabindex="-1">Server result</h2><span id="cmpStatus" class="chip chip-muted" role="status"></span></div>
+          <dl class="cmp-kv">
+            <dt>Task kind</dt><dd id="cmpTask"></dd>
+            <dt>Resolved target</dt><dd id="cmpTarget"></dd>
+            <dt>Verification</dt><dd id="cmpVerified"></dd>
+          </dl>
+          <div id="cmpBody"></div>
+          <div class="cmp-split">
+            <figure class="cmp-frame">
+              <img id="cmpFrame" alt="Final page frame captured by the server's Chromium session" hidden>
+              <figcaption id="cmpFrameCap" class="small muted">No frame returned.</figcaption>
+            </figure>
+            <div>
+              <h3 class="cmp-h3">Tool steps (typed registry calls)</h3>
+              <ol class="cmp-steps" id="cmpSteps"></ol>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
     <!-- ============ CONNECTED APPS ============ -->
     <section class="view" id="view-connectors" data-view="connectors" aria-labelledby="h-connectors" hidden>
       <div class="view-head">
@@ -718,5 +781,6 @@
 <script src="/static/flagship.js"></script>
 <script src="/static/app.js"></script>
 <script src="/static/inbox.js"></script>
+<script src="/static/computer.js"></script>
 </body>
 </html>
