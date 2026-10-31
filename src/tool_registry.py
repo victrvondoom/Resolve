@@ -62,6 +62,8 @@ class ToolContext:
     capabilities: frozenset = frozenset()
     services: dict = field(default_factory=dict)
     record: Callable[[dict], str | None] | None = None
+    # Set ONLY by the mission execution boundary after an approval check. Never derived from request arguments.
+    approved_operation: str | None = None
 
 
 @dataclass(frozen=True)
@@ -232,6 +234,9 @@ class ToolRegistry:
             raise PermissionDenied("authenticated user and workspace required", "UNAUTHENTICATED")
         if tool.capability not in ctx.capabilities:
             raise PermissionDenied(f"capability '{tool.capability}' not granted for this mission")
+        if tool.consequential and ctx.approved_operation != tool.name:
+            # A consequential effect needs an approved operation that names this exact tool. Capabilities alone are not enough.
+            raise PermissionDenied(f"'{tool.name}' is consequential and needs an approved operation", "APPROVAL_REQUIRED")
 
     def _execute(self, ctx, tool: Tool, clean: dict, started: float, digest: str) -> ToolResult:
         box: dict = {}

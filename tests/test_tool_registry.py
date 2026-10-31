@@ -13,6 +13,13 @@ ALL_CAPS = frozenset({'browser:navigate', 'browser:interact', 'document:read', '
                       'mission:control', 'approval:request', 'evidence:write'})
 
 
+def approved_ctx(tool, **kw):
+    """A context as the mission execution boundary builds it after an approval check for exactly this tool."""
+    c = ctx(**kw)
+    c.approved_operation = tool
+    return c
+
+
 def ctx(caps=ALL_CAPS, services=None, user='u1', ws='w1', sink=None):
     def record(ev):
         if sink is not None:
@@ -27,7 +34,10 @@ class SchemaValidation(unittest.TestCase):
         self.svc = {'browser.navigate': lambda c, a: {'url': a['url'], 'title': 't', 'status': 200}}
 
     def call(self, name, args, **kw):
-        return self.reg.call(ctx(services=self.svc, **kw), name, args)
+        # validation tests: consequential tools are exercised on an approved context so the schema check is what is reached
+        c = ctx(services=self.svc, **kw)
+        c.approved_operation = name
+        return self.reg.call(c, name, args)
 
     def test_valid_call_runs_delegate_and_records_evidence(self):
         sink = []
@@ -190,11 +200,31 @@ class Redaction(unittest.TestCase):
         self.assertEqual(redact({'token': 'x', 'a': {'secret': 'y', 'b': 1}}), {'token': '<redacted>', 'a': {'secret': '<redacted>', 'b': 1}})
 
 
+class ConsequentialNeedsApproval(unittest.TestCase):
+    def test_consequential_tool_without_approved_operation_never_reaches_the_handler(self):
+        reg = default_registry()
+        ran = []
+        svc = {'document.generate': lambda c, a: ran.append(a) or {'document': {'id': 'd'}}}
+        r = reg.call(ctx(services=svc), 'document.generate', {'title': 't', 'text': 'x', 'idempotency_key': 'k1'})
+        self.assertFalse(r.ok)
+        self.assertEqual(r.error['code'], 'APPROVAL_REQUIRED')
+        self.assertEqual(ran, [], 'the handler must not run without an approved operation')
+
+    def test_approval_for_one_tool_does_not_authorize_another(self):
+        reg = default_registry()
+        ran = []
+        svc = {'document.generate': lambda c, a: ran.append(a) or {'document': {'id': 'd'}},
+               'workspace.create': lambda c, a: ran.append(a) or {'workspace': {'id': 'w'}}}
+        r = reg.call(approved_ctx('document.generate', services=svc), 'workspace.create', {'name': 'x', 'idempotency_key': 'k2'})
+        self.assertEqual(r.error['code'], 'APPROVAL_REQUIRED')
+        self.assertEqual(ran, [])
+
+
 class Idempotency(unittest.TestCase):
     def test_consequential_tool_requires_an_idempotency_key(self):
         reg = default_registry()
         svc = {'document.generate': lambda c, a: {'document': {'id': 'd'}}}
-        r = reg.call(ctx(services=svc), 'document.generate', {'title': 't', 'text': 'x'})
+        r = reg.call(approved_ctx('document.generate', services=svc), 'document.generate', {'title': 't', 'text': 'x'})
         self.assertEqual((r.error['code'], r.error['field']), ('INVALID_INPUT', 'idempotency_key'))
 
     def test_duplicate_dispatch_from_eight_threads_runs_the_handler_once(self):
@@ -210,7 +240,7 @@ class Idempotency(unittest.TestCase):
 
         def go():
             barrier.wait()
-            results.append(reg.call(ctx(services=svc), 'document.generate', {'title': 'T', 'text': 'x', 'idempotency_key': 'abc123'}))
+            results.append(reg.call(approved_ctx('document.generate', services=svc), 'document.generate', {'title': 'T', 'text': 'x', 'idempotency_key': 'abc123'}))
         ts = [threading.Thread(target=go) for _ in range(8)]
         [t.start() for t in ts]
         [t.join() for t in ts]
@@ -224,8 +254,8 @@ class Idempotency(unittest.TestCase):
         runs = []
         svc = {'document.generate': lambda c, a: runs.append(c.user_id) or {'document': {'id': c.user_id}}}
         a = {'title': 'T', 'text': 'x', 'idempotency_key': 'same'}
-        r1 = reg.call(ctx(services=svc, user='alice'), 'document.generate', a)
-        r2 = reg.call(ctx(services=svc, user='bob'), 'document.generate', a)
+        r1 = reg.call(approved_ctx('document.generate', services=svc, user='alice'), 'document.generate', a)
+        r2 = reg.call(approved_ctx('document.generate', services=svc, user='bob'), 'document.generate', a)
         self.assertEqual(runs, ['alice', 'bob'])                                   # bob does not get alice's result
         self.assertEqual((r1.data['document']['id'], r2.data['document']['id']), ('alice', 'bob'))
 
@@ -239,8 +269,8 @@ class Idempotency(unittest.TestCase):
             return {'document': {'id': 'ok'}}
         svc = {'document.generate': flaky}
         a = {'title': 'T', 'text': 'x', 'idempotency_key': 'retry1'}
-        self.assertFalse(reg.call(ctx(services=svc), 'document.generate', a).ok)
-        self.assertTrue(reg.call(ctx(services=svc), 'document.generate', a).ok)
+        self.assertFalse(reg.call(approved_ctx('document.generate', services=svc), 'document.generate', a).ok)
+        self.assertTrue(reg.call(approved_ctx('document.generate', services=svc), 'document.generate', a).ok)
         self.assertEqual(len(attempts), 2)
 
 

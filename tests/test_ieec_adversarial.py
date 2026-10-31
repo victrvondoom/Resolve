@@ -147,18 +147,22 @@ class Mutations(unittest.TestCase):
             out = self._run(['cross_tenant_target'])
         self.assertFalse(out['cross_tenant_target']['correct'])
 
-    def test_ledger_disabled_is_still_blocked_by_the_version_guard(self):
-        # Defence in depth: the retry changes the record's version, so the guard rejects it even without the ledger.
-        with mock.patch.object(EffectLedger, 'state_of', lambda self, k: None), \
-                mock.patch.object(EffectLedger, 'claim', lambda self, k, d: (True, None)):
+    def test_replay_check_disabled_is_still_blocked_by_the_version_guard(self):
+        # Defence in depth: the retry changes the record's version, so the guard rejects it even without the replay check.
+        with mock.patch.object(EffectLedger, 'get', lambda self, u, w, k: None):
             out = self._run(['retry_after_unacked_success'])
         self.assertEqual(out['retry_after_unacked_success']['effects'], 1)
         self.assertEqual(out['retry_after_unacked_success']['reason'], 'TARGET_CHANGED')
 
-    def test_ledger_and_guard_both_disabled_duplicates_the_retry(self):
-        # Only with BOTH protections removed does the retry dispatch a second effect: the mutation is observable.
-        with mock.patch.object(EffectLedger, 'state_of', lambda self, k: None), \
-                mock.patch.object(EffectLedger, 'claim', lambda self, k, d: (True, None)), \
+    def test_replay_check_and_guard_disabled_duplicates_the_retry(self):
+        # Only with the replay check AND the guard removed does the retry dispatch a second effect. The claim still writes
+        # the record, so the conditional state update stays consistent with the first dispatch.
+        def lax_claim(self, u, w, k, d):
+            with self._db(immediate=True) as db:
+                db.execute(f"INSERT OR REPLACE INTO {self.TABLE} VALUES (?,?,?,?,?,?,?)", (u, w, k, d, "executing", None, 0.0))
+            return True, None, None
+        with mock.patch.object(EffectLedger, 'get', lambda self, u, w, k: None), \
+                mock.patch.object(EffectLedger, 'claim', lax_claim), \
                 mock.patch.object(oc, 'guard', lambda c, o: (True, 'AUTHORIZED')):
             out = self._run(['retry_after_unacked_success'])
         self.assertEqual(out['retry_after_unacked_success']['effects'], 2)

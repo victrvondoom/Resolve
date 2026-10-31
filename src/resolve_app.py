@@ -359,7 +359,9 @@ class Handler(BaseHTTPRequestHandler):
     def handle_tool_call(self, user: dict, data: dict) -> dict:
         """Typed tool call. Capabilities are fixed here, server-side; nothing in the arguments or in page content can add one."""
         uid, wid = user['user_id'], user['workspace_id']
-        caps = frozenset({'document:read', 'document:write', 'mission:control', 'approval:request', 'evidence:write', 'workspace:manage'})
+        # Read-only scope for direct tool calls. Consequential tools are refused by the registry (APPROVAL_REQUIRED) because
+        # no approved operation is attached here: those effects happen only through the mission execution boundary.
+        caps = frozenset({'document:read'})
         mid = data.get('mission_id') if isinstance(data.get('mission_id'), str) else None
         services = {
             'document.read': lambda c, a: {'text': document_studio.extract_text(uid, wid, a['document_id'])[:20000]},

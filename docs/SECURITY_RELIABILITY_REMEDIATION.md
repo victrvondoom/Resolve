@@ -39,5 +39,24 @@ Severity: P0 (unsafe to run in production), P1, P2, P3.
 - **File:** `src/resolve_app.py` `do_POST` / `do_GET` final `except Exception` returns `str(exc)`.
 - **Status:** NOT FIXED in this round (scheduled with the error-handling review, Phase 11).
 
+## F-007 — P0 CONFIRMED (by code reading and tests) — Idempotency record not tenant-scoped; contract digest omitted the tenant
+- **File / function:** `src/operation_contract.py` (`EffectLedger` keyed by idempotency key only; `execute` digest did not include user or workspace).
+- **Expected:** a key from another user or workspace is a different operation; the same key with a different contract is a conflict, never a replay.
+- **Actual (before):** the ledger returned a prior VERIFIED result for any caller presenting the same key.
+- **Fix:** the record is scoped by `(user_id, workspace_id, idempotency_key)`; the contract digest covers the full approved identity (user, workspace, mission, revision, intent, operation, target, target version, normalized arguments, approval, key, preconditions, expiry, allowed operations); a key with a different digest returns `IDEMPOTENCY_CONFLICT` without dispatch. Claims and state updates use `BEGIN IMMEDIATE`; state transitions are conditional on the same contract and the expected current state (`StaleRecord` otherwise), and every persisted step is a legal transition.
+- **Regression tests:** `tests/test_remediation_ieec.py` (conflict, other-tenant key, two ledger instances, reconcile that raises, conditional update, real cross-process claim race via fork+barrier). Mutation: removing the tenant scope fails 4 `TenantScopedIdempotency` tests.
+
+## F-008 — P0 CONFIRMED — Direct tool API granted every capability and ran consequential services
+- **File / function:** `src/resolve_app.py::handle_tool_call` (hard-coded capability set including `document:write`, `workspace:manage`, `mission:control`) and `src/tool_registry.py::ToolRegistry._authorize` (no approval check for `consequential` tools).
+- **Reproduce (safe, production server):** `POST /api/tools/call {"name":"workspace.create", ...}` created a workspace; `document.generate` created a document.
+- **Fix:** HTTP tool calls get a read-only capability set. The registry refuses a consequential tool unless `ToolContext.approved_operation` names that exact tool; that field is set only by the mission boundary and is never read from request data.
+- **Regression tests:** `tests/test_remediation_p0.py::DirectToolApiCannotWrite` (refused, and storage checked for no created document/workspace; forged approval in body ignored; read-only tool still works); `tests/test_tool_registry.py::ConsequentialNeedsApproval`.
+- **Remaining limitation:** consequential tool effects are NOT yet routed through the IEEC contract for the tool API. They are refused there; the mission path uses the guarded report write. Full routing of `document.transform`, `workspace.create` and connector writes through `execute()` is still open (see the readiness matrix).
+
+## Tests changed in this round (intentional, documented)
+- `tests/test_tool_registry.py`: validation and idempotency tests now run on an approved context, so they reach the code they test; new tests assert refusal without approval.
+- `tests/test_sandbox_manager.py`, `tests/test_tenant_security.py`, `tests/test_cloud_browser.py`, `tests/test_cloud_api.py`, `tests/test_privacy_engine.py`: call signatures now include the workspace; execution assertions changed to refusal; cross-tenant assertions are 404 (uniform, no existence leak) instead of 403.
+- `tests/test_ieec_adversarial.py`: mutation patches updated to the scoped ledger signatures; the stale-state path now reports `LEDGER_STATE_CONFLICT` (UNCERTAIN) instead of raising.
+
 ## Still open (not yet reproduced or fixed in this round)
 See `docs/PRODUCTION_READINESS_MATRIX.md` for the status of every workstream.
