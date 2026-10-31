@@ -236,3 +236,50 @@ textarea.fm-log{width:100%;resize:vertical}
 .fm-steps-live li{flex-wrap:wrap}
 .fm-steps-live code{white-space:nowrap;background:transparent;padding:0}
 .fm-steps-live li span.small{flex:1 1 140px;min-width:0;overflow-wrap:anywhere}
+
+/* ---- spacious layout (desktop-first; phones keep a 16px gutter) ---- */
+body{font-size:16px;line-height:1.65}
+main{padding:44px 56px 72px;max-width:1320px}
+.view-head{margin-bottom:32px;gap:20px}
+.view-head p{font-size:16.5px}
+.grid{gap:28px}
+.card{padding:32px 34px}
+.card-head{margin-bottom:20px;gap:14px}
+.card-head h2{font-size:19px}
+.fm-steps{gap:16px;margin:10px 0 36px}
+.fm-steps li{padding:18px 20px;gap:14px}
+.fm-field{margin-top:26px}
+.fm-field legend{margin-bottom:8px}
+.fm-inline{gap:12px;margin:12px 0}
+.fm-actions{gap:12px;margin-top:26px}
+.fm-nodes{gap:14px}
+.fm-nodes li{padding:16px 18px 16px 46px}
+.fm-split{gap:36px}
+.fm-result{gap:36px}
+.fm-table th,.fm-table td{padding:14px 12px}
+.fm-approve{margin-top:26px;padding-top:24px;gap:16px 24px}
+.fm-prov{gap:10px 20px;font-size:14px}
+.fm-checks{gap:12px}
+.fm-check{padding:10px 12px}
+.fm-hist{gap:12px}
+.fm-hist button{padding:16px 18px}
+.fm-computer{gap:28px}
+.fm-steps-live{gap:8px}
+.fm-steps-live li{padding:8px 12px}
+.fm-cmd-out{padding:20px 22px;margin:20px 0}
+textarea,input,select{padding:12px 14px}
+.btn{padding:11px 18px}
+.btn-lg{padding:14px 28px}
+.sidebar{padding-top:12px}
+.sidebar a{padding:12px 16px}
+@media (max-width:900px){
+  main{padding:28px 24px 56px}
+  .card{padding:24px 22px}
+  .grid{gap:22px}
+}
+@media (max-width:720px){
+  main{padding:20px 16px 48px}
+  .card{padding:20px 18px}
+  .view-head{margin-bottom:22px}
+  .fm-table td{padding:0}
+}
