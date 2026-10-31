@@ -115,7 +115,7 @@ class InboxUI(unittest.TestCase):
             # (retrying assertion) instead of sampling the DOM mid-render.
             expect(pg.locator('#view-morning')).to_contain_text('LOCAL MAIL SERVER', timeout=8000)
             expect(pg.locator('#view-morning .ib-kpi').first).to_be_visible(timeout=8000)
-            self.assertIn('not Gmail', pg.inner_text('#view-morning'))
+            expect(pg.locator('#view-morning')).to_contain_text('not Gmail', timeout=8000)   # retrying: a one-shot snapshot raced the re-render under load
             pg.click('a[data-view="inbox"]')
             pg.wait_for_selector('#view-inbox a.ib-item-title', timeout=8000)
             pg.locator('#view-inbox a.ib-item-title').first.click()
