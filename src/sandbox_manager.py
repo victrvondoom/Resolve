@@ -5,12 +5,13 @@ import contextlib
 import os
 import shutil
 import sqlite3
-import subprocess
 import time
 import uuid
 from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
+
+from isolation import ExecutionBlocked, IsolationProvider, select_provider
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SANDBOX_DIR = Path(os.environ.get('RESOLVE_SANDBOXES_DIR', ROOT / 'data' / 'sandboxes'))
@@ -57,11 +58,19 @@ class SandboxRecord:
     def to_dict(self) -> dict:
         return asdict(self)
 
+    def public_dict(self) -> dict:
+        """API-safe view: never reveals the server filesystem path."""
+        d = asdict(self)
+        d.pop('storage_path', None)
+        return d
+
 
 class SandboxManager:
-    def __init__(self, base_dir: Path | str | None = None, db_path: Path | str | None = None):
+    def __init__(self, base_dir: Path | str | None = None, db_path: Path | str | None = None, provider: IsolationProvider | None = None):
         self.base_dir = Path(base_dir) if base_dir else DEFAULT_SANDBOX_DIR
         self.db_path = Path(db_path) if db_path else DEFAULT_DB
+        # Default: no command execution at all. A provider must be injected explicitly (tests) or selected by configuration.
+        self.provider = provider if provider is not None else select_provider(os.environ.get("RESOLVE_SANDBOX_PROVIDER"))
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
@@ -144,106 +153,88 @@ class SandboxManager:
 
         return record
 
-    def get_sandbox(self, sandbox_id: str, caller_user_id: str | None = None) -> SandboxRecord:
+    def get_sandbox(self, sandbox_id: str, caller_user_id: str, caller_workspace_id: str) -> SandboxRecord:
+        """Both identities are required and enforced in the lookup itself. A sandbox owned by another user OR another
+        workspace is reported as not found, so existence is not revealed across tenants."""
+        if not caller_user_id or not caller_workspace_id:
+            raise SandboxSecurityError("authenticated user and workspace are required")
         with self._conn() as conn:
-            row = conn.execute("SELECT * FROM sandboxes WHERE id = ?", (sandbox_id,)).fetchone()
-            if not row:
-                raise SandboxError(f"Sandbox {sandbox_id} not found", status_code=404)
-            record = SandboxRecord(**dict(row))
+            row = conn.execute("SELECT * FROM sandboxes WHERE id = ? AND owner_user_id = ? AND workspace_id = ?",
+                               (sandbox_id, caller_user_id, caller_workspace_id)).fetchone()
+        if not row:
+            raise SandboxError(f"Sandbox {sandbox_id} not found", status_code=404)
+        return SandboxRecord(**dict(row))
 
-        if caller_user_id and record.owner_user_id != caller_user_id:
-            raise SandboxSecurityError(f"User {caller_user_id} unauthorized to access sandbox {sandbox_id}")
-        return record
-
-    def list_sandboxes(self, caller_user_id: str) -> list[SandboxRecord]:
+    def list_sandboxes(self, caller_user_id: str, caller_workspace_id: str) -> list[SandboxRecord]:
+        if not caller_user_id or not caller_workspace_id:
+            raise SandboxSecurityError("authenticated user and workspace are required")
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM sandboxes WHERE owner_user_id = ? AND status != 'DESTROYED' ORDER BY created_at DESC",
-                (caller_user_id,)
+                "SELECT * FROM sandboxes WHERE owner_user_id = ? AND workspace_id = ? AND status != 'DESTROYED' ORDER BY created_at DESC",
+                (caller_user_id, caller_workspace_id)
             ).fetchall()
             return [SandboxRecord(**dict(r)) for r in rows]
 
-    def set_status(self, sandbox_id: str, new_status: SandboxState, caller_user_id: str | None = None) -> SandboxRecord:
-        sandbox = self.get_sandbox(sandbox_id, caller_user_id)
+    def list_user_sandboxes(self, owner_user_id: str) -> list[SandboxRecord]:
+        """Account-scope listing for account deletion ONLY. Never exposed to a request handler."""
+        if not owner_user_id:
+            raise SandboxSecurityError("owner identity is required")
+        with self._conn() as conn:
+            rows = conn.execute("SELECT * FROM sandboxes WHERE owner_user_id = ? AND status != 'DESTROYED'", (owner_user_id,)).fetchall()
+            return [SandboxRecord(**dict(r)) for r in rows]
+
+    def _set_status_row(self, sandbox_id: str, new_status: SandboxState) -> None:
         with self._conn() as conn:
             conn.execute("UPDATE sandboxes SET status = ? WHERE id = ?", (new_status.value, sandbox_id))
-        return self.get_sandbox(sandbox_id)
 
-    def pause_sandbox(self, sandbox_id: str, caller_user_id: str | None = None) -> SandboxRecord:
-        sandbox = self.get_sandbox(sandbox_id, caller_user_id)
+    def pause_sandbox(self, sandbox_id: str, caller_user_id: str, caller_workspace_id: str) -> SandboxRecord:
+        sandbox = self.get_sandbox(sandbox_id, caller_user_id, caller_workspace_id)
         if sandbox.status not in (SandboxState.READY.value, SandboxState.BUSY.value):
             raise SandboxError(f"Cannot pause sandbox in state {sandbox.status}")
-        return self.set_status(sandbox_id, SandboxState.PAUSED, caller_user_id)
+        self._set_status_row(sandbox_id, SandboxState.PAUSED)
+        return self.get_sandbox(sandbox_id, caller_user_id, caller_workspace_id)
 
-    def resume_sandbox(self, sandbox_id: str, caller_user_id: str | None = None) -> SandboxRecord:
-        sandbox = self.get_sandbox(sandbox_id, caller_user_id)
+    def resume_sandbox(self, sandbox_id: str, caller_user_id: str, caller_workspace_id: str) -> SandboxRecord:
+        sandbox = self.get_sandbox(sandbox_id, caller_user_id, caller_workspace_id)
         if sandbox.status != SandboxState.PAUSED.value:
             raise SandboxError(f"Cannot resume sandbox in state {sandbox.status}")
-        return self.set_status(sandbox_id, SandboxState.READY, caller_user_id)
+        self._set_status_row(sandbox_id, SandboxState.READY)
+        return self.get_sandbox(sandbox_id, caller_user_id, caller_workspace_id)
 
-    def terminate_sandbox(self, sandbox_id: str, caller_user_id: str | None = None) -> SandboxRecord:
-        sandbox = self.get_sandbox(sandbox_id, caller_user_id)
-        return self.set_status(sandbox_id, SandboxState.TERMINATING, caller_user_id)
+    def terminate_sandbox(self, sandbox_id: str, caller_user_id: str, caller_workspace_id: str) -> SandboxRecord:
+        self.get_sandbox(sandbox_id, caller_user_id, caller_workspace_id)
+        self._set_status_row(sandbox_id, SandboxState.TERMINATING)
+        return self.get_sandbox(sandbox_id, caller_user_id, caller_workspace_id)
 
-    def destroy_sandbox(self, sandbox_id: str, caller_user_id: str | None = None) -> bool:
-        sandbox = self.get_sandbox(sandbox_id, caller_user_id)
-        # 1. Update state
-        with self._conn() as conn:
-            conn.execute("UPDATE sandboxes SET status = 'DESTROYED' WHERE id = ?", (sandbox_id,))
-
-        # 2. Securely remove storage directory
+    def destroy_sandbox(self, sandbox_id: str, caller_user_id: str, caller_workspace_id: str) -> bool:
+        """Authorize FIRST; nothing else (browser close, file removal) may happen before this check passes."""
+        sandbox = self.get_sandbox(sandbox_id, caller_user_id, caller_workspace_id)
+        self._set_status_row(sandbox_id, SandboxState.DESTROYED)
         path = Path(sandbox.storage_path)
         if path.exists():
             shutil.rmtree(path, ignore_errors=True)
         return True
 
-    def execute_in_sandbox(self, sandbox_id: str, command: list[str], caller_user_id: str | None = None, timeout_sec: int = 30) -> dict:
-        sandbox = self.get_sandbox(sandbox_id, caller_user_id)
+    def provider_report(self) -> dict:
+        return self.provider.report().to_dict()
+
+    def execute_in_sandbox(self, sandbox_id: str, command: list[str], caller_user_id: str, caller_workspace_id: str,
+                           timeout_sec: int = 30) -> dict:
+        """Only an isolated provider that reports production_ready may run anything. The check happens BEFORE a
+        sandbox state change and BEFORE any process creation, so a blocked request has no side effects."""
+        sandbox = self.get_sandbox(sandbox_id, caller_user_id, caller_workspace_id)
+        report = self.provider.report()
+        if not (report.production_ready and report.available):
+            raise ExecutionBlocked(report.reason)
         if sandbox.status not in (SandboxState.READY.value, SandboxState.BUSY.value):
             raise SandboxError(f"Cannot execute in sandbox with status {sandbox.status}")
-
-        self.set_status(sandbox_id, SandboxState.BUSY)
-        work_dir = Path(sandbox.storage_path) / "workspace"
-        start_t = time.time()
+        if not isinstance(command, list) or not command or not all(isinstance(x, str) for x in command) or len(command) > 64:
+            raise SandboxError("command must be a non-empty list of at most 64 strings", status_code=422)
+        self._set_status_row(sandbox_id, SandboxState.BUSY)
         try:
-            # Execute with restricted environment
-            restricted_env = {
-                "PATH": os.environ.get("PATH", ""),
-                "RESOLVE_SANDBOX_ID": sandbox.id,
-                "RESOLVE_WORKSPACE_ID": sandbox.workspace_id,
-                "RESOLVE_USER_ID": sandbox.owner_user_id,
-                "TMP": str(Path(sandbox.storage_path) / "tmp"),
-                "TEMP": str(Path(sandbox.storage_path) / "tmp")
-            }
-            res = subprocess.run(
-                command,
-                cwd=str(work_dir),
-                capture_output=True,
-                text=True,
-                timeout=timeout_sec,
-                env=restricted_env,
-                check=False
-            )
-            duration = time.time() - start_t
-            return {
-                "sandbox_id": sandbox_id,
-                "exit_code": res.returncode,
-                "stdout": res.stdout,
-                "stderr": res.stderr,
-                "duration_seconds": duration,
-                "status": "COMPLETED"
-            }
-        except subprocess.TimeoutExpired:
-            return {
-                "sandbox_id": sandbox_id,
-                "exit_code": -1,
-                "stdout": "",
-                "stderr": f"Command timed out after {timeout_sec} seconds",
-                "duration_seconds": timeout_sec,
-                "status": "TIMEOUT"
-            }
+            return self.provider.run(sandbox.storage_path, command, min(int(timeout_sec), 120), 64 * 1024)
         finally:
-            self.set_status(sandbox_id, SandboxState.READY)
+            self._set_status_row(sandbox_id, SandboxState.READY)
 
     def cleanup_orphans(self) -> int:
         now = time.time()

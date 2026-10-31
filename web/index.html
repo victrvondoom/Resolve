@@ -5,15 +5,25 @@
 <title>Mission Control — RESOLVE</title>
 <link rel="icon" href="/static/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/cream.css">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="topbar">
   <a class="brand" href="/" aria-label="RESOLVE home page"><img src="/static/mark.svg" alt="" width="26" height="26"><span>RESOLVE</span><small>Mission Control</small></a>
-  <div class="topbar-status" role="status" aria-live="polite">
-    <span class="chip chip-muted" id="healthChip"><span class="led" aria-hidden="true"></span><span id="health">connecting…</span></span>
-    <select id="workspaceSwitcher" aria-label="Select workspace" class="num-in" style="font-size:12px;padding:3px 8px;margin-left:8px;display:none;"></select>
-    <button id="userAccountPill" class="btn btn-small" title="Manage account" style="margin-left:8px;"><span id="userEmailBadge">demo@resolve.local</span></button>
+  <div class="topbar-status">
+    <span class="chip chip-muted" id="healthChip" role="status" aria-live="polite"><span class="led" aria-hidden="true"></span><span id="health">connecting…</span></span>
+    <label class="sr-only" for="workspaceSwitcher">Workspace</label>
+    <select id="workspaceSwitcher" class="ws-switch" hidden></select>
+    <div class="account">
+      <button id="userAccountPill" class="btn btn-small account-pill" aria-haspopup="menu" aria-expanded="false" aria-controls="accountMenu" title="Account"><span class="avatar" id="userAvatar" aria-hidden="true">·</span><span id="userEmailBadge">Signing in…</span></button>
+      <div id="accountMenu" class="account-menu" role="menu" hidden>
+        <p class="small muted" id="accountWho"></p>
+        <a role="menuitem" class="menu-item" href="#privacy">Privacy &amp; data</a>
+        <button role="menuitem" class="menu-item" id="newWorkspaceBtn" type="button">New workspace…</button>
+        <button role="menuitem" class="menu-item" id="signOutBtn" type="button">Sign out</button>
+      </div>
+    </div>
   </div>
   <div class="topbar-actions">
     <button id="estop" class="btn btn-danger" title="Cancel pending agent tasks and revoke the cursor lease">Emergency stop</button>
@@ -24,27 +34,166 @@
 
 <div class="shell" id="dashboard">
   <nav class="sidebar" aria-label="Mission Control sections">
-    <ul>
-      <li><a href="#view-mission" data-view="mission" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l3-7 3 14 3-7h3"/></svg>Browser mission</a></li>
-      <li><a href="#view-cloud" data-view="cloud"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Cloud computer <span class="chip chip-ok small" style="margin-left:auto;padding:1px 6px;">LIVE</span></a></li>
+    <ul class="nav-main">
+      <li><a href="#view-flagship" data-view="flagship"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.8 5.5 21l2-7.5L2 9h7z"/></svg>Flagship mission</a></li>
+      <li><a href="#view-cloud" data-view="cloud"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Cloud computer</a></li>
+      <li><a href="#view-skills" data-view="skills"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/></svg>Skills</a></li>
+      <li><a href="#view-documents" data-view="documents"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l5 5v15H6zM14 2v5h5M9 12h7M9 16h7"/></svg>Documents &amp; print</a></li>
+      <li><a href="#view-evidence" data-view="evidence"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Evidence &amp; receipts</a></li>
+      <li><a href="#view-privacy" data-view="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Privacy &amp; data</a></li>
+    </ul>
+    <details class="nav-more">
+      <summary>More tools <span class="nav-count">9</span></summary>
+      <ul class="nav-sub">
+      <li><a href="#view-mission" data-view="mission"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l3-7 3 14 3-7h3"/></svg>Browser mission</a></li>
       <li><a href="#view-connectors" data-view="connectors"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M11 18H8a2 2 0 0 1-2-2V9"/></svg>Connected apps</a></li>
       <li><a href="#view-approvals" data-view="approvals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Approval inbox <span id="approvalBadge" class="chip chip-warn small" style="margin-left:auto;display:none;padding:1px 6px;">0</span></a></li>
       <li><a href="#view-agents" data-view="agents"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 8l3.5 8M16.5 8L13 16"/></svg>Agents</a></li>
-      <li><a href="#view-skills" data-view="skills"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/></svg>Skills</a></li>
       <li><a href="#view-files" data-view="files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11H3z"/></svg>Files sandbox</a></li>
       <li><a href="#view-bench" data-view="bench"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Benchmarks</a></li>
       <li><a href="#view-sim" data-view="sim"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voice &amp; simulator</a></li>
       <li><a href="#view-windows" data-view="windows"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v12H3zM8 21h8M12 17v4"/></svg>Windows native</a></li>
-      <li><a href="#view-evidence" data-view="evidence"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Evidence &amp; receipts</a></li>
-      <li><a href="#view-privacy" data-view="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Privacy &amp; data</a></li>
       <li><a href="#view-ledger" data-view="ledger"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg>Ledger &amp; registry</a></li>
-    </ul>
-    <p class="sidebar-note">Local prototype on 127.0.0.1. Outbox is <b>SIMULATED DELIVERY</b>. Browser actions are DOM-level (Playwright), not physical cursor movement.</p>
+      </ul>
+    </details>
+    <div class="sidebar-note" id="sidebarNote" aria-live="polite">Checking server mode…</div>
   </nav>
 
   <main id="main" tabindex="-1">
+    <!-- ============ FLAGSHIP: BRIEF -> VERIFIED PDF ============ -->
+    <section class="view" id="view-flagship" data-view="flagship" aria-labelledby="h-flagship" hidden>
+      <div class="view-head"><div><h1 id="h-flagship">Flagship mission</h1>
+        <p class="muted lead">Speak or type one goal. RESOLVE reads your brief and analyzes your code in parallel, proposes a corrected architecture for you to approve, then writes a PDF and independently verifies it before calling it done.</p></div></div>
+      <ol class="fm-steps" id="fmSteps" aria-label="Mission progress">
+        <li data-step="1" aria-current="step"><span class="fm-step-n" aria-hidden="true">1</span><span><b>Instruction</b><small>Brief and project</small></span></li>
+        <li data-step="2"><span class="fm-step-n" aria-hidden="true">2</span><span><b>Workers</b><small>Read, analyze, plan</small></span></li>
+        <li data-step="3"><span class="fm-step-n" aria-hidden="true">3</span><span><b>Your approval</b><small>Exact plan digest</small></span></li>
+        <li data-step="4"><span class="fm-step-n" aria-hidden="true">4</span><span><b>Verified PDF</b><small>Read-back checked</small></span></li>
+      </ol>
+      <div class="grid">
+        <section class="card span6 hero-card" aria-labelledby="h-fm-1">
+          <div class="card-head"><h2 id="h-fm-1">Your instruction</h2><span id="fmMicBadge" class="chip chip-muted small" role="status">CHECKING MIC…</span></div>
+          <label class="label" for="fmIntent">What should RESOLVE do?</label>
+          <textarea id="fmIntent" rows="3" aria-describedby="fmIntentHint">Resolve, inspect my project brief, analyze the implementation issues, create a corrected architecture, generate a polished report and prepare it for print.</textarea>
+          <div class="fm-inline"><button class="btn" id="fmMic" disabled title="Checking microphone and speech engine…"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ico"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Push to talk</button><small class="muted" id="fmIntentHint">Editable. Nothing is sent until you press Start. Wispr Flow can dictate straight into this box.</small></div>
+          <p id="fmMicNote" class="msg" hidden aria-live="polite"></p>
+          <fieldset class="fm-field">
+            <legend>Source brief</legend>
+            <div class="fm-inline"><label class="sr-only" for="fmDoc">Source brief PDF</label><select id="fmDoc"><option value="">No PDFs yet</option></select><button class="btn" id="fmSample" title="Creates the bundled sample project brief as a PDF in your private workspace">Load sample brief</button></div>
+            <small class="muted">Bound by document id and SHA-256, never by file name. Upload your own PDF under Documents.</small>
+          </fieldset>
+          <fieldset class="fm-field">
+            <legend>Project to analyze</legend>
+            <div class="fm-inline"><label class="sr-only" for="fmProject">Project</label><select id="fmProject" aria-describedby="fmProjectInfo"></select><label class="btn" for="fmProjectFile" id="fmProjectUploadLabel">Upload .zip</label><input type="file" id="fmProjectFile" accept=".zip,application/zip" class="sr-only"><button class="btn btn-danger" id="fmProjectDelete" disabled title="Select one of your uploaded projects to delete it">Delete</button></div>
+            <small class="muted" id="fmProjectInfo">Loading projects…</small>
+          </fieldset>
+          <label class="fm-check-opt" id="fmInspectWrap"><input type="checkbox" id="fmInspectWeb" disabled> <span>Also check my web application for errors <small class="muted" id="fmInspectNote">(checking availability…)</small></span></label>
+          <div class="fm-actions"><button class="btn btn-primary btn-lg" id="fmStart" disabled title="Load the sample brief or choose a PDF first">Start mission</button><button class="btn" id="fmPause" disabled title="No running mission">Pause</button><button class="btn" id="fmReviseNow" disabled title="No active mission">Revise now</button><button class="btn" id="fmCancel" disabled title="No running mission">Cancel</button></div>
+          <p id="fmStatus" class="msg" role="status" aria-live="polite"></p>
+        </section>
+        <section class="card span6" aria-labelledby="h-fm-2">
+          <div class="card-head"><h2 id="h-fm-2">Workers</h2><span id="fmState" class="chip chip-muted">NO MISSION</span></div>
+          <p class="muted small fm-sub">Every status and timestamp below comes from events the server recorded.</p>
+          <ol id="fmNodes" class="fm-nodes" aria-label="Worker tasks"></ol>
+          <p id="fmOverlap" class="small fm-overlap" hidden></p>
+          <details class="fm-details"><summary class="small">Event log</summary><pre id="fmEvents" class="fm-log" tabindex="0">—</pre></details>
+        </section>
+        <section class="card span12" id="fmComputerCard" aria-labelledby="h-fm-pc">
+          <div class="card-head"><h2 id="h-fm-pc">Live computer</h2><span id="fmComputerChip" class="chip chip-muted" role="status">DISCONNECTED</span></div>
+          <div class="fm-computer">
+            <figure class="fm-screen"><img id="fmFrame" alt="Latest screenshot from the browser RESOLVE is operating" hidden><figcaption id="fmFrameEmpty" class="muted small">No browser is connected. Tick “Also check my web application for errors” and start a mission to watch RESOLVE operate a real browser.</figcaption></figure>
+            <div>
+              <div class="fm-viewer-bar" role="group" aria-label="Frame playback">
+                <button class="btn btn-small" id="fmPlay" disabled aria-pressed="false" title="Play the captured frames (needs at least two frames)">Play</button>
+                <input type="range" id="fmScrub" min="0" max="0" value="0" step="1" aria-label="Scrub through captured frames" disabled>
+                <span id="fmFrameTime" class="small muted" aria-live="off">no frames yet</span>
+              </div>
+              <ol id="fmFilmstrip" class="fm-filmstrip" aria-label="Captured frames (select one to view it)"></ol>
+              <dl class="fm-prov" id="fmComputerFacts"></dl>
+              <ol class="fm-steps-live" id="fmComputerSteps" aria-label="Browser actions taken"></ol>
+              <p class="small muted">A real Chromium driven through Playwright against the bundled demo web app. These are DOM-level actions, not Windows cursor control. Frames are stored as evidence in your workspace.</p>
+            </div>
+          </div>
+        </section>
+        <section class="card span12" aria-labelledby="h-fm-cmd">
+          <div class="card-head"><h2 id="h-fm-cmd">Voice &amp; text commands</h2><span id="fmCmdBadge" class="chip chip-muted" role="status">IDLE</span></div>
+          <p class="muted small fm-sub">Say or type a command. RESOLVE shows how it understood you, and anything risky waits for your confirmation. Try: <i>pause</i> · <i>stop, use the second report instead</i> · <i>save this process as a skill called weekly review</i> · <i>delete the generated report</i> · <i>resume my last project</i>.</p>
+          <div class="fm-inline"><label class="sr-only" for="fmCmd">Command</label><input id="fmCmd" type="text" maxlength="2000" autocomplete="off" placeholder="Type or speak a command"><button class="btn" id="fmCmdMic" disabled title="Checking microphone and speech engine…">Speak</button><button class="btn btn-primary" id="fmCmdGo">Interpret</button><span id="fmCmdMicBadge" class="chip chip-muted small" role="status">CHECKING MIC…</span></div>
+          <p id="fmCmdMicNote" class="msg" hidden aria-live="polite"></p>
+          <div id="fmCmdOut" class="fm-cmd-out" hidden>
+            <p id="fmCmdSummary" class="fm-cmd-summary"></p>
+            <p class="small muted" id="fmCmdMeta"></p>
+            <div class="fm-inline"><button class="btn btn-primary" id="fmCmdConfirm">Confirm</button><button class="btn" id="fmCmdDismiss">Dismiss</button></div>
+          </div>
+          <p id="fmCmdMsg" class="msg" role="status" aria-live="polite"></p>
+          <h3 class="fm-h">Saved skills</h3>
+          <ul id="fmSkills" class="fm-hist" aria-label="Saved skills"><li class="muted">No skills yet. Finish a mission, then say “save this process as a skill”.</li></ul>
+        </section>
+        <section class="card span12" id="fmPlanCard" aria-labelledby="h-fm-3" hidden>
+          <div class="card-head"><h2 id="h-fm-3" tabindex="-1">Plan awaiting your approval</h2><span class="chip chip-warn">DRAFT · rule-based, not an LLM</span></div>
+          <p class="muted small" id="fmPlanMeta"></p>
+          <div class="fm-sev" id="fmSeverity" aria-label="Issues by severity"></div>
+          <div class="fm-split">
+            <div><h3 class="fm-h">Issues with evidence</h3><div class="tablewrap"><table class="fm-table"><thead><tr><th scope="col">ID</th><th scope="col">Severity</th><th scope="col">Where</th><th scope="col">Violates</th></tr></thead><tbody id="fmIssues"></tbody></table></div></div>
+            <div><div class="fm-h-row"><h3 class="fm-h">Corrected architecture</h3><button class="btn btn-small" id="fmEditToggle" aria-expanded="false" aria-controls="fmEditor">Edit</button></div>
+              <div id="fmDiagram" class="fm-diagram" role="img" aria-label="Architecture diagram"></div>
+              <small id="fmDiagramHint" class="muted" hidden>Scroll sideways inside the diagram to see all of it.</small>
+              <p class="small muted fm-legend"><span class="key cur"></span>current module <span class="key new"></span>proposed component <span class="key dash"></span>proposed link</p>
+              <div id="fmEditor" class="fm-editor" hidden>
+                <label class="label" for="fmMermaid">Architecture as a Mermaid flowchart</label>
+                <textarea id="fmMermaid" class="fm-log" rows="10" spellcheck="false" aria-describedby="fmEditHelp"></textarea>
+                <small class="muted" id="fmEditHelp">Add or remove nodes and arrows. Applying creates a new plan digest, so only the edited plan can be approved, and the edit appears in the PDF.</small>
+                <div class="fm-inline"><button class="btn" id="fmApplyEdit">Apply edit</button><span id="fmEditMsg" class="msg" role="status" aria-live="polite"></span></div>
+              </div></div>
+          </div>
+          <div class="fm-approve"><div><button class="btn btn-primary btn-lg" id="fmApprove">Approve this exact plan</button><button class="btn" id="fmRevise" title="Re-runs analysis with your edited instruction; any earlier approval becomes invalid">Revise instruction &amp; re-plan</button></div>
+            <small class="muted">Approval is bound to this plan's digest. If anything changes afterwards, it must be approved again.</small></div>
+        </section>
+        <section class="card span12" id="fmResultCard" aria-labelledby="h-fm-4" hidden>
+          <div class="card-head"><h2 id="h-fm-4" tabindex="-1">Verified result</h2><span id="fmResultChip" class="chip chip-muted"></span></div>
+          <div class="fm-result">
+            <div>
+              <h3 class="fm-h">Independent checks</h3>
+              <ul id="fmChecks" class="fm-checks"></ul>
+              <p class="small muted" id="fmChecksNote"></p>
+            </div>
+            <div>
+              <h3 class="fm-h">Output</h3>
+              <div class="fm-hash"><code id="fmHash"></code><button class="btn btn-small" id="fmCopyHash" title="Copy the output SHA-256">Copy</button></div>
+              <dl class="fm-prov" id="fmProv"></dl>
+              <div class="fm-actions"><button class="btn btn-primary" id="fmDownload">Download PDF</button><button class="btn" id="fmPrint">Print…</button><button class="btn btn-danger" id="fmDelete">Delete mission &amp; PDF</button></div>
+            </div>
+          </div>
+          <div class="fm-preview-wrap">
+            <iframe id="fmPreview" class="doc-preview" title="Generated PDF preview"></iframe>
+            <div id="fmPreviewFallback" class="fm-preview-fallback" hidden><p>This browser can't show PDFs inline.</p><button class="btn" id="fmOpenPdf">Open the PDF</button></div>
+          </div>
+          <p class="muted small" id="fmPrintNote">“Print…” opens your browser's print dialog. RESOLVE cannot confirm that a physical printer completed a job.</p>
+        </section>
+        <section class="card span12" id="fmAssurance" aria-labelledby="h-fm-assure">
+          <div class="card-head"><h2 id="h-fm-assure">Mission assurance</h2><span id="fmAssureChip" class="chip chip-muted" role="status">NO MISSION</span></div>
+          <p class="muted small fm-sub">Everything below is read from this mission's recorded events, evidence and verification. Nothing here is estimated.</p>
+          <dl class="fm-prov" id="fmAssureFacts"><dt>Status</dt><dd>Start a mission to see its assurance record.</dd></dl>
+          <div class="fm-assure-grid">
+            <div><h3 class="fm-h">Approval</h3><div id="fmAssureApproval" class="fm-assure-box muted small">Not yet approved.</div></div>
+            <div><h3 class="fm-h">Verification</h3><div id="fmAssureVerify" class="fm-assure-box muted small">Runs after approval, when the PDF is written.</div></div>
+          </div>
+          <div class="fm-assure-grid">
+            <div><h3 class="fm-h">Uncertainty and recovery</h3><div id="fmAssureUncertain" class="fm-assure-box muted small">No uncertain outcome recorded.</div></div>
+            <div><h3 class="fm-h">Evidence</h3><ul id="fmAssureEvidence" class="fm-hist" aria-label="Evidence items"><li class="muted">No evidence yet.</li></ul></div>
+          </div>
+          <h3 class="fm-h">Causal timeline (recorded order)</h3>
+          <ol id="fmAssureTimeline" class="fm-timeline" aria-label="Recorded events"><li class="muted">No events yet.</li></ol>
+        </section>
+        <section class="card span12" aria-labelledby="h-fm-hist">
+          <div class="card-head"><h2 id="h-fm-hist">Your missions</h2><button class="btn btn-small" id="fmHistRefresh">Refresh</button></div>
+          <ul id="fmHistory" class="fm-hist" aria-label="Mission history"><li class="muted">No missions yet.</li></ul>
+        </section>
+      </div>
+    </section>
+
     <!-- ============ BROWSER MISSION ============ -->
-    <section class="view" id="view-mission" data-view="mission" aria-labelledby="h-mission">
+    <section class="view" id="view-mission" data-view="mission" aria-labelledby="h-mission" hidden>
       <div class="view-head">
         <div><h1 id="h-mission">Browser mission</h1><p class="muted">The signature workflow: resolve the right contact, pin the report version, approve the exact send, and reconcile a lost acknowledgement — verified in each fixture app's own database.</p></div>
       </div>
@@ -57,7 +206,7 @@
               <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="vertical-align:middle;margin-right:4px;"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
               Push to talk
             </button>
-            <span id="voiceStatusBadge" class="chip chip-muted small">MIC READY</span>
+            <span id="voiceStatusBadge" class="chip chip-muted small" role="status">CHECKING MIC…</span>
           </div>
           <p id="voiceNarration" class="msg" style="display:none;font-style:italic;color:var(--accent);margin-bottom:8px;"></p>
           <label class="label" for="wmcmd">Mission command</label>
@@ -194,6 +343,44 @@
       </div>
     </section>
 
+    <!-- ============ DOCUMENTS ============ -->
+    <section class="view" id="view-documents" data-view="documents" aria-labelledby="h-documents" hidden>
+      <div class="view-head">
+        <div><h1 id="h-documents">Document studio</h1><p class="muted">Bring a PDF into your workspace, make precise page changes, inspect the generated file, then download or open the browser print dialog.</p></div>
+      </div>
+      <div class="grid">
+        <section class="card span4" aria-labelledby="h-doc-source">
+          <h2 id="h-doc-source">Your documents</h2>
+          <p class="muted small">PDF only · up to 5 MB per upload.</p>
+          <label class="label" for="docUpload">Choose a PDF</label>
+          <input type="file" id="docUpload" accept=".pdf,application/pdf">
+          <div class="doc-actions"><button class="btn btn-primary" id="docUploadBtn">Upload PDF</button><button class="btn" id="docRefresh">Refresh</button></div>
+          <div id="docList" class="doc-list" aria-label="Workspace documents">Loading documents…</div>
+        </section>
+        <section class="card span8" aria-labelledby="h-doc-edit">
+          <h2 id="h-doc-edit">Page tools</h2>
+          <p class="muted small">Select one PDF for rotate or page removal. Select two or more in order to merge.</p>
+          <div class="doc-controls">
+            <label for="docOperation">Operation<select id="docOperation"><option value="rotate">Rotate pages</option><option value="delete_pages">Remove pages</option><option value="merge">Merge PDFs</option></select></label>
+            <label id="docDegreesWrap" for="docDegrees">Rotation<select id="docDegrees"><option value="90">90° clockwise</option><option value="180">180°</option><option value="270">270° clockwise</option></select></label>
+            <label id="docPagesWrap" for="docPages" hidden>Page numbers<input id="docPages" inputmode="numeric" placeholder="e.g. 2, 4"><span class="muted small">One-based page numbers, separated by commas.</span></label>
+          </div>
+          <button class="btn btn-primary" id="docTransform">Create transformed PDF</button>
+          <p id="docStatus" class="msg" role="status" aria-live="polite">Select a document to begin.</p>
+          <div class="doc-preview-head"><h2>PDF preview</h2><div class="doc-actions"><button class="btn" id="docDownload" disabled title="Select a document to download">Download</button><button class="btn" id="docPrint" disabled title="Select a document to print">Print…</button></div></div>
+          <div class="fm-preview-wrap"><iframe id="docPreview" class="doc-preview" title="Selected PDF preview"></iframe><div id="docPreviewEmpty" class="fm-preview-fallback"><p>Select a PDF on the left to preview it here.</p></div></div>
+          <p class="muted small">“Print…” opens your browser's print dialog. RESOLVE cannot confirm that a physical printer completed a job.</p>
+        </section>
+        <section class="card span12" aria-labelledby="h-doc-report">
+          <h2 id="h-doc-report">Create a report</h2>
+          <p class="muted small">The server generates PDF bytes from your text and stores the result in this workspace.</p>
+          <label class="label" for="docTitle">Title</label><input id="docTitle" value="Project brief" maxlength="120">
+          <label class="label" for="docText">Report text</label><textarea id="docText" rows="6" placeholder="Paste your brief or prepared report text here."></textarea>
+          <div class="doc-actions"><button class="btn btn-primary" id="docCreateReport">Create PDF report</button></div>
+        </section>
+      </div>
+    </section>
+
     <!-- ============ BENCHMARKS ============ -->
     <section class="view" id="view-bench" data-view="bench" aria-labelledby="h-bench" hidden>
       <div class="view-head"><div><h1 id="h-bench">Benchmarks</h1><p class="muted">Recorded results only. Nothing here is computed in the browser.</p></div></div>
@@ -324,8 +511,8 @@
     <section class="view" id="view-connectors" data-view="connectors" aria-labelledby="h-connectors" hidden>
       <div class="view-head">
         <div>
-          <h1 id="h-connectors">Connected personal integrations</h1>
-          <p class="muted">Authorized third-party integrations with scoped permissions. Credentials are encrypted and isolated strictly to your private workspace.</p>
+          <h1 id="h-connectors">Connected apps <span class="chip chip-warn">SIMULATED</span></h1>
+          <p class="muted">These connectors use built-in fixture data to exercise scope checks and tenant isolation. There is no real OAuth, no external account is contacted, and no credentials are stored.</p>
         </div>
         <button class="btn btn-small" id="connectorsReload">Refresh connections</button>
       </div>
@@ -365,17 +552,20 @@
       <div class="view-head">
         <div>
           <h1 id="h-privacy">Privacy, data ownership &amp; deletion</h1>
-          <p class="muted">Complete user sovereignty: view stored metadata, download an export bundle with cryptographic checksum, or permanently delete personal data and accounts.</p>
+          <p class="muted">See what this deployment stores for you, export it as JSON with a SHA-256 checksum, or delete a workspace or your whole account.</p>
         </div>
         <button class="btn btn-small" id="privacyReload">Refresh summary</button>
       </div>
       <div class="grid">
         <section class="card span6" aria-labelledby="h-priv-summary">
           <div class="card-head"><h2 id="h-priv-summary">Storage &amp; footprint</h2><span class="chip chip-ok" id="privStorageBadge">0.0 MB</span></div>
-          <ul class="stats-list" style="list-style:none;padding:0;margin:12px 0;">
-            <li class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-2);"><span>Active Sandboxes</span><strong id="privActiveSandboxes">0</strong></li>
-            <li class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-2);"><span>Connected Integrations</span><strong id="privConnectedCount">0</strong></li>
-            <li class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-2);"><span>Disk Space Allocated</span><strong id="privStorageBytes">0 KB</strong></li>
+          <ul class="stats-list">
+            <li><span>Documents (PDF)</span><strong id="privDocs">0</strong></li>
+            <li><span>Missions</span><strong id="privMissions">0</strong></li>
+            <li><span>Uploaded projects</span><strong id="privProjects">0</strong></li>
+            <li><span>Sandboxes</span><strong id="privActiveSandboxes">0</strong></li>
+            <li><span>Simulated connectors linked</span><strong id="privConnectedCount">0</strong></li>
+            <li><span>Storage used</span><strong id="privStorageBytes">0 KB</strong></li>
           </ul>
           <div class="row" style="margin-top:16px;">
             <button class="btn btn-primary" id="privExportBtn">Export all my data (JSON)</button>
@@ -383,23 +573,23 @@
         </section>
 
         <section class="card span6" aria-labelledby="h-priv-retention">
-          <div class="card-head"><h2 id="h-priv-retention">Retention policy disclosures</h2></div>
-          <div class="small muted" style="line-height:1.6;">
-            <p><strong>Active Data:</strong> Stored locally/in your cloud container until explicitly deleted by you.</p>
-            <p><strong>Sandbox Browser Profiles:</strong> Destroyed immediately when sandbox is terminated.</p>
-            <p><strong>Session Tokens:</strong> Cryptographically generated; expire in 7 days or upon logout.</p>
-            <p><strong>System Backups:</strong> Offsite disaster snapshots retain encrypted tombstone metadata for up to 30 days before immutable purge.</p>
-          </div>
+          <div class="card-head"><h2 id="h-priv-retention">How long data is kept</h2></div>
+          <dl class="retention small">
+            <dt>Your content</dt><dd>Documents, missions and uploaded projects stay until you delete them.</dd>
+            <dt>Audio</dt><dd>Recordings are transcribed in memory and never stored.</dd>
+            <dt>Sessions</dt><dd>Random tokens that expire after 7 days or when you sign out.</dd>
+            <dt>Backups</dt><dd>RESOLVE keeps no backups of its own. If the host snapshots its disk, the host's retention applies.</dd>
+          </dl>
         </section>
 
-        <section class="card span12 danger-card" style="border:1px solid #ff4757;border-radius:10px;" aria-labelledby="h-priv-danger">
-          <div class="card-head"><h2 id="h-priv-danger" style="color:#ff4757;">Danger zone: permanent data destruction</h2></div>
-          <p class="small muted">These actions immediately destroy running sandboxes, delete database rows, wipe storage namespaces, and revoke credentials. This cannot be undone.</p>
-          <div class="row" style="gap:16px;margin-top:12px;">
+        <section class="card span12 danger-card" aria-labelledby="h-priv-danger">
+          <div class="card-head"><h2 id="h-priv-danger">Delete data</h2></div>
+          <p class="small muted">Deletion cancels running work, removes the stored files and database rows, and cannot be undone.</p>
+          <div class="fm-actions">
             <button class="btn btn-danger" id="privDeleteWorkspaceBtn">Delete active workspace</button>
             <button class="btn btn-danger" id="privDeleteAccountBtn">Permanently delete my account</button>
           </div>
-          <pre class="log" id="deletionReceiptLog" style="margin-top:12px;">No deletion requested yet.</pre>
+          <pre class="log" id="deletionReceiptLog">No deletion requested yet.</pre>
         </section>
       </div>
     </section>
@@ -413,9 +603,25 @@
       </div>
     </section>
 
-    <footer class="foot muted small">No external messages are sent; the outbox is SIMULATED DELIVERY. Native input requires an interactive Windows session (WINDOWS_NATIVE_TESTS_NOT_RUN on Linux build hosts). Data is stored in the local SQLite database.</footer>
+    <footer class="foot muted small" id="appFooter">No external messages are sent; the outbox is SIMULATED DELIVERY. Native input requires an interactive Windows session (WINDOWS_NATIVE_TESTS_NOT_RUN on Linux build hosts). Data is stored in the local SQLite database.</footer>
   </main>
 </div>
+<dialog id="authDialog" aria-labelledby="authTitle" aria-describedby="authLead">
+  <form id="authForm" class="auth-form" novalidate>
+    <div class="auth-brand"><img src="/static/mark.svg" alt="" width="28" height="28"><span>RESOLVE</span></div>
+    <h2 id="authTitle">Welcome</h2>
+    <p id="authLead" class="muted small">Everything you create here is private to your account, and you can delete it at any time.</p>
+    <button class="btn btn-primary btn-block" id="authDemo" type="button">Try it now: create a demo account</button>
+    <small class="muted">A disposable account with a random password. Ideal for judges and first-time visitors.</small>
+    <div class="auth-divider"><span>or use your email</span></div>
+    <label class="label" for="authEmail">Email</label><input id="authEmail" type="email" autocomplete="username" required>
+    <label class="label" for="authPassword">Password <span class="label-note">(10+ characters)</span></label><input id="authPassword" type="password" autocomplete="current-password" minlength="10" required>
+    <p id="authMsg" class="msg" role="alert"></p>
+    <div class="auth-actions"><button class="btn" id="authLogin" type="submit">Sign in</button><button class="btn" id="authRegister" type="button">Create account</button></div>
+  </form>
+</dialog>
+<script src="/static/icon3d.js"></script>
+<script src="/static/flagship.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

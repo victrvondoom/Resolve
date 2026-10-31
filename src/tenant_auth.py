@@ -16,18 +16,22 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = Path(os.environ.get('RESOLVE_TENANTS_DB', ROOT / 'data' / 'tenants.sqlite3'))
 
 
+PBKDF2_ITERATIONS = 600_000      # OWASP-recommended work factor for PBKDF2-HMAC-SHA256
+LEGACY_ITERATIONS = 100_000      # hashes stored before the work factor was recorded alongside the digest
+
+
 def hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
     if salt is None:
         salt = secrets.token_bytes(16)
-    salt_hex = salt.hex()
-    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100_000).hex()
-    return pwd_hash, salt_hex
+    digest = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, PBKDF2_ITERATIONS).hex()
+    return f"{PBKDF2_ITERATIONS}${digest}", salt.hex()
 
 
 def verify_password(password: str, pwd_hash: str, salt_hex: str) -> bool:
-    salt = bytes.fromhex(salt_hex)
-    check_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100_000).hex()
-    return secrets.compare_digest(pwd_hash, check_hash)
+    iterations, _, digest = pwd_hash.rpartition('$')
+    rounds = int(iterations) if iterations else LEGACY_ITERATIONS
+    check = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), bytes.fromhex(salt_hex), rounds).hex()
+    return secrets.compare_digest(digest, check)
 
 
 class TenantError(Exception):
@@ -95,14 +99,14 @@ class TenantAuthManager:
         email = email.strip().lower()
         if not email or '@' not in email:
             raise TenantError("Valid email required", status_code=400)
-        if len(password) < 6:
-            raise TenantError("Password must be at least 6 characters", status_code=400)
+        if len(password) < 10 or len(password) > 256:
+            raise TenantError("Password must be 10-256 characters", status_code=400)
 
         pwd_hash, salt = hash_password(password)
         user_id = f"usr_{uuid.uuid4().hex[:12]}"
         ws_id = f"ws_{uuid.uuid4().hex[:12]}"
         now = time.time()
-        name = display_name or email.split('@')[0].capitalize()
+        name = (str(display_name).strip()[:40] if display_name else '') or email.split('@')[0].capitalize()[:40]
 
         with self._get_conn() as conn:
             try:
@@ -221,9 +225,12 @@ class TenantAuthManager:
             return [dict(r) for r in rows]
 
     def create_workspace(self, user_id: str, name: str) -> dict:
-        name = name.strip()
-        if not name:
-            raise TenantError("Workspace name required", status_code=400)
+        name = (name or "").strip()
+        if not name or len(name) > 60:
+            raise TenantError("Workspace name must be 1-60 characters", status_code=400)
+        with self._get_conn() as conn:
+            if conn.execute("SELECT COUNT(*) AS c FROM workspaces WHERE owner_user_id = ?", (user_id,)).fetchone()['c'] >= 10:
+                raise TenantError("Workspace limit reached (10); delete one first", status_code=429)
         ws_id = f"ws_{uuid.uuid4().hex[:12]}"
         now = time.time()
         with self._get_conn() as conn:
@@ -239,6 +246,12 @@ class TenantAuthManager:
             count = conn.execute("SELECT COUNT(*) as c FROM workspaces WHERE owner_user_id = ?", (user_id,)).fetchone()['c']
             if count <= 1:
                 raise TenantError("Cannot delete your only workspace. Delete account to remove all data.", status_code=400)
+            # Sessions inside the deleted workspace move to a surviving one FIRST: sessions cascade-delete with their
+            # workspace, so deleting your *active* workspace used to silently log you out.
+            survivor = conn.execute("SELECT id FROM workspaces WHERE owner_user_id = ? AND id != ? ORDER BY created_at ASC LIMIT 1",
+                                    (user_id, workspace_id)).fetchone()
+            if survivor:
+                conn.execute("UPDATE sessions SET workspace_id = ? WHERE user_id = ? AND workspace_id = ?", (survivor['id'], user_id, workspace_id))
             res = conn.execute("DELETE FROM workspaces WHERE id = ? AND owner_user_id = ?", (workspace_id, user_id))
             return res.rowcount > 0
 
@@ -249,9 +262,16 @@ class TenantAuthManager:
             res = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
             return res.rowcount > 0
 
-    def seed_demo_tenant(self) -> dict:
+    def seed_demo_tenant(self, create_session: bool = True) -> dict | None:
+        """Local-demo identity. The password is random per process and never stored in source: the old fixed
+        'demo123' meant every deployment contained a publicly known shared account. An existing demo account
+        (e.g. from an older database) has its password rotated, so the old known password stops working."""
+        email, pw = 'demo@resolve.local', secrets.token_urlsafe(24)
         with self._get_conn() as conn:
-            row = conn.execute("SELECT id FROM users WHERE email = 'demo@resolve.local'").fetchone()
+            row = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
             if row:
-                return self.login('demo@resolve.local', 'demo123')
-        return self.register('demo@resolve.local', 'demo123', 'Demo Operator')
+                pwd_hash, salt = hash_password(pw)
+                conn.execute("UPDATE users SET password_hash = ?, salt = ? WHERE email = ?", (pwd_hash, salt, email))
+        if not create_session:
+            return None
+        return self.login(email, pw) if row else self.register(email, pw, 'Demo Operator')

@@ -1,5 +1,28 @@
 # Tasks
 
+## Final sprint 2026-10-29 (ticked only when verified by tests above)
+- [x] Full-suite regression diagnosed and repaired (231 passed / 12 skipped with reasons / 0 failed)
+- [x] Production mode: no shared token, no demo fallback, host allow-list, startup validation, headers, rate limits, cross-tenant negative tests
+- [x] Cloud browser SSRF policy: scheme allow-list, address classification, redirect-hop validation, sandbox flag off by default, browser disabled in prod without isolation
+- [x] Brief→analysis→architecture→verified PDF mission: concurrent workers, approval digest, independent read-back, chain invariant, cancel/late-result/delete races
+- [x] In-page microphone capture + consent + audio validation + provider adapter (tested with fake STT only)
+- [x] Cream theme + flagship UI + account gate, real-browser E2E with screenshots
+- [x] Upload-your-own-project analysis (multi-language), editable architecture, live history, mode-driven UI, real contact resolution
+- [x] UI/UX pass: cream landing, account menu + sign-out, real workspace switcher, stepper, responsive mobile, phone PDF fallback, truthful privacy page (`test_ux_e2e`)
+- [x] Generalized browser tools: `browser.find/select/wait/extract/verify/close` (+ existing 7) bound to a real Chromium session; every Playwright call runs on the session's own worker thread (fixes "cannot switch thread" for any caller but the creator)
+- [x] Three controlled apps with persisted records (project board, research portal, contact workspace) and five supported computer tasks with exact-digest approval, stale-target refusal and database-side verification (`tests/test_computer_tasks.py`, `tests/test_computer_api.py`, mutation-checked)
+- [ ] `/api/computer/run` has no UI panel yet (API only)
+- [ ] Real STT provider verified with live speech (BLOCKED here: `vosk` installs but model hosts `alphacephei.com`, `huggingface.co` are unreachable from this sandbox, so no real transcription could run)
+- [ ] Public deployment reachable by judges
+- [ ] GitHub Actions run green
+- [ ] Wispr Flow Insights screenshot (user), two-minute video (user)
+- [ ] Voice bug-report skill, persona skill, spec-studio editing, page reorder/compare, per-tenant VM isolation (PLANNED)
+
+## College cloud sprint
+- [x] PDF upload, report creation, page rotation/removal, merge, version guard, authenticated download, workspace/account purge with focused tests
+- [x] Document studio UI with browser preview, download and print dialog
+- [ ] Production account UX, audio transcription, hosted tenant runtime and real service OAuth
+
 ## Implemented and checked
 - [x] Local dashboard/API, health route, SQLite WAL, startup scripts, and local demo fixtures
 - [x] Typed contracts, mission revision history, narrow stop/send interpretation, same-name and report-version constraints
@@ -47,6 +70,8 @@
 - [x] End-to-end cloud web API test suite exercising register -> sandbox -> browser -> connectors -> voice correction -> export -> account deletion in `tests/test_cloud_api.py` (G16)
 - [x] Redesigned Mission Control interface with Cloud Computer, Connected Apps, Privacy & Data, workspace switcher, and push-to-talk voice button in `web/index.html` and `web/static/app.js` (G10–G16)
 - [x] Complete suite of 10 high-resolution screenshots generated in `harness/evidence/screens/` (G16)
+- [x] Browser diagnostics agent + controlled faulty demo app (real Chromium), exact-origin NetPolicy allowlist (Operation Zero Hands)
+- [x] Revision-guarded mission engine: mid-run revise, pause/resume, evidence frames, tenant skills, resume, digest-confirmed commands, typed tool registry, Live computer UI
 
 ## Outstanding gates / future work
 - [ ] Connect production OAuth credentials for Google Workspace and GitHub when cloud provider API keys are provisioned

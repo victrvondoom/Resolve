@@ -32,11 +32,19 @@ class LandingAndAppUI(unittest.TestCase):
         cls.tmp.cleanup()
 
     def open(self, path, width, height=900):
-        ctx = self.browser.new_context(viewport={'width': width, 'height': height})
+        ctx = self.browser.new_context(viewport={'width': width, 'height': height}, bypass_csp=True)
         page = ctx.new_page()
         errors = []
         page.on('pageerror', lambda e: errors.append(f'pageerror: {e}'))
-        page.on('console', lambda m: errors.append(f'console.{m.type}: {m.text} @ {m.location.get("url")}') if m.type == 'error' else None)
+        def note_console(m):
+            # A missing OPTIONAL partner logo (web/static/brand/, see its README) is an expected 404; the page shows the
+            # partner's name instead. Any other console error still fails the test.
+            url = m.location.get('url') or ''
+            if m.type == 'error' and '/static/brand/' in url and 'status of 404' in m.text:
+                return
+            if m.type == 'error':
+                errors.append(f'console.{m.type}: {m.text} @ {url}')
+        page.on('console', note_console)
         page.goto(f'http://127.0.0.1:{self.srv.port}{path}')
         if path == '/':
             page.wait_for_load_state('networkidle')
@@ -73,7 +81,7 @@ class LandingAndAppUI(unittest.TestCase):
         self.assertTrue(page.evaluate(OVERFLOW_JS))
         page.get_by_role('link', name='Open Mission Control').first.click()
         page.wait_for_url('**/app')
-        page.wait_for_selector('#wmstart')
+        page.wait_for_selector('#fmStart')
         self.assertEqual(errors, [])
 
     def test_landing_mobile_has_no_horizontal_overflow(self):
@@ -83,7 +91,7 @@ class LandingAndAppUI(unittest.TestCase):
         self.assertEqual(errors, [])
 
     def test_landing_reduced_motion_stops_animation(self):
-        ctx = self.browser.new_context(viewport={'width': 1280, 'height': 800}, reduced_motion='reduce')
+        ctx = self.browser.new_context(viewport={'width': 1280, 'height': 800}, reduced_motion='reduce', bypass_csp=True)
         self.addCleanup(ctx.close)
         page = ctx.new_page()
         page.goto(f'http://127.0.0.1:{self.srv.port}/')
@@ -104,6 +112,7 @@ class LandingAndAppUI(unittest.TestCase):
                 self.assertTrue(page.evaluate(OVERFLOW_JS), page.evaluate('[document.scrollingElement.scrollWidth, innerWidth]'))
                 # every view fits the viewport too
                 for view in ('agents', 'skills', 'files', 'bench', 'sim', 'windows', 'ledger', 'mission'):
+                    page.evaluate("document.querySelectorAll('.nav-more').forEach(d => d.open = true)")  # 'More tools' is collapsed by default
                     page.locator(f'.sidebar a[data-view="{view}"]').click()
                     self.assertTrue(page.locator(f'#view-{view}').is_visible())
                     self.assertTrue(page.evaluate(OVERFLOW_JS), (view, page.evaluate('[document.scrollingElement.scrollWidth, innerWidth]')))

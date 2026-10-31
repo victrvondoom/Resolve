@@ -5,6 +5,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from sandbox_manager import SandboxManager, SandboxState, SandboxSecurityError, SandboxError
+from isolation import ExecutionBlocked
+from isolation_fixtures import TestOnlyNonIsolatedDouble
 
 
 class SandboxManagerTests(unittest.TestCase):
@@ -25,19 +27,19 @@ class SandboxManagerTests(unittest.TestCase):
         self.assertTrue((Path(sbx.storage_path) / "workspace").exists())
 
         # Pause
-        paused = self.mgr.pause_sandbox(sbx.id, caller_user_id="usr_123")
+        paused = self.mgr.pause_sandbox(sbx.id, caller_user_id="usr_123", caller_workspace_id="ws_abc")
         self.assertEqual(paused.status, SandboxState.PAUSED.value)
 
         # Resume
-        resumed = self.mgr.resume_sandbox(sbx.id, caller_user_id="usr_123")
+        resumed = self.mgr.resume_sandbox(sbx.id, caller_user_id="usr_123", caller_workspace_id="ws_abc")
         self.assertEqual(resumed.status, SandboxState.READY.value)
 
         # Terminate
-        terminated = self.mgr.terminate_sandbox(sbx.id, caller_user_id="usr_123")
+        terminated = self.mgr.terminate_sandbox(sbx.id, caller_user_id="usr_123", caller_workspace_id="ws_abc")
         self.assertEqual(terminated.status, SandboxState.TERMINATING.value)
 
         # Destroy
-        destroyed = self.mgr.destroy_sandbox(sbx.id, caller_user_id="usr_123")
+        destroyed = self.mgr.destroy_sandbox(sbx.id, caller_user_id="usr_123", caller_workspace_id="ws_abc")
         self.assertTrue(destroyed)
         self.assertFalse(Path(sbx.storage_path).exists())
 
@@ -45,24 +47,34 @@ class SandboxManagerTests(unittest.TestCase):
         sbx = self.mgr.create_sandbox("user_alice", "ws_alice")
         
         # User Bob attempts to access Alice's sandbox
-        with self.assertRaises(SandboxSecurityError):
-            self.mgr.get_sandbox(sbx.id, caller_user_id="user_bob")
+        # Cross-tenant lookups are indistinguishable from a missing sandbox (no existence leak)
+        for call in (lambda: self.mgr.get_sandbox(sbx.id, caller_user_id="user_bob", caller_workspace_id="ws_bob"),
+                     lambda: self.mgr.pause_sandbox(sbx.id, caller_user_id="user_bob", caller_workspace_id="ws_bob"),
+                     lambda: self.mgr.destroy_sandbox(sbx.id, caller_user_id="user_bob", caller_workspace_id="ws_bob")):
+            with self.assertRaises(SandboxError) as ctx:
+                call()
+            self.assertEqual(ctx.exception.status_code, 404)
+        self.assertEqual(self.mgr.get_sandbox(sbx.id, caller_user_id="user_alice", caller_workspace_id="ws_alice").status, "READY")
 
-        with self.assertRaises(SandboxSecurityError):
-            self.mgr.pause_sandbox(sbx.id, caller_user_id="user_bob")
-
-        with self.assertRaises(SandboxSecurityError):
-            self.mgr.destroy_sandbox(sbx.id, caller_user_id="user_bob")
-
-    def test_command_execution_in_sandbox(self):
+    def test_execution_refused_without_isolated_provider_and_no_process_started(self):
+        """Production default: no provider. The command must not run, even one that would leave a marker on the host."""
         sbx = self.mgr.create_sandbox("usr_runner", "ws_runner")
-        res = self.mgr.execute_in_sandbox(
-            sbx.id,
-            ["python", "-c", "import os; print('SANDBOX_USER=' + os.environ.get('RESOLVE_USER_ID', ''))"],
-            caller_user_id="usr_runner"
-        )
-        self.assertEqual(res["exit_code"], 0)
-        self.assertIn("SANDBOX_USER=usr_runner", res["stdout"])
+        marker = Path(sbx.storage_path) / "workspace" / "marker.txt"
+        with self.assertRaises(ExecutionBlocked) as ctx:
+            self.mgr.execute_in_sandbox(sbx.id, ["python", "-c", "open('marker.txt','w').write('ran')"],
+                                        caller_user_id="usr_runner", caller_workspace_id="ws_runner")
+        self.assertIn("Commands are not run on the application host", ctx.exception.reason)
+        self.assertFalse(marker.exists(), "a refused command must not run")
+        self.assertEqual(self.mgr.get_sandbox(sbx.id, caller_user_id="usr_runner", caller_workspace_id="ws_runner").status, "READY")
+        self.assertFalse(self.mgr.provider_report()["production_ready"])
+
+    def test_execution_path_with_test_double_reaches_state_checks(self):
+        """Exercises the lifecycle logic with a double that runs nothing; it is not evidence of isolation."""
+        mgr = SandboxManager(base_dir=self.base_dir, db_path=self.db_path, provider=TestOnlyNonIsolatedDouble())
+        sbx = mgr.create_sandbox("usr_runner", "ws_runner")
+        res = mgr.execute_in_sandbox(sbx.id, ["echo", "x"], caller_user_id="usr_runner", caller_workspace_id="ws_runner")
+        self.assertEqual(res["status"], "COMPLETED")
+        self.assertEqual(mgr.get_sandbox(sbx.id, caller_user_id="usr_runner", caller_workspace_id="ws_runner").status, "READY")
 
     def test_orphan_cleanup(self):
         # Create an expired sandbox

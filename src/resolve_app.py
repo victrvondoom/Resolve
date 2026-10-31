@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import json
+import base64
+import binascii
 import os
 import re
 import secrets
+import threading
 import sqlite3
 import sys
 from dataclasses import asdict
@@ -24,10 +27,24 @@ import uia_adapter
 from web_api import WebApi
 from tenant_auth import TenantAuthManager, TenantError
 from sandbox_manager import SandboxManager, SandboxError, SandboxSecurityError
-from cloud_browser import CloudBrowserPool, CloudBrowserError
+from cloud_browser import CloudBrowserPool, CloudBrowserError, CloudBrowserSession
 from effect_graph import EffectDependencyGraph, NodeType, EdgeType
 from connectors import ConnectorRegistry, ConnectorError
 from privacy_engine import PrivacyEngine
+from document_studio import DocumentStudio, DocumentError
+from brief_mission import BriefMissionStore, MissionError, BUNDLED_PROJECTS, load_bundled
+from command_router import interpret as interpret_command
+from demo_webapp import DemoWebApp
+from write_audit import WriteAudit
+from isolation import ExecutionBlocked
+from document_studio import DocumentError
+from computer_tasks import BROWSER_CAPS, ComputerTaskRunner, TaskRefused, browser_services
+from controlled_apps import serve_controlled
+from net_policy import NetPolicy, origin_of
+from tool_registry import ToolContext, default_registry
+from project_store import ProjectStore, ProjectError, fingerprint
+from voice_engine import VoiceEngine, VoiceError
+from server_security import ServerSecurity, RateLimiter, SECURITY_HEADERS, ConfigError, client_ip
 
 DB = Path(os.environ.get('RESOLVE_DB', ROOT / 'data' / 'resolve.sqlite3'))
 ledger = Ledger(DB)
@@ -44,7 +61,91 @@ sandbox_mgr = SandboxManager()
 cloud_browser_pool = CloudBrowserPool()
 connector_registry = ConnectorRegistry()
 privacy_engine = PrivacyEngine(tenant_auth_mgr, sandbox_mgr, connector_registry)
+from at_rest import SealedStore
+document_studio = DocumentStudio(Path(os.environ.get('RESOLVE_DOCUMENTS_DIR', ROOT / 'data' / 'documents')),
+                                 sealer=SealedStore(Path(os.environ.get('RESOLVE_DOCUMENTS_DIR', ROOT / 'data' / 'documents')) / 'keys' / 'master.key',
+                                                    require_env=ServerSecurity.from_env().production))
+document_studio.seal_legacy_files()   # idempotent: encrypts any PDF stored before encryption at rest existed
 default_demo = tenant_auth_mgr.seed_demo_tenant()
+project_store = ProjectStore(document_studio.base_dir, sealer=document_studio.sealer)
+brief_missions = BriefMissionStore(Path(os.environ.get('RESOLVE_MISSIONS_DB', document_studio.base_dir / 'missions.sqlite3')), document_studio, projects=project_store, sealer=document_studio.sealer)
+brief_missions.seal_legacy_evidence()   # idempotent migration for evidence stored before encryption at rest
+privacy_engine.mission_store = brief_missions
+privacy_engine.project_store = project_store
+privacy_engine.browser_pool = cloud_browser_pool
+SECURITY = ServerSecurity.from_env()
+rate_limiter = RateLimiter()
+voice_engine = VoiceEngine()
+demo_webapp = DemoWebApp()
+write_audit = WriteAudit(document_studio.base_dir / 'write_audit.sqlite3')
+privacy_engine.audit_store = write_audit
+tool_registry = default_registry()
+_diag_slots = threading.BoundedSemaphore(2)       # at most two real Chromium diagnostics runs at once
+
+
+def diagnostics_wanted() -> bool:
+    """Demo mode: on when Playwright is importable. Production: only on explicit RESOLVE_DIAGNOSTICS=1 (it launches Chromium in this process,
+    pointed ONLY at the bundled demo app; arbitrary-URL browsing stays gated by the cloud-browser isolation setting)."""
+    flag = os.environ.get('RESOLVE_DIAGNOSTICS', '').strip()
+    if flag == '0' or (SECURITY.production and flag != '1'):
+        return False
+    try:
+        import playwright.sync_api  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def enable_diagnostics(port: int) -> bool:
+    """Give the mission engine a runner that drives a real Chromium against /demo-app/ on THIS server (exact-origin allowlist, nothing else)."""
+    if not diagnostics_wanted():
+        return False
+    from diagnostics_agent import run_diagnostics
+    base = f'http://127.0.0.1:{port}'
+    policy = NetPolicy(allowed_origins=frozenset({origin_of(base)}))
+
+    def runner(should_continue, on_step):
+        with _diag_slots:
+            return run_diagnostics(base + '/demo-app/', policy=policy, should_continue=should_continue, on_step=on_step)
+    brief_missions.configure_diagnostics(runner, base + '/demo-app/')
+    return True
+# Routes backed by the single shared demo ledger (not tenant-scoped): demo mode only.
+LEGACY_GLOBAL_PREFIXES = ('/api/state', '/api/stream', '/api/web/', '/api/approvals', '/api/evidence', '/api/mission', '/api/missions/',
+                          '/api/benchmark', '/api/skills', '/api/windows', '/api/uia', '/api/session', '/api/action/', '/api/resolve', '/api/resume',
+                          '/api/emergency-stop', '/api/agents/discover')
+
+
+def browser_for(sbx, user):
+    """Cloud browser access. Production requires an explicitly declared isolated runtime: a Playwright context
+    inside the web process is not tenant-grade isolation, so it is refused rather than silently offered."""
+    if SECURITY.production and not SECURITY.cloud_browser_enabled:
+        raise ApiError(503, 'cloud browser is disabled on this deployment: no isolated per-tenant runtime is configured (RESOLVE_CLOUD_BROWSER_ISOLATION)')
+    return cloud_browser_pool.get_or_create(sbx.id, user['user_id'], sbx.storage_path, user['workspace_id'])
+
+
+def write_boundary(user: dict, operation: str, target_id, fn, digest_of=None):
+    """Single boundary for direct document writes. Records every attempt: allowed, rejected (wrong tenant, missing
+    document) or failed, with the content hash before and after. The write itself runs only inside this boundary."""
+    uid, wid = user['user_id'], user['workspace_id']
+    before = None
+    if target_id:
+        try:
+            before = document_studio.get_document(uid, wid, target_id)['sha256']
+        except DocumentError:
+            # Not owned by this tenant (or absent): refuse, and do NOT persist the foreign id in this tenant's audit trail.
+            write_audit.record(uid, wid, operation, None, 'REJECTED', reason='target not found in this workspace')
+            raise DocumentError('Document not found', 404)
+    try:
+        result = fn()
+    except DocumentError as exc:
+        write_audit.record(uid, wid, operation, target_id, 'REJECTED', before_sha256=before, reason=str(exc))
+        raise
+    except Exception as exc:
+        write_audit.record(uid, wid, operation, target_id, 'FAILED', before_sha256=before, reason=type(exc).__name__)
+        raise
+    after = digest_of(result) if digest_of else None
+    write_audit.record(uid, wid, operation, target_id, 'ALLOWED', before_sha256=before, after_sha256=after)
+    return result
 
 
 class ApiError(Exception):
@@ -69,6 +170,28 @@ def latest_report(ledger: Ledger, context: str) -> dict:
 class Handler(BaseHTTPRequestHandler):
     server_version = 'RESOLVE/0.2'
 
+    _bare = False
+
+    def end_headers(self):
+        if not self._bare:
+            for k, v in SECURITY_HEADERS.items():
+                self.send_header(k, v)
+        super().end_headers()
+
+    def serve_demo_app(self, method: str) -> None:
+        """The controlled faulty web app. Only the server's own browser agent (loopback) may load it; it carries no tenant data."""
+        require(self.client_address[0] in {'127.0.0.1', '::1'}, 403, 'the demo web app is only served to the local diagnostics agent')
+        size = int(self.headers.get('Content-Length', '0') or 0)
+        body = self.rfile.read(min(size, 65536)) if size > 0 else b''
+        status, headers, payload = demo_webapp.handle(method, self.path, body, dict(self.headers))
+        self._bare = True
+        self.send_response(status)
+        for k, v in headers.items():
+            self.send_header(k, v)
+        self.send_header('Content-Length', str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def log_message(self, fmt, *args):
         print('%s - %s' % (self.address_string(), fmt % args))
 
@@ -90,22 +213,29 @@ class Handler(BaseHTTPRequestHandler):
                 return tenant_auth_mgr.validate_session(token)
             except TenantError as exc:
                 raise ApiError(401, exc.message)
-        elif secrets.compare_digest(token, SESSION_TOKEN):
+        elif not SECURITY.production and secrets.compare_digest(token, SESSION_TOKEN):
             return default_demo
         elif token:
             try:
                 return tenant_auth_mgr.validate_session(token)
             except Exception:
                 pass
+        if SECURITY.production:
+            raise ApiError(401, 'authentication required')
         return default_demo
 
     def check_origin(self, mutation: bool = False, public_auth: bool = False) -> None:
         port = self.server.server_port
-        allowed_hosts = {f'127.0.0.1:{port}', f'localhost:{port}'}
-        require(self.client_address[0] in {'127.0.0.1', '::1'}, 403, 'loopback access only')
-        require(self.headers.get('Host') in allowed_hosts, 403, 'invalid Host header')
+        if not SECURITY.production:
+            require(self.client_address[0] in {'127.0.0.1', '::1'}, 403, 'loopback access only')
+        require(SECURITY.host_allowed(self.headers.get('Host'), port), 403, 'invalid Host header')
         origin = self.headers.get('Origin')
-        require(not origin or origin in {f'http://{host}' for host in allowed_hosts}, 403, 'cross-origin request refused')
+        if origin:
+            host = self.headers.get('Host')
+            require(origin in {f'http://{host}', f'https://{host}'}, 403, 'cross-origin request refused')
+        path_only = self.path.split('?')[0]
+        if SECURITY.production and (path_only.startswith(LEGACY_GLOBAL_PREFIXES) or path_only == '/api/voice/transcribe'):
+            raise ApiError(404, 'route disabled in production: backed by the shared demo ledger, not tenant-scoped')
         if mutation:
             require(self.headers.get('Content-Type', '').split(';')[0].strip().lower() == 'application/json', 415, 'JSON content type required')
             if not public_auth:
@@ -118,17 +248,161 @@ class Handler(BaseHTTPRequestHandler):
                     except TenantError as exc:
                         raise ApiError(401, exc.message)
                 else:
+                    require(not SECURITY.production, 401, 'authentication required')
                     require(secrets.compare_digest(token, SESSION_TOKEN), 403, 'session token required')
 
-    def body(self) -> dict:
+    def body(self, max_size: int = 32768) -> dict:
         size = int(self.headers.get('Content-Length', '0'))
-        require(0 <= size <= 32768, 413, 'request too large')
+        require(0 <= size <= max_size, 413, 'request too large')
         data = json.loads(self.rfile.read(size) or b'{}')
         require(isinstance(data, dict), 400, 'JSON object required')
         return data
 
+    def document_user(self) -> dict:
+        """Require an explicit valid token for private document reads."""
+        auth = self.headers.get('Authorization', '')
+        token = auth[7:].strip() if auth.startswith('Bearer ') else self.headers.get('X-Resolve-Token', '').strip()
+        require(bool(token), 401, 'session token required')
+        if not SECURITY.production and secrets.compare_digest(token, SESSION_TOKEN):
+            return default_demo
+        try:
+            return tenant_auth_mgr.validate_session(token)
+        except TenantError as exc:
+            raise ApiError(401, exc.message)
+
+    # ---- spoken/typed commands: interpret (pure) -> confirm -> execute against CURRENT state, bound by digest
+    @staticmethod
+    def command_state(user: dict) -> dict:
+        uid, wid = user['user_id'], user['workspace_id']
+        missions = brief_missions.list(uid, wid)                       # newest first
+        active = next((m for m in missions if m['state'] in ('RUNNING', 'AWAITING_APPROVAL', 'COMPOSING')), None)
+        slim = lambda m: m and {k: m.get(k) for k in ('id', 'state', 'intent_revision', 'paused', 'source_doc_id', 'output_doc_id', 'output_sha256')}
+        docs = [{'id': d['id'], 'name': d['name'], 'sha256': d['sha256']} for d in document_studio.list_documents(uid, wid) if d.get('operation') != 'brief_report']
+        return {'active_mission': slim(active), 'latest_output_mission': slim(next((m for m in missions if m['state'] == 'CONFIRMED' and m.get('output_doc_id')), None)),
+                'last_mission': slim(missions[0] if missions else None), 'documents': docs,
+                'skills': [{'id': k['id'], 'name': k['name']} for k in brief_missions.list_skills(uid, wid)]}
+
+    def handle_command(self, execute: bool, user: dict, data: dict) -> dict:
+        uid, wid = user['user_id'], user['workspace_id']
+        text, source = str(data.get('text', '')), str(data.get('source', 'text'))
+        require(source in ('text', 'voice'), 400, 'source must be text or voice')
+        interp = interpret_command(text, self.command_state(user), source=source)
+        if not execute:
+            return {'interpretation': interp}
+        require(data.get('digest') == interp['digest'], 409, 'the situation changed since this command was interpreted (stale digest); please confirm again')
+        require(interp['command'] != 'UNKNOWN', 422, interp['summary'])
+        require(not interp['ambiguity'], 409, 'the command is ambiguous; choose one option first')
+        require(data.get('confirmed') is True or not interp['requires_confirmation'], 409, 'this command needs explicit confirmation')
+        a, cmd = interp['args'], interp['command']
+        if cmd == 'START_MISSION':
+            docs = a.get('document_candidates') or []
+            require(len(docs) >= 1, 409, 'no document is available; upload or create the sample brief first')
+            require(len(docs) == 1 or data.get('document_id') in docs, 409, 'several documents exist; choose one by id', )
+            steps = a['steps'] if all(x in ('read_brief', 'analyze_code', 'inspect_web', 'architecture', 'report', 'print') for x in a['steps']) else None
+            steps = list(dict.fromkeys(['read_brief', 'analyze_code', 'architecture', 'report', *(steps or [])]))
+            result = brief_missions.start(uid, wid, text, document_id=data.get('document_id') or docs[0], steps=steps, source=source, interpretation_digest=interp['digest'])
+        elif cmd == 'PAUSE':
+            result = brief_missions.pause(a['mission_id'], uid, wid)
+        elif cmd == 'RESUME':
+            result = brief_missions.resume(a['mission_id'], uid, wid)
+        elif cmd == 'CANCEL':
+            result = brief_missions.cancel(a['mission_id'], uid, wid)
+        elif cmd == 'REVISE_DOCUMENT':
+            cur = brief_missions.get(a['mission_id'], uid, wid)
+            require(cur['intent_revision'] == a['intent_revision'], 409, 'the mission was revised since this command was interpreted')
+            result = brief_missions.revise(a['mission_id'], uid, wid, cur['intent_text'] + f" (user switched the brief to {a.get('document_name')})", document_id=a['document_id'])
+        elif cmd == 'DELETE_REPORT':
+            cur = brief_missions.get(a['mission_id'], uid, wid)
+            require(cur.get('output_doc_id') == a['document_id'] and cur.get('output_sha256') == a.get('output_sha256'), 409, 'the report changed since this command was interpreted')
+            result = brief_missions.delete(a['mission_id'], uid, wid, delete_output=True)
+        elif cmd == 'SAVE_SKILL':
+            result = {'skill': brief_missions.save_skill(uid, wid, a['name'], a['mission_id'])}
+        elif cmd == 'RUN_SKILL':
+            result = brief_missions.run_skill(uid, wid, a['skill_id'], document_id=data.get('document_id') or (self.command_state(user)['documents'] or [{}])[0].get('id'))
+        elif cmd == 'RESUME_PROJECT':
+            result = brief_missions.resume_info(uid, wid)
+        else:   # READ_RESULT
+            result = brief_missions.get(a['mission_id'], uid, wid)
+        return {'interpretation': interp, 'executed': cmd, 'result': result}
+
+    def handle_computer_run(self, user: dict, data: dict) -> dict:
+        """Run ONE supported computer task in a real Chromium against this tenant's own controlled apps (own port, own database).
+        Capabilities are fixed here; consequential tasks return a proposal first and write only when its exact digest is presented."""
+        require(diagnostics_wanted(), 503, 'computer tasks are disabled on this deployment (they launch Chromium in this process)')
+        command = data.get('command')
+        require(isinstance(command, str) and 3 <= len(command) <= 400, 422, 'command must be 3 to 400 characters')
+        digest_in = data.get('approved_digest')
+        require(digest_in is None or (isinstance(digest_in, str) and re.fullmatch(r'[0-9a-f]{64}', digest_in)), 422, 'approved_digest must be a sha256 hex string')
+        uid, wid = user['user_id'], user['workspace_id']
+        require(rate_limiter.allow('computer', uid, 20), 429, 'too many computer tasks')
+        root = Path(document_studio.base_dir) / 'computer' / uid
+        root.mkdir(parents=True, exist_ok=True)
+        with _diag_slots:
+            server, base, apps = serve_controlled(str(root / 'apps.sqlite3'))
+            session = None
+            try:
+                import tempfile
+                session = CloudBrowserSession(f'cmp_{uid[:20]}', uid, tempfile.mkdtemp(prefix='cmp_', dir=root), policy=NetPolicy(allowed_origins=frozenset({origin_of(base)})))
+                trail: list[dict] = []
+                ctx = ToolContext(user_id=uid, workspace_id=wid, mission_id=None, capabilities=BROWSER_CAPS, services=browser_services(session),
+                                  record=lambda rec: (trail.append(rec), f'tool_{len(trail)}')[1])
+                runner = ComputerTaskRunner(tool_registry, ctx, {'pm': base, 'research': base, 'crm': base}, apps.verify)
+                try:
+                    result = runner.run(command, approved_digest=digest_in)
+                except TaskRefused as exc:
+                    raise ApiError(422, f'{exc.code}: {exc.message}')
+                frame = session.capture_frame()
+                result['frame'] = {'data_url': frame.get('frame'), 'url': frame.get('url'), 'title': frame.get('title')}
+                result['evidence'] = [{k: r.get(k) for k in ('tool', 'ok', 'error_code', 'args_sha256')} for r in trail]
+                result['app_origin'] = origin_of(base)
+                return result
+            finally:
+                if session:
+                    session.close()
+                server.shutdown()
+
+    def handle_tool_call(self, user: dict, data: dict) -> dict:
+        """Typed tool call. Capabilities are fixed here, server-side; nothing in the arguments or in page content can add one."""
+        uid, wid = user['user_id'], user['workspace_id']
+        # Read-only scope for direct tool calls. Consequential tools are refused by the registry (APPROVAL_REQUIRED) because
+        # no approved operation is attached here: those effects happen only through the mission execution boundary.
+        caps = frozenset({'document:read'})
+        mid = data.get('mission_id') if isinstance(data.get('mission_id'), str) else None
+        services = {
+            'document.read': lambda c, a: {'text': document_studio.extract_text(uid, wid, a['document_id'])[:20000]},
+            'document.transform': lambda c, a: {'document': document_studio.transform(uid, wid, a['operation'], a['document_ids'], a['expected_sha256'], degrees=a.get('degrees'), pages=a.get('pages'))},
+            'document.generate': lambda c, a: {'document': document_studio.create_report(uid, wid, a['title'], a['text'])},
+            'document.verify': lambda c, a: {'sha256_matches': document_studio.get_document(uid, wid, a['document_id'])['sha256'] == a['expected_sha256'],
+                                             'pages': len(__import__('pypdf').PdfReader(__import__('io').BytesIO(document_studio.read_pdf(uid, wid, a['document_id']))).pages)},
+            'workspace.create': lambda c, a: {'workspace': tenant_auth_mgr.create_workspace(uid, a['name'])},
+            'workspace.export': lambda c, a: {'documents': len(document_studio.list_documents(uid, wid)), 'missions': len(brief_missions.list(uid, wid)),
+                                              'skills': len(brief_missions.list_skills(uid, wid))},
+            'mission.pause': lambda c, a: {'mission': brief_missions.pause(a['mission_id'], uid, wid)},
+            'mission.cancel': lambda c, a: {'mission': brief_missions.cancel(a['mission_id'], uid, wid)},
+            'approval.request': lambda c, a: self._approval_request(uid, wid, a),
+        }
+        if mid:
+            services['evidence.record'] = lambda c, a: {'evidence_id': brief_missions.record_evidence(mid, brief_missions.get(mid, uid, wid)['intent_revision'], 'note', a['kind'], a['note'].encode(), 'text/plain')}
+        trail: list[dict] = []
+        ctx = ToolContext(user_id=uid, workspace_id=wid, mission_id=mid, capabilities=caps, services=services, record=lambda rec: (trail.append(rec), f'tool_{len(trail)}')[1])
+        args = data.get('args') if isinstance(data.get('args'), dict) else {}
+        res = tool_registry.call(ctx, str(data.get('name', '')), args)
+        return {'tool': res.tool, 'ok': res.ok, 'data': res.data, 'error': res.error, 'started_at': res.started_at, 'ended_at': res.ended_at,
+                'args_sha256': res.args_sha256, 'evidence_ref': res.evidence_ref}
+
+    @staticmethod
+    def _approval_request(uid, wid, a):
+        m = brief_missions.get(a['mission_id'], uid, wid)
+        require(m['state'] == 'AWAITING_APPROVAL' and m['plan'] and m['plan']['digest'] == a['plan_digest'], 409, 'no matching plan is awaiting approval')
+        return {'awaiting_user_approval': True, 'plan_digest': a['plan_digest'], 'note': 'a tool can only request approval; the user must approve in the UI'}
+
     def do_GET(self):
         try:
+            if urlparse(self.path).path in {'/api/health', '/api/system/health'}:  # platform probes use arbitrary Host headers; nothing sensitive
+                return self.send_json(200, {'status': 'ok', 'name': 'RESOLVE', 'version': '0.2', 'database': 'sqlite-wal', 'mode': SECURITY.mode,
+                                            'features': {'speech_server': voice_engine.health()['available'], 'cloud_browser': SECURITY.cloud_browser_enabled, 'diagnostics': brief_missions.diagnostics is not None}})
+            if urlparse(self.path).path.startswith('/demo-app/'):
+                return self.serve_demo_app('GET')
             self.check_origin()
             parsed = urlparse(self.path)
             path = parsed.path
@@ -141,6 +415,20 @@ class Handler(BaseHTTPRequestHandler):
                 status, body = web_api.call('GET', path, {})
                 return self.send_json(status, body)
             pages = {'/': 'landing.html', '/app': 'index.html', '/app/': 'index.html'}
+            brand = re.fullmatch(r'/static/brand/([A-Za-z0-9_-]+\.(svg|png|jpg|webp))', path)
+            if brand:   # official partner marks: only files placed in web/static/brand/, never a path from the request
+                brand_dir = (ROOT / 'web' / 'static' / 'brand').resolve()
+                asset = (brand_dir / brand.group(1)).resolve()
+                require(asset.parent == brand_dir and asset.is_file(), 404, 'brand asset not provided')
+                raw = asset.read_bytes()
+                kind = {'svg': 'image/svg+xml', 'png': 'image/png', 'jpg': 'image/jpeg', 'webp': 'image/webp'}[brand.group(2)]
+                self.send_response(200)
+                self.send_header('Content-Type', kind)
+                self.send_header('Cache-Control', 'public, max-age=86400')
+                self.send_header('Content-Length', str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
             static = re.fullmatch(r'/static/([A-Za-z0-9_.-]+\.(js|css|svg))', path)
             if static:
                 asset = ROOT / 'web' / 'static' / static.group(1)
@@ -188,7 +476,7 @@ class Handler(BaseHTTPRequestHandler):
                     for p in screens_dir.glob('*.png'):
                         items.append({'name': p.name, 'path': f'/api/evidence/{p.name}', 'size_bytes': p.stat().st_size, 'source': 'screens'})
                 return self.send_json(200, {'evidence': items, 'count': len(items)})
-            if path == '/api/session':
+            if path == '/api/session' and not SECURITY.production:
                 return self.send_json(200, {'token': SESSION_TOKEN})
             if path == '/api/state':
                 return self.send_json(200, {'missions': ledger.all_json('missions'), 'entities': ledger.all_json('entities'), 'actions': ledger.all_actions(), 'events': ledger.events(), 'task_events': scheduler.events(), 'outbox': ledger.outbox(), 'followups': ledger.followups()})
@@ -199,6 +487,10 @@ class Handler(BaseHTTPRequestHandler):
                 report = ROOT / 'data' / 'benchmarks' / 'aggregate.json'
                 require(report.exists(), 404, 'no benchmark run has been recorded')
                 return self.send_json(200, json.loads(report.read_text(encoding='utf-8')))
+            if path == '/api/workspaces' and parse_qs(parsed.query).get('tenant'):
+                # The signed-in user's own workspaces (the concept catalog below is a different thing).
+                user = self.document_user()
+                return self.send_json(200, {'workspaces': tenant_auth_mgr.list_workspaces(user['user_id']), 'active_workspace_id': user['workspace_id']})
             if path == '/api/workspaces':
                 workspace = parse_qs(parsed.query).get('workspace', [None])[0]
                 if workspace:
@@ -208,25 +500,41 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {'total_concepts': len(concepts), 'workspaces': [{'name': name, 'planned_concepts': sum(item['resolve_workspace'] == name for item in concepts)} for name in sorted(WORKSPACES)]})
             if path == '/api/skills':
                 return self.send_json(200, {'skills': skill_store.list_skills()})
+            if path == '/api/documents':
+                user = self.document_user()
+                return self.send_json(200, {'documents': document_studio.list_documents(user['user_id'], user['workspace_id'])})
+            m_doc = re.fullmatch(r'/api/documents/([A-Za-z0-9_-]+)/download', path)
+            if m_doc:
+                user = self.document_user()
+                raw = document_studio.read_pdf(user['user_id'], user['workspace_id'], m_doc.group(1))
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/pdf')
+                self.send_header('Content-Disposition', 'attachment; filename="resolve-document.pdf"')
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.send_header('Content-Length', str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
             if path == '/api/auth/me':
                 user = self.get_session()
-                return self.send_json(200, user)
+                return self.send_json(200, {k: v for k, v in user.items() if k != 'token'})   # the client already holds its token
             if path == '/api/sandboxes':
                 user = self.get_session()
-                sandboxes = sandbox_mgr.list_sandboxes(user['user_id'])
-                return self.send_json(200, {'sandboxes': [s.to_dict() for s in sandboxes]})
+                sandboxes = sandbox_mgr.list_sandboxes(user['user_id'], user['workspace_id'])
+                return self.send_json(200, {'sandboxes': [s.public_dict() for s in sandboxes]})
             m_sbx = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)', path)
             if m_sbx:
                 sbx_id = m_sbx.group(1)
                 user = self.get_session()
-                sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'])
-                return self.send_json(200, sbx.to_dict())
+                sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
+                return self.send_json(200, sbx.public_dict())
             m_sbx_fr = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/frame', path)
             if m_sbx_fr:
                 sbx_id = m_sbx_fr.group(1)
                 user = self.get_session()
-                sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'])
-                session = cloud_browser_pool.get_or_create(sbx.id, user['user_id'], sbx.storage_path)
+                sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
+                session = browser_for(sbx, user)
                 frame = session.capture_frame()
                 return self.send_json(200, frame)
             if path == '/api/connectors':
@@ -239,6 +547,44 @@ class Handler(BaseHTTPRequestHandler):
                 user = self.get_session()
                 conn = connector_registry.get_connector(user['user_id'], user['workspace_id'], conn_id)
                 return self.send_json(200, {'connector_id': conn_id, 'resources': conn.list_authorized_resources()})
+            if path == '/api/brief-missions':
+                user = self.document_user()
+                return self.send_json(200, {'missions': brief_missions.list(user['user_id'], user['workspace_id'])})
+            m_ev = re.fullmatch(r'/api/brief-missions/([A-Za-z0-9_-]+)/evidence/([A-Za-z0-9_-]+)', path)
+            if m_ev:
+                user = self.document_user()
+                data_b, mime = brief_missions.read_evidence(m_ev.group(1), m_ev.group(2), user['user_id'], user['workspace_id'])
+                self.send_response(200)
+                self.send_header('Content-Type', mime)
+                self.send_header('Cache-Control', 'private, no-store')
+                self.send_header('Content-Length', str(len(data_b)))
+                self.end_headers()
+                return self.wfile.write(data_b)
+            if path == '/api/write-audit':
+                user = self.document_user()
+                return self.send_json(200, {'writes': write_audit.list(user['user_id'], user['workspace_id'])})
+            if path == '/api/brief-skills':
+                user = self.document_user()
+                return self.send_json(200, {'skills': brief_missions.list_skills(user['user_id'], user['workspace_id'])})
+            if path == '/api/brief-resume':
+                user = self.document_user()
+                return self.send_json(200, brief_missions.resume_info(user['user_id'], user['workspace_id']))
+            if path == '/api/tools':
+                self.document_user()
+                return self.send_json(200, {'tools': [{'name': t.name, 'summary': t.summary, 'capability': t.capability, 'timeout_s': t.timeout_s, 'consequential': t.consequential,
+                                                       'input': {k: {'type': f.type, 'required': f.required} for k, f in t.input.items()}} for t in map(tool_registry.get, tool_registry.names())]})
+            m_bm = re.fullmatch(r'/api/brief-missions/([A-Za-z0-9_-]+)', path)
+            if m_bm:
+                user = self.document_user()
+                return self.send_json(200, brief_missions.get(m_bm.group(1), user['user_id'], user['workspace_id']))
+            if path == '/api/projects':
+                user = self.document_user()
+                bundled = [{'id': n, 'name': n + ' (bundled sample)', 'files_count': len(f), 'sha256': fingerprint(f), 'bundled': True}
+                           for n in sorted(BUNDLED_PROJECTS) for f in [load_bundled(n)]]
+                return self.send_json(200, {'bundled': bundled, 'uploaded': project_store.list(user['user_id'], user['workspace_id'])})
+            if path == '/api/voice/health':
+                self.get_session()
+                return self.send_json(200, voice_engine.health())
             if path == '/api/privacy/summary':
                 user = self.get_session()
                 return self.send_json(200, privacy_engine.get_summary(user['user_id'], user['workspace_id']))
@@ -294,7 +640,11 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(404, 'not found')
         except ApiError as exc:
             self.send_json(exc.status, {'error': exc.message})
-        except (TenantError, SandboxError, CloudBrowserError, ConnectorError) as exc:
+        except MissionError as exc:
+            self.send_json(exc.status_code, {'error': exc.message, **({'candidates': exc.candidates} if exc.candidates else {})})
+        except VoiceError as exc:
+            self.send_json(exc.status_code, {'error': exc.message, 'code': exc.code})
+        except (TenantError, SandboxError, CloudBrowserError, ConnectorError, DocumentError, ProjectError) as exc:
             self.send_json(getattr(exc, 'status_code', 400), {'error': exc.message if hasattr(exc, 'message') else str(exc)})
         except Exception as exc:
             self.send_json(503, {'error': str(exc)})
@@ -302,8 +652,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             path = urlparse(self.path).path
+            if path.startswith('/demo-app/'):
+                return self.serve_demo_app('POST')
             if path in {'/api/auth/register', '/api/auth/login'}:
                 self.check_origin(mutation=True, public_auth=True)
+                require(rate_limiter.allow('auth', client_ip(self.client_address[0], self.headers.get('X-Forwarded-For', ''), SECURITY.trusted_proxy), SECURITY.auth_rate_per_min), 429, 'too many authentication attempts; retry later')
                 data = self.body()
                 if path == '/api/auth/register':
                     session = tenant_auth_mgr.register(data.get('email', ''), data.get('password', ''), data.get('display_name'))
@@ -313,8 +666,92 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(200, session)
 
             self.check_origin(mutation=True)
-            data = self.body()
+            data = self.body(max_size=7 * 1024 * 1024 if path in ('/api/documents/upload', '/api/projects/upload') else 3 * 1024 * 1024 if path == '/api/voice/transcribe-audio' else 32768)
             user = self.get_session()
+
+            if path == '/api/documents/upload':
+                try:
+                    raw = base64.b64decode(data.get('content_base64', ''), validate=True)
+                except (ValueError, binascii.Error):
+                    raise ApiError(400, 'invalid base64 PDF')
+                require(len(raw) <= 5 * 1024 * 1024, 413, 'PDF exceeds 5 MiB')
+                doc = write_boundary(user, 'document.import', None, lambda: {'document': document_studio.import_pdf(user['user_id'], user['workspace_id'], raw, str(data.get('name', 'document.pdf')))},
+                                     digest_of=lambda r: r['document']['sha256'])['document']
+                return self.send_json(201, {'document': doc})
+            if path == '/api/documents/transform':
+                ids = data.get('document_ids', []) if isinstance(data.get('document_ids'), list) else []
+                doc = write_boundary(user, 'document.transform:' + str(data.get('operation', ''))[:20], ids[0] if len(ids) == 1 else None,
+                    lambda: {'document': document_studio.transform(user['user_id'], user['workspace_id'],
+                        str(data.get('operation', '')), ids,
+                        data.get('expected_sha256', {}), degrees=data.get('degrees'), pages=data.get('pages'))},
+                    digest_of=lambda r: r['document']['sha256'])
+                return self.send_json(201, doc)
+            if path == '/api/projects/upload':
+                try:
+                    raw = base64.b64decode(data.get('content_base64', ''), validate=True)
+                except (ValueError, binascii.Error):
+                    raise ApiError(400, 'invalid base64 archive')
+                require(rate_limiter.allow('project', user['user_id'], 10), 429, 'too many project uploads; retry shortly')
+                return self.send_json(201, {'project': project_store.add(user['user_id'], user['workspace_id'], str(data.get('name', 'project.zip')), raw)})
+            m_pd = re.fullmatch(r'/api/projects/([A-Za-z0-9_-]+)/delete', path)
+            if m_pd:
+                project_store.delete(user['user_id'], user['workspace_id'], m_pd.group(1))
+                return self.send_json(200, {'deleted': m_pd.group(1)})
+            if path == '/api/documents/sample-brief':
+                doc = write_boundary(user, 'document.seed_sample', None, lambda: {'document': brief_missions.seed_sample_brief(user['user_id'], user['workspace_id'])},
+                                     digest_of=lambda r: r['document']['sha256'])
+                return self.send_json(201, doc)
+            m_dd = re.fullmatch(r'/api/documents/([A-Za-z0-9_-]+)/delete', path)
+            if m_dd:
+                write_boundary(user, 'document.delete', m_dd.group(1), lambda: document_studio.delete_document(user['user_id'], user['workspace_id'], m_dd.group(1)))
+                return self.send_json(200, {'deleted': m_dd.group(1)})
+            if path == '/api/brief-missions':
+                require(rate_limiter.allow('mission', user['user_id'], 10), 429, 'too many missions started; retry shortly')
+                mission = brief_missions.start(user['user_id'], user['workspace_id'], str(data.get('intent_text', '')),
+                    document_id=data.get('document_id'), document_name=data.get('document_name'),
+                    expected_sha256=data.get('expected_sha256'), project=str(data.get('project', 'sample_project')),
+                    steps=data.get('steps') if isinstance(data.get('steps'), list) else None, source=str(data.get('source', 'text')),
+                    interpretation_digest=data.get('interpretation_digest') if isinstance(data.get('interpretation_digest'), str) else None)
+                return self.send_json(202, mission)
+            if path == '/api/brief-skills':
+                return self.send_json(201, {'skill': brief_missions.save_skill(user['user_id'], user['workspace_id'], str(data.get('name', '')), str(data.get('mission_id', '')))})
+            m_sk = re.fullmatch(r'/api/brief-skills/([A-Za-z0-9_-]+)/(run|delete)', path)
+            if m_sk:
+                if m_sk.group(2) == 'delete':
+                    return self.send_json(200, brief_missions.delete_skill(user['user_id'], user['workspace_id'], m_sk.group(1)))
+                require(rate_limiter.allow('mission', user['user_id'], 10), 429, 'too many missions started; retry shortly')
+                return self.send_json(202, brief_missions.run_skill(user['user_id'], user['workspace_id'], m_sk.group(1), document_id=data.get('document_id'),
+                                                                    document_name=data.get('document_name'), project=data.get('project'), intent_suffix=str(data.get('intent_suffix', ''))))
+            if path in ('/api/commands/interpret', '/api/commands/execute'):
+                return self.send_json(200, self.handle_command(path.endswith('execute'), user, data))
+            if path == '/api/tools/call':
+                return self.send_json(200, self.handle_tool_call(user, data))
+            if path == '/api/computer/run':
+                out = self.handle_computer_run(user, data)
+                return self.send_json(409 if out.get('status') == 'REFUSED' else 200, out)
+            m_bma = re.fullmatch(r'/api/brief-missions/([A-Za-z0-9_-]+)/(approve|cancel|revise|print-event|delete|edit-architecture|pause|resume)', path)
+            if m_bma:
+                mid, action = m_bma.groups()
+                uid, wid = user['user_id'], user['workspace_id']
+                if action == 'approve':
+                    return self.send_json(200, brief_missions.approve(mid, uid, wid, str(data.get('plan_digest', ''))))
+                if action == 'cancel':
+                    return self.send_json(200, brief_missions.cancel(mid, uid, wid))
+                if action == 'revise':
+                    return self.send_json(200, brief_missions.revise(mid, uid, wid, str(data.get('intent_text', '')), document_id=data.get('document_id')))
+                if action == 'pause':
+                    return self.send_json(200, brief_missions.pause(mid, uid, wid))
+                if action == 'resume':
+                    return self.send_json(200, brief_missions.resume(mid, uid, wid))
+                if action == 'edit-architecture':
+                    return self.send_json(200, brief_missions.edit_architecture(mid, uid, wid, data.get('mermaid')))
+                if action == 'print-event':
+                    return self.send_json(200, brief_missions.record_print_dialog(mid, uid, wid))
+                return self.send_json(200, brief_missions.delete(mid, uid, wid, delete_output=data.get('delete_output', True) is not False))
+            if path == '/api/documents/report':
+                doc = write_boundary(user, 'document.report', None, lambda: {'document': document_studio.create_report(user['user_id'], user['workspace_id'],
+                    str(data.get('title', 'Report')), str(data.get('text', '')))}, digest_of=lambda r: r['document']['sha256'])
+                return self.send_json(201, doc)
 
             if path == '/api/auth/logout':
                 tenant_auth_mgr.logout(user['token'])
@@ -327,50 +764,54 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(201, ws)
             if path == '/api/sandboxes':
                 sbx = sandbox_mgr.create_sandbox(user['user_id'], user['workspace_id'], mission_id=data.get('mission_id'))
-                return self.send_json(201, sbx.to_dict())
+                return self.send_json(201, sbx.public_dict())
             m_sbx_act = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/action', path)
             if m_sbx_act:
                 sbx_id = m_sbx_act.group(1)
-                res = sandbox_mgr.execute_in_sandbox(sbx_id, data.get('command', []), caller_user_id=user['user_id'])
+                res = sandbox_mgr.execute_in_sandbox(sbx_id, data.get('command', []), caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
                 return self.send_json(200, res)
             m_sbx_p = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/pause', path)
             if m_sbx_p:
                 sbx_id = m_sbx_p.group(1)
-                sbx = sandbox_mgr.pause_sandbox(sbx_id, caller_user_id=user['user_id'])
+                sbx = sandbox_mgr.pause_sandbox(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
                 try:
-                    cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id']).pause()
+                    cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id']).pause()
                 except Exception:
                     pass
-                return self.send_json(200, sbx.to_dict())
+                return self.send_json(200, sbx.public_dict())
             m_sbx_r = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/resume', path)
             if m_sbx_r:
                 sbx_id = m_sbx_r.group(1)
-                sbx = sandbox_mgr.resume_sandbox(sbx_id, caller_user_id=user['user_id'])
+                sbx = sandbox_mgr.resume_sandbox(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
                 try:
-                    cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id']).resume()
+                    cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id']).resume()
                 except Exception:
                     pass
-                return self.send_json(200, sbx.to_dict())
+                return self.send_json(200, sbx.public_dict())
             m_sbx_d = re.fullmatch(r'/api/sandboxes/([A-Za-z0-9_-]+)/destroy', path)
             if m_sbx_d:
                 sbx_id = m_sbx_d.group(1)
-                cloud_browser_pool.close_session(sbx_id)
-                sandbox_mgr.destroy_sandbox(sbx_id, caller_user_id=user['user_id'])
+                # 1. authorize the exact sandbox (raises 404 for another user's or workspace's sandbox: nothing else has happened yet)
+                sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
+                # 2. close only this caller's browser session for it, 3. destroy, 4. verify cleanup
+                cloud_browser_pool.close_session(sbx_id, user['user_id'], user['workspace_id'])
+                sandbox_mgr.destroy_sandbox(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
+                require(not cloud_browser_pool.close_session(sbx_id, user['user_id'], user['workspace_id']), 500, 'browser session survived destroy')
                 return self.send_json(200, {'status': 'DESTROYED', 'sandbox_id': sbx_id})
             if path == '/api/cloud-browser/navigate':
                 sbx_id = data.get('sandbox_id')
-                sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'])
-                session = cloud_browser_pool.get_or_create(sbx.id, user['user_id'], sbx.storage_path)
+                sbx = sandbox_mgr.get_sandbox(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
+                session = browser_for(sbx, user)
                 res = session.navigate(data['url'])
                 return self.send_json(200, res)
             if path == '/api/cloud-browser/click':
                 sbx_id = data.get('sandbox_id')
-                session = cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id'])
+                session = cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
                 res = session.click(int(data.get('x', 0)), int(data.get('y', 0)))
                 return self.send_json(200, res)
             if path == '/api/cloud-browser/type':
                 sbx_id = data.get('sandbox_id')
-                session = cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id'])
+                session = cloud_browser_pool.get_session(sbx_id, caller_user_id=user['user_id'], caller_workspace_id=user['workspace_id'])
                 res = session.type_text(str(data.get('text', '')))
                 return self.send_json(200, res)
             m_conn_c = re.fullmatch(r'/api/connectors/([A-Za-z0-9_-]+)/connect', path)
@@ -399,26 +840,43 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/privacy/delete-workspace':
                 receipt = privacy_engine.delete_workspace(user['user_id'], data.get('workspace_id', user['workspace_id']))
                 return self.send_json(200, receipt.to_dict())
+            if path == '/api/voice/transcribe-audio':
+                require(rate_limiter.allow('stt', user['user_id'], 20), 429, 'too many transcription requests')
+                result = voice_engine.transcribe_b64(str(data.get('audio_base64', '')), data.get('consent') is True, str(data.get('language', 'en-US')))
+                return self.send_json(200, result)
             if path == '/api/voice/transcribe':
                 text = str(data.get('text', '')).strip()
+                require(bool(text), 400, 'text is required; audio transcription is not configured')
                 is_correction = bool(re.search(r'\b(no|not|wait|correction|instead)\b', text, re.IGNORECASE))
+                # Real resolution against ledger entities (stable ids), not keyword -> canned contact.
+                pool = resolve_candidates(ledger, 'contact')
+                low = text.casefold()
+                named = [c for c in pool if c['display_name'].casefold() in low or c['display_name'].casefold().split()[0] in low]
+                by_context = [c for c in named if any(tok in low for tok in re.findall(r'[a-z0-9]+', (c.get('context') or '').casefold()) if tok not in {'account', 'the', 'team'})]
+                candidates = by_context if by_context else named
                 resolved_contact = None
-                if "finance" in text.lower():
-                    resolved_contact = {"id": "alex-fin-02", "name": "Alex Morgan", "department": "Finance"}
-                elif "sales" in text.lower():
-                    resolved_contact = {"id": "alex-sales-01", "name": "Alex Morgan", "department": "Sales"}
+                if len(candidates) == 1:
+                    c = candidates[0]
+                    resolved_contact = {'id': c['entity_id'], 'name': c['display_name'], 'context': c.get('context'), 'stable_id': c.get('stable_id')}
+                options = [{'id': c['entity_id'], 'name': c['display_name'], 'context': c.get('context')} for c in candidates]
+                if resolved_contact:
+                    feedback = f"Understood. Targeting {resolved_contact['name']} ({resolved_contact['context']}) with the latest report."
+                elif options:
+                    feedback = f"{len(options)} contacts match. Which one: " + '; '.join(f"{o['name']} ({o['context']})" for o in options) + '?'
                 else:
-                    resolved_contact = {"id": "alex-fin-02", "name": "Alex Morgan", "department": "Finance"}
+                    feedback = 'I could not match a contact. Please name the contact and their account.'
                 response = {
                     "transcription": text,
+                    "source": "submitted_text",
                     "user_id": user['user_id'],
                     "workspace_id": user['workspace_id'],
                     "is_correction": is_correction,
                     "intent": "UPDATE_AND_FOLLOWUP",
                     "resolved_entity": resolved_contact,
-                    "confidence": 0.96,
-                    "recommended_action": "simulated_send_and_update_followup",
-                    "spoken_feedback": f"Understood. Targeting {resolved_contact['name']} in {resolved_contact['department']} with the latest report."
+                    "candidates": options,
+                    "confidence": None,
+                    "recommended_action": "simulated_send_and_update_followup" if resolved_contact else "needs_clarification",
+                    "spoken_feedback": feedback,
                 }
                 return self.send_json(200, response)
             path = urlparse(self.path).path
@@ -498,10 +956,16 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/uia/inspect':
                 return self.send_json(200, self.inspect_uia(data))
             raise ApiError(404, 'not found')
+        except VoiceError as exc:
+            self.send_json(exc.status_code, {'error': exc.message, 'code': exc.code})
+        except MissionError as exc:
+            self.send_json(exc.status_code, {'error': exc.message, **({'candidates': exc.candidates} if exc.candidates else {})})
         except ApiError as exc:
             self.send_json(exc.status, {'error': exc.message})
-        except (TenantError, SandboxError, CloudBrowserError, ConnectorError) as exc:
+        except (TenantError, SandboxError, CloudBrowserError, ConnectorError, DocumentError, ProjectError) as exc:
             self.send_json(getattr(exc, 'status_code', 400), {'error': exc.message if hasattr(exc, 'message') else str(exc)})
+        except ExecutionBlocked as exc:   # refused before any process was created
+            self.send_json(503, {'error': exc.reason, 'status': 'EXECUTION_BLOCKED'})
         except AmbiguousEntity as exc:
             self.send_json(409, {'error': str(exc), 'candidates': exc.candidates})
         except SkillError as exc:
@@ -644,8 +1108,14 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    address = ('127.0.0.1', int(os.environ.get('RESOLVE_PORT', '8765')))
+    try:
+        SECURITY.validate_startup()
+    except ConfigError as exc:
+        raise SystemExit(f'refusing to start: {exc}')
+    address = (SECURITY.bind_host, int(os.environ.get('RESOLVE_PORT', '8765')))
     server = ThreadingHTTPServer(address, Handler)
+    diag = enable_diagnostics(server.server_port)
+    print(f'browser diagnostics: {"enabled (real Chromium vs bundled demo app)" if diag else "disabled"}')
     print(f'RESOLVE local server at http://{address[0]}:{address[1]}  database={DB}')
     try:
         server.serve_forever()
