@@ -47,6 +47,7 @@ import gmail_adapter
 from gmail_adapter import GmailConfig
 from inbox_store import InboxError, InboxStore
 from inbox_api import InboxApi
+import model_provider
 from server_security import ServerSecurity, RateLimiter, SECURITY_HEADERS, ConfigError, client_ip
 
 DB = Path(os.environ.get('RESOLVE_DB', ROOT / 'data' / 'resolve.sqlite3'))
@@ -84,8 +85,27 @@ write_audit = WriteAudit(document_studio.base_dir / 'write_audit.sqlite3')
 privacy_engine.audit_store = write_audit
 # Inbox-to-Commitment Operator: tenant-scoped store (sealed with the same master key), Gmail adapter, HTTP surface
 inbox_store = InboxStore(Path(os.environ.get('RESOLVE_INBOX_DB', ROOT / 'data' / 'inbox.sqlite3')), document_studio.sealer)
+
+
+def start_local_mail():
+    """LOCAL mode: a real SMTP+POP3 server on loopback with Maildir storage (src/local_mail.py). On by default in development,
+    off in production unless RESOLVE_LOCAL_MAIL=1. Busy default ports fall back to free ports (shown on the Connections page)."""
+    flag = os.environ.get('RESOLVE_LOCAL_MAIL', '').strip()
+    if flag == '0' or (SECURITY.production and flag != '1'):
+        return None
+    import local_mail
+    root = os.environ.get('RESOLVE_LOCAL_MAIL_ROOT', str(ROOT / 'data' / 'localmail'))
+    smtp, pop3 = int(os.environ.get('RESOLVE_LOCAL_SMTP_PORT', '2525')), int(os.environ.get('RESOLVE_LOCAL_POP3_PORT', '2110'))
+    try:
+        return local_mail.LocalMailServer(root, smtp, pop3).start()
+    except OSError:
+        return local_mail.LocalMailServer(root, 0, 0).start()
+
+
+local_mail_server = start_local_mail()
 inbox_api = InboxApi(inbox_store, GmailConfig.from_env(os.environ), gmail_adapter.http_transport,
-                     public_base=os.environ.get('RESOLVE_PUBLIC_BASE', '').rstrip('/'))
+                     public_base=os.environ.get('RESOLVE_PUBLIC_BASE', '').rstrip('/'), local_mail=local_mail_server,
+                     inference=model_provider.from_env(os.environ))
 privacy_engine.inbox_store = inbox_store
 tool_registry = default_registry()
 _diag_slots = threading.BoundedSemaphore(2)       # at most two real Chromium diagnostics runs at once

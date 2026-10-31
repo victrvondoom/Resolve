@@ -28,7 +28,7 @@ def sync_connection(store, user_id: str, workspace_id: str, client, account_addr
                     tz_name: str = "UTC", mode: str = "LIVE") -> dict:
     """Fetch recent mail, persist messages idempotently, re-triage every touched thread from ALL its stored messages, and
     reconcile commitments per obligation (revisions keep history). Every run is recorded, including failed ones."""
-    conn = store.get_connection(user_id, workspace_id, "gmail" if mode == "LIVE" else "replay")
+    conn = store.get_connection(user_id, workspace_id, {"LIVE": "gmail", "LOCAL": "local_mail"}.get(mode, "replay"))
     if conn is None:
         raise InboxError("the mailbox is not connected", 409)
     run = store.start_sync_run(user_id, workspace_id, conn["id"], mode)

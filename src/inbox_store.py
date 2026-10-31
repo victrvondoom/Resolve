@@ -80,35 +80,55 @@ class InboxStore:
         finally:
             db.close()
 
+    MIGRATIONS = None   # filled below the class: [(version, sql)]
+
     def _migrate(self) -> None:
-        # executescript commits on its own, so migrations run on a plain connection, not inside _db()
+        """Apply each pending migration atomically: the DDL and its schema_migrations row commit together, so a failure
+        leaves the database at the previous version (SQLite DDL is transactional). Re-running is a no-op."""
         conn = sqlite3.connect(self.db_path, timeout=30, isolation_level=None)
         try:
+            conn.execute("PRAGMA journal_mode=WAL")          # readers do not block the writer; survives crashes via the WAL
+            conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at REAL NOT NULL)")
             done = {r[0] for r in conn.execute("SELECT version FROM schema_migrations")}
-            if 1 not in done:
-                conn.executescript(MIGRATION_1)
-                conn.execute("INSERT INTO schema_migrations VALUES (1, ?)", (time.time(),))
-            if 2 not in done:
-                conn.executescript(MIGRATION_2)
-                conn.execute("INSERT INTO schema_migrations VALUES (2, ?)", (time.time(),))
-            if 3 not in done:
-                conn.executescript(MIGRATION_3)
-                conn.execute("INSERT INTO schema_migrations VALUES (3, ?)", (time.time(),))
-            if 4 not in done:
-                conn.executescript(MIGRATION_4)
-                conn.execute("INSERT INTO schema_migrations VALUES (4, ?)", (time.time(),))
-            if 5 not in done:
-                conn.executescript(MIGRATION_5)
-                conn.execute("INSERT INTO schema_migrations VALUES (5, ?)", (time.time(),))
-            if 6 not in done:
-                conn.executescript(MIGRATION_6)
-                conn.execute("INSERT INTO schema_migrations VALUES (6, ?)", (time.time(),))
-            if 7 not in done:
-                conn.executescript(MIGRATION_7)
-                conn.execute("INSERT INTO schema_migrations VALUES (7, ?)", (time.time(),))
+            for version, sql in ALL_MIGRATIONS:
+                if version in done:
+                    continue
+                conn.executescript(f"BEGIN IMMEDIATE;\n{sql}\nINSERT INTO schema_migrations VALUES ({int(version)}, {time.time()!r});\nCOMMIT;")
+        except BaseException:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
         finally:
             conn.close()
+
+    def migration_status(self) -> dict:
+        conn = sqlite3.connect(self.db_path, timeout=30)
+        try:
+            applied = {r[0]: r[1] for r in conn.execute("SELECT version, applied_at FROM schema_migrations")}
+            journal = conn.execute("PRAGMA journal_mode").fetchone()[0]
+            integrity = conn.execute("PRAGMA quick_check").fetchone()[0]
+        finally:
+            conn.close()
+        latest = max(v for v, _ in ALL_MIGRATIONS)
+        return {"database": str(self.db_path), "applied": sorted(applied), "latest": latest,
+                "pending": [v for v, _ in ALL_MIGRATIONS if v not in applied], "up_to_date": latest in applied and all(v in applied for v, _ in ALL_MIGRATIONS),
+                "journal_mode": journal, "integrity": integrity}
+
+    def backup_to(self, dest: str | Path) -> dict:
+        """Consistent online snapshot via SQLite's backup API. Sealed fields stay sealed; the key is NOT included."""
+        dest = Path(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        src = sqlite3.connect(self.db_path, timeout=30)
+        out = sqlite3.connect(dest)
+        try:
+            src.backup(out)
+            ok = out.execute("PRAGMA integrity_check").fetchone()[0]
+        finally:
+            out.close()
+            src.close()
+        return {"backup": str(dest), "integrity": ok, "bytes": dest.stat().st_size,
+                "sha256": hashlib.sha256(dest.read_bytes()).hexdigest()}
 
     # ---------- helpers
     @staticmethod
@@ -999,3 +1019,6 @@ CREATE TABLE thread_states (
   thread_id TEXT PRIMARY KEY REFERENCES email_threads(id) ON DELETE CASCADE, user_id TEXT NOT NULL, workspace_id TEXT NOT NULL,
   state TEXT NOT NULL, reason_sealed BLOB, until_at REAL, updated_at REAL NOT NULL);
 """
+
+
+ALL_MIGRATIONS = [(1, MIGRATION_1), (2, MIGRATION_2), (3, MIGRATION_3), (4, MIGRATION_4), (5, MIGRATION_5), (6, MIGRATION_6), (7, MIGRATION_7)]

@@ -81,7 +81,7 @@ class LandingAndAppUI(unittest.TestCase):
         self.assertTrue(page.evaluate(OVERFLOW_JS))
         page.get_by_role('link', name='Open Mission Control').first.click()
         page.wait_for_url('**/app')
-        page.wait_for_selector('#fmStart')
+        page.wait_for_selector('#view-morning')          # the Morning brief is the default destination (inbox operator)
         self.assertEqual(errors, [])
 
     def test_landing_mobile_has_no_horizontal_overflow(self):
