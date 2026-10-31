@@ -30,6 +30,7 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse
 
 from document_studio import DocumentError, DocumentStudio
+from operation_contract import Contract, EffectLedger, Observed, OpState, execute as execute_contract
 from project_store import ProjectError, ProjectStore, SOURCE_EXTENSIONS, fingerprint
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -546,6 +547,7 @@ class BriefMissionStore:
         self.projects = projects
         self.diagnostics = None          # injected: callable(should_continue, on_step) -> result with .findings/.frames/.steps (see configure_diagnostics)
         self.diagnostics_url = None
+        self.effects = None   # EffectLedger, created after the schema is in place
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="worker")  # node workers
@@ -575,6 +577,7 @@ class BriefMissionStore:
             db.execute("""CREATE TABLE IF NOT EXISTS mission_skills (
                 id TEXT PRIMARY KEY, user_id TEXT NOT NULL, workspace_id TEXT NOT NULL, name TEXT NOT NULL, spec TEXT NOT NULL,
                 created_at REAL NOT NULL, UNIQUE(user_id, workspace_id, name))""")
+            self.effects = EffectLedger(self.db_path)   # same database: durable dispatch record per idempotency key
             # Worker crash recovery: nothing survives a restart, so in-flight missions are marked, never silently resumed.
             now = time.time()
             for (mid,) in db.execute("SELECT id FROM brief_missions WHERE state IN ('RUNNING','COMPOSING')").fetchall():
@@ -1093,7 +1096,7 @@ class BriefMissionStore:
                 if src["sha256"] != row["source_sha256"]:
                     raise MissionError("source document version changed after approval", 409)
                 pdf = compose_pdf(plan, mission, images)
-                doc = self.studio.save_generated(uid, wid, pdf, f"{plan['title'][:60]}.pdf", source_ids=row["source_doc_id"], operation="brief_report")
+                doc = self._guarded_report_write(mid, rev, row, plan, approved_digest, pdf)
                 out_id = doc["id"]
                 if self._alive(mid, rev) is None:  # tenant deleted/cancelled/superseded while composing: compensate, no orphan output
                     self.studio.delete_document(uid, wid, out_id)
@@ -1126,6 +1129,48 @@ class BriefMissionStore:
                 except DocumentError:
                     pass
             self._fail(mid, exc, rev)
+
+    def _guarded_report_write(self, mid: str, rev: int, row, plan: dict, approved_digest: str, pdf: bytes) -> dict:
+        """The single consequential write of a mission, dispatched only through the IEEC contract: the approval must still
+        match the source document version, the mission revision, the normalized arguments and the approved plan digest at
+        the moment of writing. A timeout is reconciled read-only, never retried blindly."""
+        uid, wid = row["user_id"], row["workspace_id"]
+        name = f"{plan['title'][:60]}.pdf"
+        args = {"name": name, "operation": "brief_report", "source_id": row["source_doc_id"], "plan_digest": approved_digest}
+        contract = Contract(user_id=uid, workspace_id=wid, mission_id=mid, revision=rev, intent=row["intent_text"], operation="document.write",
+                            target_id=row["source_doc_id"], target_label=plan["source"]["name"], target_version=row["source_sha256"], args=args,
+                            approval_digest=approved_digest, idempotency_key=f"{mid}:{rev}:{approved_digest}:report",
+                            expires_at=time.time() + 3600, allowed_operations=frozenset({"document.write"}))
+        dispatched_at = [0.0]
+
+        def observe():
+            try:
+                src = self.studio.get_document(uid, wid, row["source_doc_id"])
+                version, owner = src["sha256"], uid
+            except DocumentError:
+                version, owner = None, None
+            m = self._alive(mid)
+            return Observed(user_id=uid, workspace_id=wid, mission_revision=m["intent_revision"] if m else -1, mission_active=m is not None,
+                            target_candidates=1, presented_target_id=row["source_doc_id"], target_version=version, target_owner_id=owner, presented_approval_digest=approved_digest,
+                            presented_args=args, preconditions={}, now=time.time())
+
+        def effect():
+            dispatched_at[0] = time.time()
+            return self.studio.save_generated(uid, wid, pdf, name, source_ids=row["source_doc_id"], operation="brief_report")
+
+        def verify(doc):
+            back = self.studio.get_document(uid, wid, doc["id"])          # independent read-back, not the executor's return value
+            return back["sha256"] == doc["sha256"] and back["operation"] == "brief_report"
+
+        def reconcile():
+            found = [d for d in self.studio.list_documents(uid, wid) if d["name"] == name and d["created_at"] >= dispatched_at[0] - 1]
+            return bool(found)
+
+        out = execute_contract(contract, observe, effect, verify, self.effects, reconcile)
+        if out.state is not OpState.VERIFIED:
+            self._event(mid, "REPORT_COMPOSER", "orchestrator", "EFFECT_" + out.state.value.upper(), {"reason": out.reason, "effect_occurred": out.effect_occurred}, rev=rev)
+            raise MissionError(f"report write {out.state.value}: {out.reason}", 409)
+        return out.result
 
     def _owns(self, uid, wid, doc_id) -> bool:
         try:
