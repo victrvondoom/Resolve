@@ -7,6 +7,7 @@ Every route validates its state transition and returns safe error messages. Toke
 from __future__ import annotations
 
 import re
+import threading
 import time
 from datetime import datetime
 from typing import Callable
@@ -67,6 +68,8 @@ class InboxApi:
         self.public_base = public_base
         self.replay: dict[tuple[str, str], dict] = {}         # replay progress (in memory; replay data itself is stored)
         self.inference = inference or mp.InboxInference(None)   # RULES_ONLY unless a model endpoint is configured
+        self._sync_guard = threading.Lock()
+        self._sync_locks: dict[tuple[str, str], threading.Lock] = {}
         self.local_mail = local_mail                          # local_mail.LocalMailServer or None (LOCAL mode not configured)
 
     # ------------------------------------------------------------------ dispatch
@@ -445,6 +448,18 @@ class InboxApi:
 
     # ------------------------------------------------------------------ sync and brief
     def sync(self, uid, wid, mode, body) -> dict:
+        """One sync at a time per mailbox (user, workspace scope): a second request while one runs is refused, not queued."""
+        ws = scoped(wid, mode)
+        with self._sync_guard:
+            lock = self._sync_locks.setdefault((uid, ws), threading.Lock())
+        if not lock.acquire(blocking=False):
+            raise ApiError(409, "a sync for this mailbox is already running", code="SYNC_IN_PROGRESS")
+        try:
+            return self._sync(uid, wid, mode, body)
+        finally:
+            lock.release()
+
+    def _sync(self, uid, wid, mode, body) -> dict:
         ws = scoped(wid, mode)
         tz, configured = self._tz(uid, wid, mode)
         query = _text(body, "query", 200, required=False) or "newer_than:30d"
@@ -802,16 +817,24 @@ class InboxApi:
             raise ApiError(400, "facts must be a small object of short strings")
         draft = svc.draft_reply(thread, account, _text(body, "signoff", 60, required=False) or s["signoff"],
                                        _text(body, "tone", 40, required=False) or s["tone"], facts, s["timezone"])
+        engine_used, model_note = ("REPLAY_RULES" if mode == "REPLAY" else "RULES_ONLY"), None
+        if body.get("engine") == "model" and mode != "REPLAY":
+            md = mp.model_draft(self.inference, thread, account, facts, s["signoff"], s["tone"])
+            model_note = {k: v for k, v in md.items() if k != "body"}
+            if md["engine"] == "MODEL_ENABLED":
+                draft = {**draft, "body": md["body"], "missing_information": md["missing_information"],
+                         "assumptions": draft["assumptions"] + ["text written by the configured model; checked for unsupported claims"]}
+                engine_used = "MODEL_ENABLED"
         last = max(thread, key=lambda x: x["sent_at"])
         recipient = _address(last["sender"]) if _address(last["sender"]) != account else _address(last.get("recipients", ""))
         if not recipient:
             raise ApiError(409, "the recipient address could not be determined from the thread; edit the recipient before approving")
         meta = {"sources": draft["sources"], "missing_information": draft["missing_information"], "assumptions": draft["assumptions"],
-                "potential_commitments": draft["potential_commitments"], "engine": "REPLAY_RULES" if mode == "REPLAY" else "RULES_ONLY",
+                "potential_commitments": draft["potential_commitments"], "engine": engine_used, "model_note": model_note,
                 "generated_at": self.now()}
-        stored = self.store.create_draft(uid, ws, thread_id, recipient, draft["subject"], draft["body"], origin="REPLAY_RULES" if mode == "REPLAY" else "RULES_ENGINE", meta=meta)
-        return {**self.store.get_draft(uid, ws, stored["id"]), "engine": "REPLAY_RULES" if mode == "REPLAY" else "RULES_ONLY",
-                "engine_label": "deterministic rules; no model inference",
+        stored = self.store.create_draft(uid, ws, thread_id, recipient, draft["subject"], draft["body"], origin="REPLAY_RULES" if mode == "REPLAY" else ("MODEL" if engine_used == "MODEL_ENABLED" else "RULES_ENGINE"), meta=meta)
+        return {**self.store.get_draft(uid, ws, stored["id"]), "engine": engine_used, "model_note": model_note,
+                "engine_label": "written by the configured model, checked for unsupported claims" if engine_used == "MODEL_ENABLED" else "deterministic rules; no model inference",
                 "assumptions": draft["assumptions"], "missing_information": draft["missing_information"], "sources": draft["sources"],
                 "potential_commitments": draft["potential_commitments"], "recipient": recipient}
 

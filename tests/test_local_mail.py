@@ -3,6 +3,8 @@ against it. Nothing here is an in-memory canned provider: every send crosses a T
 read back over POP3. Effects are checked a second time by reading the Maildir directly (outside the generating code).
 """
 import base64
+import json
+import threading
 import mailbox
 import os
 import smtplib
@@ -298,6 +300,91 @@ class LocalModePipeline(unittest.TestCase):
         self.assertIsNone(self.store.load_oauth_token('usr_a', 'ws_a.local', 'local_mail'))
         st, _ = self.call('POST', '/api/inbox/sync', body={'mode': 'LOCAL'})
         self.assertEqual(st, 409)
+
+    def test_workspace_deletion_and_export_cover_local_data(self):
+        from connectors import ConnectorRegistry
+        from privacy_engine import PrivacyEngine
+        from sandbox_manager import SandboxManager
+        from tenant_auth import TenantAuthManager
+        base = Path(self.tmp.name)
+        auth = TenantAuthManager(base / 'tenants.sqlite3')
+        user = auth.register('local-owner@example.test', 'a long password here')
+        auth.create_workspace(user['user_id'], 'Second')                # deletion needs a surviving workspace
+        me = {'user_id': user['user_id'], 'workspace_id': user['workspace_id']}
+        self.a = me
+        self.connect_and_receive()
+        engine = PrivacyEngine(auth, SandboxManager(base_dir=base / 'sbx', db_path=base / 'sbx.sqlite3'), ConnectorRegistry(base / 'c.sqlite3'), data_dir=base)
+        engine.inbox_store = self.store
+        bundle = engine.export_data(me['user_id'], me['workspace_id'])
+        self.assertEqual(bundle['inbox_local']['connections'][0]['provider'], 'local_mail')
+        exported = json.dumps(bundle, default=str)
+        creds = self.store.load_oauth_token(me['user_id'], me['workspace_id'] + '.local', 'local_mail')
+        self.assertNotIn(creds['password'], exported, 'credentials are never exported')
+        engine.delete_workspace(me['user_id'], me['workspace_id'])
+        self.assertIsNone(self.store.load_oauth_token(me['user_id'], me['workspace_id'] + '.local', 'local_mail'))
+        self.assertEqual(self.store.list_threads(me['user_id'], me['workspace_id'] + '.local'), [])
+
+    def test_concurrent_sync_of_one_mailbox_is_refused_not_duplicated(self):
+        self.connect_and_receive()
+        gate, results = threading.Event(), []
+        real = lm.LocalMailProvider.sync_all
+
+        def slow(self_, query=''):
+            gate.wait(5)
+            return real(self_, query)
+        lm.LocalMailProvider.sync_all = slow
+        try:
+            t = threading.Thread(target=lambda: results.append(self.call('POST', '/api/inbox/sync', body={'mode': 'LOCAL'})))
+            t.start()
+            time.sleep(0.3)
+            second = self.call('POST', '/api/inbox/sync', body={'mode': 'LOCAL'})
+            gate.set()
+            t.join(10)
+        finally:
+            lm.LocalMailProvider.sync_all = real
+        self.assertEqual((second[0], second[1].get('code')), (409, 'SYNC_IN_PROGRESS'))
+        self.assertEqual(results[0][0], 200)
+        self.assertEqual(self.store.count_messages('usr_a', 'ws_a.local'), 1)
+
+    def test_rules_and_corrections_persist_across_restart(self):
+        self.connect_and_receive()
+        tid = self.call('GET', '/api/inbox/threads')[1]['threads'][0]['thread_id']
+        st, _ = self.call('POST', f'/api/inbox/threads/{tid}/corrections', body={'kind': 'WRONG_PRIORITY', 'value': 'LOW', 'scope': 'ONE_TIME',
+                                                                              'dictated_text': 'Not urgent.'})
+        self.assertEqual(st, 200)
+        st, _ = self.call('POST', '/api/inbox/rules', body={'text': 'Always prioritize emails from Priya.', 'confirm': True})
+        self.assertEqual(st, 201, _)
+        before = (self.call('GET', '/api/inbox/rules')[1], self.call('GET', '/api/inbox/threads')[1]['threads'][0]['priority'])
+        self.new_api()                                             # restart over the same database
+        after = (self.call('GET', '/api/inbox/rules')[1], self.call('GET', '/api/inbox/threads')[1]['threads'][0]['priority'])
+        self.assertEqual(after[1], 'LOW')
+        self.assertEqual(before[0]['active_count'], after[0]['active_count'])
+        self.assertEqual([c['id'] for c in before[0]['corrections']], [c['id'] for c in after[0]['corrections']])
+
+    def test_model_draft_path_needs_the_same_approval_and_falls_back_on_unsupported_claims(self):
+        import model_provider as mp
+
+        class Stub:                                   # in-process stand-in for a model endpoint; NOT a model
+            name = 'stub'
+            config = mp.ModelConfig('http://127.0.0.1:9', 'stub')
+            answer = {'body': 'Hi Priya,\n\nThanks. I will send the revised deployment checklist before 4 PM.\n\nBest', 'missing_information': []}
+
+            def complete_json(self, system, user):
+                return dict(Stub.answer), {'latency_s': 0.0, 'model': 'stub'}
+        self.api.inference = mp.InboxInference(Stub())
+        self.connect_and_receive()
+        tid = self.call('GET', '/api/inbox/threads')[1]['threads'][0]['thread_id']
+        st, d = self.call('POST', f'/api/inbox/threads/{tid}/drafts', body={'engine': 'model', 'facts': {'status': 'I will send the revised deployment checklist before 4 PM.'}})
+        self.assertEqual((st, d['engine']), (201, 'MODEL_ENABLED'), d)
+        self.assertEqual(d['status'], 'DRAFT', 'model text is a draft like any other: nothing is approved or sent')
+        st, _ = self.call('POST', f'/api/inbox/drafts/{d["id"]}/send', body={'approval_id': 'apr_forged', 'digest': d['digest']})
+        self.assertNotEqual(st, 200)
+        self.assertEqual(maildir_messages(self.mailroot, f'priya@{DOM}', 'INBOX'), [])
+        Stub.answer = {'body': 'Sure, the pilot is $9,000 and I will deliver it Friday.', 'missing_information': []}
+        st, d2 = self.call('POST', f'/api/inbox/threads/{tid}/drafts', body={'engine': 'model', 'facts': {}})
+        self.assertEqual((st, d2['engine']), (201, 'RULES_ONLY'), d2)
+        self.assertEqual(d2['model_note']['fallback_reason'], 'UNSUPPORTED_CLAIMS')
+        self.assertNotIn('$9,000', d2['body'])
 
     def test_not_configured_is_honest(self):
         api = InboxApi(self.store, None, lambda *a: (500, {}, {}), local_mail=None)

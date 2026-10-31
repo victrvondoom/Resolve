@@ -127,6 +127,24 @@ class ModelProviderTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             mp.ModelConfig.from_env({'RESOLVE_MODEL_BASE_URL': 'file:///etc/passwd', 'RESOLVE_MODEL_NAME': 'm'})
 
+    def test_model_draft_is_accepted_only_without_unsupported_claims(self):
+        Scripted.answer = json.dumps({'body': 'Hi Priya,\n\nI will send the revised deployment checklist before 4 PM.\n\nBest',
+                                      'missing_information': []})
+        out = mp.model_draft(self.engine(), MSGS, OWNER, {'status': 'I will send the revised deployment checklist before 4 PM.'}, 'Best', 'neutral')
+        self.assertEqual(out['engine'], 'MODEL_ENABLED', out)
+        for body in ('The pilot costs $4,500 and takes 3 weeks.', 'I will also redesign your website for free.',
+                     'I can do it on Friday at 9 am.'):
+            Scripted.answer = json.dumps({'body': body, 'missing_information': []})
+            out = mp.model_draft(self.engine(), MSGS, OWNER, {}, 'Best', 'neutral')
+            self.assertEqual((out['engine'], out['fallback_reason']), ('RULES_ONLY_FALLBACK', 'UNSUPPORTED_CLAIMS'), body)
+            self.assertTrue(out['unsupported_claims'])
+        self.assertEqual(mp.model_draft(mp.from_env({}), MSGS, OWNER, {}, 'Best', '')['fallback_reason'], 'NO_MODEL_CONFIGURED')
+
+    def test_claim_checker_accepts_claims_present_in_the_thread(self):
+        self.assertEqual(mp.unsupported_claims('Noted: before 4 PM works.', MSGS, {}), [])
+        self.assertEqual(mp.unsupported_claims('It will cost €200.', MSGS, {'price': '€200'}), [])
+        self.assertTrue(mp.unsupported_claims('It will cost €200.', MSGS, {}))
+
     def test_validator_rejects_extra_and_wrong_types(self):
         self.assertEqual(mp.validate(mp.ANALYSIS_SCHEMA, GOOD), [])
         self.assertTrue(mp.validate(mp.ANALYSIS_SCHEMA, dict(GOOD, commitments=[{'kind': 'REQUEST_TO_USER'}])))

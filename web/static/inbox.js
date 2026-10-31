@@ -260,7 +260,10 @@
               <div id="ibCorrResult" aria-live="polite"></div>
             </form></div>
           <div class="ib-panel"><h3>Replies</h3>${draftList ? `<ul>${draftList}</ul>` : '<p class="muted">No reply has been prepared yet.</p>'}
-            <div class="ib-actions"><button class="btn btn-primary" type="button" data-ib="new-draft" data-thread="${E(t.thread_id)}">Prepare reply</button></div></div>
+            <div class="ib-actions"><button class="btn btn-primary" type="button" data-ib="new-draft" data-thread="${E(t.thread_id)}">Prepare reply</button>
+              <button class="btn" type="button" data-ib="new-draft" data-engine="model" data-thread="${E(t.thread_id)}">Prepare reply with the model</button>
+              <button class="btn" type="button" data-ib="analyze" data-thread="${E(t.thread_id)}">Analyze with the model (advisory)</button></div>
+            <div id="ibAnalysis" aria-live="polite"></div></div>
         </aside></div>`;
     } catch (e) {
       el.innerHTML = banner() + errorBox(e);
@@ -414,7 +417,7 @@
           <h4>Missing information</h4>${missing ? `<ul>${missing}</ul>` : '<p class="muted">Nothing missing.</p>'}
           <h4>Assumptions</h4>${assumptions ? `<ul>${assumptions}</ul>` : '<p class="muted">None.</p>'}
           <h4>Potential new commitments</h4>${pcs ? `<ul>${pcs}</ul>` : '<p class="muted">None introduced by this reply.</p>'}
-          <p class="ib-hint">Engine: ${E(meta.engine || 'RULES_ONLY')} — deterministic rules, no model inference.</p></div>
+          <p class="ib-hint">Engine: ${E(meta.engine || 'RULES_ONLY')} — ${meta.engine === 'MODEL_ENABLED' ? 'written by the configured model and checked for unsupported claims; you approve the exact text' : 'deterministic rules, no model inference'}${meta.model_note && meta.model_note.fallback_reason ? ' · model fallback: ' + E(meta.model_note.fallback_reason) + (meta.model_note.unsupported_claims ? ' (' + E(meta.model_note.unsupported_claims.join(', ')) + ')' : '') : ''}.</p></div>
         <div class="ib-panel"><h3>Versions</h3><ul>${versions}</ul></div>
         <div class="ib-panel"><h3>Actions</h3>
           ${editable ? `<div class="ib-field"><label for="ibApprovalOp">Operation</label><select id="ibApprovalOp"><option value="SEND_EMAIL">Send this message</option>${IB.mode === 'LIVE' ? '<option value="CREATE_GMAIL_DRAFT">Save as a Gmail draft</option>' : IB.mode === 'LOCAL' ? '<option value="CREATE_GMAIL_DRAFT">Save as a local draft</option>' : ''}</select></div>
@@ -616,11 +619,25 @@
       if (kind === 'new-draft') {
         const facts = prompt('Facts you can confirm for the reply (optional). Example: "status: I will send it today".', '');
         const body = { facts: {} };
+        if (el.dataset.engine === 'model') body.engine = 'model';
         if (facts && facts.includes(':')) { const [k, ...v] = facts.split(':'); body.facts[k.trim().slice(0, 30) || 'status'] = v.join(':').trim(); }
         const d = await call('POST', `/api/inbox/threads/${encodeURIComponent(el.dataset.thread)}/drafts?` + q(), body);
         IB.draftId = d.id;
         flash('Draft prepared from the thread. Review it before anything is sent.');
         go('#draft:' + d.id);
+        return;
+      }
+      if (kind === 'analyze') {
+        const out = $('#ibAnalysis');
+        out.innerHTML = loading('the analysis');
+        const r = await call('POST', `/api/inbox/threads/${encodeURIComponent(el.dataset.thread)}/analyze?` + q());
+        const m = r.model;
+        out.innerHTML = `<div class="ib-panel"><div class="ib-status">${chip('Engine used: ' + r.engine, r.engine === 'MODEL_ENABLED' ? 'ok' : 'warn')}${r.fallback_reason ? chip('Fallback: ' + r.fallback_reason, 'warn') : ''}</div>
+          ${m ? `<p>${E(m.summary)}</p><p class="muted">Model ${E(m.model)} · ${E(m.latency_s)} s · ${E(m.category)} / ${E(m.priority)}</p>
+            <ul>${(m.commitments || []).map((c) => `<li>${E(c.kind)}: “${E(c.evidence_quote)}” <span class="muted">(quote verified in ${E(c.message_id)})</span></li>`).join('')}</ul>`
+            : '<p class="muted">No model answer is shown. The rules analysis on this page is what RESOLVE uses.</p>'}
+          ${(r.rejected_claims || []).length ? `<p class="ib-error">${r.rejected_claims.length} model claim(s) were rejected because the quote is not in the cited message.</p>` : ''}
+          <p class="ib-hint">${E(r.note)}</p></div>`;
         return;
       }
       if (kind === 'reject') {

@@ -114,6 +114,7 @@ class PrivacyEngine:
         if self.inbox_store:
             export_bundle['inbox'] = self.inbox_store.export_workspace(user_id, workspace_id)
             export_bundle['inbox_replay'] = self.inbox_store.export_workspace(user_id, workspace_id + '.replay')
+            export_bundle['inbox_local'] = self.inbox_store.export_workspace(user_id, workspace_id + '.local')
         bundle_str = json.dumps(export_bundle, sort_keys=True)
         export_bundle["sha256_checksum"] = hashlib.sha256(bundle_str.encode()).hexdigest()
         return export_bundle
@@ -164,7 +165,7 @@ class PrivacyEngine:
         projects_removed = self.project_store.purge(user_id, workspace_id) if self.project_store else 0
         inbox_removed = 0
         if self.inbox_store:
-            inbox_removed = self.inbox_store.purge(user_id, workspace_id) + self.inbox_store.purge(user_id, workspace_id + '.replay')
+            inbox_removed = sum(self.inbox_store.purge(user_id, workspace_id + suffix) for suffix in ('', '.replay', '.local'))
         self.documents.delete_workspace(user_id, workspace_id)
         self.auth_mgr.delete_workspace(user_id, workspace_id)
 

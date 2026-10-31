@@ -88,3 +88,18 @@ This document describes what the inbox operator enforces, where, and which test 
 6. Gmail's "unread" label is not stored, so the unread filter is not offered.
 7. Sync is bounded by the query window (default 30 days) and a page limit; very large mailboxes are not fully synchronized.
 8. A development key file is used unless `RESOLVE_MASTER_KEY` is set. Production refuses to start without the environment key (`at_rest.py`).
+
+## Added in the 2026-10-31 sprint
+
+- **Sessions.** The tenant database stores SHA-256 of each bearer token, never the token. Sessions created before this
+  change are invalidated on start. Idle sessions expire after 7 days; renewal never extends a session beyond 30 days after
+  sign-in. `POST /api/auth/password` verifies the current password and revokes every session of the user.
+- **Inbox routes need an explicit valid token in every mode.** A missing or invalid token is 401, also in local
+  development (the development UI sends its token explicitly).
+- **Local mail server.** Binds to loopback only; every submission is authenticated; MAIL FROM must equal the
+  authenticated account; recipients outside `mail.resolve.test` are refused (550), so nothing leaves the machine. Account
+  passwords are PBKDF2-hashed on the server; RESOLVE stores the connected mailbox's password sealed like an OAuth token.
+  Colleague accounts used to deliver test mail can never be a user's own mailbox.
+- **Model output is advisory.** It is schema-validated, every quote is checked against the stored message, and it cannot
+  approve, send, activate rules or change permissions. The API key is read from the environment only.
+- **Privacy.** Export and workspace deletion cover LIVE, LOCAL and REPLAY scopes. Credentials are never exported.

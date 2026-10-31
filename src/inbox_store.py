@@ -876,7 +876,7 @@ class InboxStore:
     # ---------- export / deletion (tenant-scoped)
     def export_workspace(self, user_id: str, workspace_id: str) -> dict:
         """Everything this tenant stored, decrypted for the owner. Tokens are never exported."""
-        connections = [c for c in (self.get_connection(user_id, workspace_id, p) for p in ("gmail", "replay")) if c]
+        connections = [c for c in (self.get_connection(user_id, workspace_id, p) for p in ("gmail", "replay", "local_mail")) if c]
         return {"connections": connections, "commitments": self.list_commitments(user_id, workspace_id),
                 "drafts": [self.get_draft(user_id, workspace_id, d["id"]) for d in self.list_drafts(user_id, workspace_id)],
                 "voice_rules": self.list_voice_rules(user_id, workspace_id), "corrections": self.list_corrections(user_id, workspace_id),
