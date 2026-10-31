@@ -71,6 +71,9 @@ class InboxStore:
             if 3 not in done:
                 conn.executescript(MIGRATION_3)
                 conn.execute("INSERT INTO schema_migrations VALUES (3, ?)", (time.time(),))
+            if 4 not in done:
+                conn.executescript(MIGRATION_4)
+                conn.execute("INSERT INTO schema_migrations VALUES (4, ?)", (time.time(),))
         finally:
             conn.close()
 
@@ -252,6 +255,32 @@ class InboxStore:
                               (user_id, workspace_id, int(limit))).fetchall()
         return [{"id": r["id"], "action": r["action"], "subject_id": r["subject_id"], "detail": json.loads(r["detail"]), "created_at": r["created_at"]} for r in rows]
 
+    # ---------- triage decisions (one per thread; recomputed on sync, never duplicated)
+    def save_triage(self, user_id: str, workspace_id: str, thread_id: str, decision: dict) -> None:
+        with self._lock, self._db() as db:
+            if db.execute("SELECT 1 FROM email_threads WHERE id=? AND user_id=? AND workspace_id=?", (thread_id, user_id, workspace_id)).fetchone() is None:
+                raise InboxError("thread not found", 404)
+            db.execute("""INSERT INTO triage_decisions(thread_id,user_id,workspace_id,category,priority,confidence,reasons_json,evidence_sealed,computed_at)
+                          VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(thread_id) DO UPDATE SET category=excluded.category, priority=excluded.priority,
+                          confidence=excluded.confidence, reasons_json=excluded.reasons_json, evidence_sealed=excluded.evidence_sealed,
+                          computed_at=excluded.computed_at""",
+                       (thread_id, user_id, workspace_id, decision["category"], decision["priority"], decision["confidence"],
+                        json.dumps(decision["reasons"]), self._seal("\n".join(decision["evidence"]), user_id, workspace_id, thread_id), time.time()))
+
+    def list_triage(self, user_id: str, workspace_id: str) -> list[dict]:
+        with self._db() as db:
+            rows = db.execute("SELECT t.*, th.provider_thread_id FROM triage_decisions t JOIN email_threads th ON th.id=t.thread_id "
+                              "WHERE t.user_id=? AND t.workspace_id=? ORDER BY t.computed_at DESC", (user_id, workspace_id)).fetchall()
+        return [{"thread_id": r["thread_id"], "category": r["category"], "priority": r["priority"], "confidence": r["confidence"],
+                 "reasons": json.loads(r["reasons_json"]),
+                 "evidence": (self._open(r["evidence_sealed"], user_id, workspace_id, r["thread_id"]) or "").split("\n") if r["evidence_sealed"] else [],
+                 "computed_at": r["computed_at"]} for r in rows]
+
+    def list_threads(self, user_id: str, workspace_id: str) -> list[dict]:
+        with self._db() as db:
+            rows = db.execute("SELECT id, provider_thread_id, connection_id FROM email_threads WHERE user_id=? AND workspace_id=?", (user_id, workspace_id)).fetchall()
+        return [dict(r) for r in rows]
+
     # ---------- corrections: one-time or persistent, always with before and after, always reversible
     def add_correction(self, user_id: str, workspace_id: str, thread_id: str | None, original: dict, corrected: dict,
                        explanation: str, scope: str, confirmed: bool) -> dict:
@@ -296,6 +325,12 @@ class InboxStore:
                         self._seal(body, user_id, workspace_id, did), time.time(), time.time()))
             self._audit(db, user_id, workspace_id, "draft.created", did, {})
         return {"id": did, "digest": digest}
+
+    def list_drafts(self, user_id: str, workspace_id: str) -> list[dict]:
+        with self._db() as db:
+            rows = db.execute("SELECT id, thread_id, recipient, status, created_at, updated_at FROM reply_drafts "
+                              "WHERE user_id=? AND workspace_id=? ORDER BY created_at DESC", (user_id, workspace_id)).fetchall()
+        return [dict(r) for r in rows]
 
     def get_draft(self, user_id: str, workspace_id: str, draft_id: str) -> dict:
         with self._db() as db:
@@ -451,4 +486,13 @@ CREATE TABLE corrections (
   corrected_json TEXT NOT NULL, explanation_sealed BLOB NOT NULL, scope TEXT NOT NULL, active INTEGER NOT NULL,
   created_at REAL NOT NULL, reversed_at REAL);
 CREATE INDEX corrections_scope ON corrections(user_id, workspace_id, active);
+"""
+
+
+MIGRATION_4 = """
+CREATE TABLE triage_decisions (
+  thread_id TEXT PRIMARY KEY REFERENCES email_threads(id) ON DELETE CASCADE, user_id TEXT NOT NULL, workspace_id TEXT NOT NULL,
+  category TEXT NOT NULL, priority TEXT NOT NULL, confidence REAL NOT NULL, reasons_json TEXT NOT NULL, evidence_sealed BLOB,
+  computed_at REAL NOT NULL);
+CREATE INDEX triage_scope ON triage_decisions(user_id, workspace_id, category);
 """
