@@ -1,72 +1,127 @@
-# RESOLVE: Wisper and Solve
-
-# RESOLVE — the live AI cloud computer
-
-> Say one goal. Watch a real cloud browser work. Approve the exact plan. Get a verified PDF — and see the evidence for every step.
-
 <p align="center">
-  <img src="docs/readme/model-3d.png" alt="3D model of the RESOLVE device, with dimension labels in millimetres" width="46%">
-  <img src="docs/readme/landing-hero.png" alt="RESOLVE landing page: say what you mean, prove what happened" width="52%">
+  <img src="docs/readme/intro-04.png" alt="RESOLVE intro: two single-colour blocks meet and reveal the name" width="78%">
 </p>
 
-## What is new (live product)
+<h1 align="center">RESOLVE</h1>
+<p align="center"><b>Speak. Direct. Resolve.</b><br>Your personal AI cloud computer. You say what you want; it does the work and shows you proof.</p>
 
-| Area | What you can see | How it is produced |
+---
+
+## Start here (60 seconds)
+
+1. **Say or type one goal.** For example: *"Read my project brief, check my web app for errors, and make a report."*
+2. **RESOLVE works in a private cloud browser.** Three helpers run at the same time: one reads your brief, one checks your code, one tests your web app.
+3. **You approve one plan.** You see exactly which file, which version and what it will produce. Nothing happens without your yes.
+4. **RESOLVE writes the PDF, then checks the PDF itself.** It confirms the file is the one you approved, built from the versions you picked.
+5. **You download, print or delete it.** Your files stay in your own private space.
+
+> RESOLVE is a working prototype. Some parts are real today and some are simulated. The section **"What is real and what is simulated"** says exactly which.
+
+```mermaid
+flowchart LR
+    You([You: say or type a goal]) --> Site[RESOLVE website]
+    Site --> Plan{{Plan to approve}}
+    subgraph Helpers [Helpers working at the same time]
+      Reader[Reads your brief]
+      Checker[Checks your code]
+      Tester[Tests your web app in a private browser]
+    end
+    Plan --> Helpers
+    Helpers --> Report[Writes the PDF report]
+    You -. approves the exact plan .-> Report
+    Report --> Verify[Checks the file itself]
+    Verify --> Done([Verified result: download, print or delete])
+    Verify --> Record[(Private record of every step)]
+```
+
+## What it does for you
+
+| You want to | RESOLVE does | You can see |
 |---|---|---|
-| **Live computer** | A real Chromium session against a controlled web app, with each captured frame, a scrubber, play/pause and a filmstrip | Frames are stored as tenant evidence while the browser runs; the viewer loads them from the server |
-| **Mission workers** | Document reader, repository analyzer, browser diagnostics, planner, composer, verifier, print preparer — with real start/finish times | Recorded `NODE_STARTED` / `NODE_FINISHED` events, not a script |
-| **Mission assurance** | Approval digest, verification checks, uncertainty reasons, the causal timeline and evidence list | Read from the mission's recorded state |
-| **3D model** | A scale model of the device, drawn with CSS 3D; drag to rotate, arrow keys work too | `web/static/icon3d.js`; dimension labels are generated from the same numbers as the drawing |
-| **Simulation** | Deterministic demo mode: the same controlled web app and mission every time | `src/demo_webapp.py`, `demo_data/webapp/` |
+| Understand a project brief | Reads the document and lists its requirements | Each requirement, with its source |
+| Find problems in code | Scans the code and its web app | Each problem, with file and line |
+| Get a corrected design | Proposes a fixed architecture diagram | The diagram, before you approve it |
+| Get a report | Writes a PDF from your approved plan | The file's fingerprint and every check it passed |
+| Know it's right | Re-reads the saved file and checks it | A list of checks, and what was *not* checked |
 
-### Screenshots (captured from the running app)
+## Architecture, in plain words
 
-**Mission Control — workers running in parallel, then measured**
-
-![Workers panel after a real run](docs/readme/mission-workers.png)
-
-**Live computer — real frames, scrubber and filmstrip**
-
-![Live computer viewer](docs/readme/live-computer.png)
-
-**Mission assurance — what was approved, what was verified, what is uncertain**
-
-![Mission assurance panel](docs/readme/mission-assurance.png)
-
-**Plan approval — bound to the exact plan digest**
-
-![Plan approval card](docs/readme/plan-approval.png)
-
-**Phone layout**
-
-<img src="docs/readme/landing-mobile.png" alt="RESOLVE landing page on a 390 px phone" width="260">
-
-### Simulation, stated precisely
-
-- The browser is **real Chromium** (Playwright) driving a **controlled demo web application** that contains genuine faults: a page `ReferenceError`, an HTTP 500 on login and an HTTP 404 on inventory. The faults are observed by the browser, not scripted into the report.
-- "Live video" here is the sequence of **real JPEG frames** captured after each browser action and played back in order. It is not a continuous video stream and it is not Windows desktop capture.
-- The 3D device is a **scale model** drawn in CSS 3D. Its dimensions are illustrative and are printed on the drawing.
-- Outbox delivery is **simulated**. Nothing is sent to a real person or account.
-
-### Regenerate these screenshots
-
-```bash
-python -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt && python -m playwright install chromium
-python scripts/capture_readme_screens.py 8771     # starts the server, runs the mission, writes docs/readme/*.png
+```mermaid
+flowchart TB
+    subgraph Browser [Your browser: the website]
+      UI[Mission Control and landing page]
+    end
+    subgraph Server [RESOLVE server]
+      API[Front door: checks who you are]
+      Missions[Mission engine: runs the helpers in order]
+      Studio[Document studio: stores and makes PDFs]
+      Audit[Activity log: every change, every attempt]
+    end
+    subgraph Cloud [Private cloud browser]
+      Chrome[Real Chromium browser]
+      App[Controlled demo web app]
+    end
+    UI -->|requests| API --> Missions
+    Missions --> Studio
+    Missions --> Chrome --> App
+    Studio --> Audit
+    Missions --> Audit
 ```
 
-### Verify the new features
+## Glossary (technical words, explained)
+
+| Word you may see | What it means |
+|---|---|
+| **Digest / fingerprint** | A short code made from a file or plan. Change one letter and the code changes, so you can prove two things are identical. |
+| **SHA-256** | The fingerprint method used for every file and plan. |
+| **Approval** | Your yes for one exact plan. If the plan changes, your yes no longer counts. |
+| **Revision** | A numbered version of your request. Changing your request makes a new revision. |
+| **Ledger / record** | The list of every step, in order, with the time and who did it. |
+| **Idempotent** | Safe to repeat: doing it twice still gives one result. |
+| **Verified** | RESOLVE re-read the result from storage and it matched what you approved. |
+| **Uncertain** | Something may have happened, but RESOLVE cannot prove it. It will not retry on its own. |
+| **Cloud browser** | A real web browser that runs on the server, not on your computer. |
+| **Sandbox** | A walled-off space for one user. |
+| **Connector** | A link to another service (for example Google Drive). Connectors are simulated in this build. |
+| **Tenant / workspace** | Your private area. Other people cannot see it. |
+
+## Evidence and numbers
+
+- **Tests:** the full suite passes on the current code: **442 passed, 12 skipped, 0 failed** (the 12 skipped are desktop-window tests that need a display). Run it yourself with the command below.
+- **Browser tests:** real Chromium tests check the landing page, the intro, the approval screen, the live viewer and the phone layout.
+- **Privacy tests:** users cannot read each other's documents, sandboxes, browser sessions, missions or evidence. These are checked against the running server.
+- **Controlled comparison** (a test we wrote, not real-world data): on 4 fault scenarios with 6 random seeds, a plain scripted agent made an unsafe or wrong outcome in **21 of 24** runs; RESOLVE's checks made **0 of 24**. Raw results: `data/benchmarks/`. This shows the checks work on the faults we built; it does not prove general reliability.
+
+## Try it
 
 ```bash
-python -m pytest tests/test_zero_hands_e2e.py tests/test_mission_assurance_e2e.py tests/test_landing_ui.py tests/test_flagship_e2e.py -q
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements-dev.txt && python -m playwright install chromium
+python src/resolve_app.py            # then open http://127.0.0.1:8765
 ```
 
-The landing-page test checks that every disabled control explains itself. The E2E suites drive a real mission in Chromium and check the displayed values against the server's record.
+Regenerate the screenshots and intro frames from the running app:
 
-## Expanding this README
+```bash
+python scripts/capture_readme_screens.py 8771
+python scripts/capture_intro_frames.py 8772
+```
 
-Each older section below is collapsible. New feature sections are added at the top; their screenshots are regenerated by `scripts/capture_readme_screens.py`, so the images always match the current build.
+## What is real and what is simulated
 
+| Part | Status |
+|---|---|
+| Reading briefs, checking code, writing and re-checking PDFs | **Real** |
+| Browser tests against a controlled demo web app | **Real** (a real Chromium browser) |
+| Your files and records stored privately | **Real** (on the server's disk) |
+| Encryption of stored files | **Not yet** (planned; see the audit) |
+| Sending email, calendar or cloud-drive changes | **Simulated** (no real accounts connected) |
+| Speech-to-text from a microphone | **Not verified here** (no speech model is installed) |
+| Browser sessions on a public server | **Blocked** until isolated infrastructure exists |
+
+The full audit, including what is weak and what we will fix next, is in [`docs/RESOLVE_UI_UX_AUDIT.md`](docs/RESOLVE_UI_UX_AUDIT.md).
+
+---
 
 <details>
 <summary><h2 style="display:inline">College cloud sprint (document workflow)</h2></summary>

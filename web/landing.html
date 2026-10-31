@@ -8,9 +8,25 @@
 <link rel="icon" href="/static/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/landing.css">
 <link rel="stylesheet" href="/static/icon3d.css">
+<link rel="stylesheet" href="/static/intro.css">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
+<section id="intro" class="intro" aria-label="RESOLVE introduction" aria-roledescription="animated introduction">
+  <div class="intro-stage">
+    <div class="intro-grid" aria-hidden="true"></div>
+    <div class="intro-block left" aria-hidden="true"></div>
+    <div class="intro-block right" aria-hidden="true"></div>
+    <div class="intro-sweep" aria-hidden="true"></div>
+    <div class="intro-title">
+      <h2 class="intro-word" aria-label="RESOLVE"></h2>
+      <p class="intro-tag">Speak. Direct. Resolve.</p>
+      <p class="intro-sub">Your personal AI cloud computer. You say what you want; it does the work and shows you proof.</p>
+    </div>
+  </div>
+  <p class="intro-skip-hint" aria-hidden="true">Esc to skip</p>
+  <div class="intro-controls"><button type="button" class="intro-btn intro-skip">Skip intro</button></div>
+</section>
 <header class="site-header">
   <div class="wrap header-row">
     <a class="brand" href="/" aria-label="RESOLVE home"><img src="/static/mark.svg" alt="" width="26" height="26"><span>RESOLVE</span><small>Wispr &amp; Solve</small></a>
@@ -32,19 +48,20 @@
     <div class="hero-shade" aria-hidden="true"></div>
     <div class="wrap hero-inner hero-split">
       <div class="hero-copy">
-      <p class="eyebrow"><span class="dot" aria-hidden="true"></span> Voice-first work, independently verified</p>
-      <h1 id="hero-title">Say what you mean.<br><span class="grad">Prove what happened.</span></h1>
-      <p class="lede">Speak one goal. RESOLVE reads your project brief and analyzes your code <em>in parallel</em>, proposes a corrected architecture that <em>you approve</em>, then writes a PDF report and <em>independently verifies</em> it was built from the exact brief and code versions you chose.</p>
+      <p class="eyebrow"><span class="dot" aria-hidden="true"></span> Talk to your computer. Get proof it worked.</p>
+      <h1 id="hero-title">Say what you want.<br><span class="grad">See that it was done.</span></h1>
+      <p class="lede">Say one goal out loud or type it. RESOLVE reads your document and checks your code at the same time, shows you a plan to approve, writes a PDF report, then checks the report itself before telling you it is done.</p>
       <div class="cta-row">
         <a class="btn btn-primary btn-lg" id="cta" href="/app">Open Mission Control <span aria-hidden="true">→</span></a>
         <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
+        <button type="button" class="btn btn-ghost btn-lg" data-replay-intro>Replay intro</button>
       </div>
       <dl class="hero-meta">
         <div><dt>Server</dt><dd id="health-chip" class="chip chip-muted">checking…</dd></div>
         <div><dt>Mode</dt><dd id="meta-mode">checking…</dd></div>
         <div><dt>Speech</dt><dd id="meta-speech">checking…</dd></div>
       </dl>
-      <p class="legend" aria-hidden="true"><span class="k k-intent"></span>intent <span class="k k-entity"></span>entity <span class="k k-version"></span>version <span class="k k-effect"></span>effect <span class="k k-ledger"></span>ledger</p>
+      <p class="legend" aria-hidden="true"><span class="k k-intent"></span>your request <span class="k k-entity"></span>the right item <span class="k k-version"></span>the exact version <span class="k k-effect"></span>what changed <span class="k k-ledger"></span>the record</p>
       </div>
       <div class="hero-model" data-icon3d></div>
     </div>
@@ -163,5 +180,6 @@
 </footer>
 <script src="/static/landing.js"></script>
 <script src="/static/icon3d.js"></script>
+<script src="/static/intro.js"></script>
 </body>
 </html>
