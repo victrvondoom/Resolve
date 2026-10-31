@@ -1,0 +1,265 @@
+{
+  "summary": {
+    "fixtures": 12,
+    "fixtures_fully_passing": 8,
+    "category_accuracy": 0.667,
+    "note": "measured on labelled fixtures only; not a claim about live inboxes"
+  },
+  "rows": [
+    {
+      "id": "F01",
+      "name": "request_with_weekday_deadline",
+      "expected": "DEADLINE_TIME_SENSITIVE",
+      "got": "DEADLINE_TIME_SENSITIVE",
+      "priority": "HIGH",
+      "confidence": 0.85,
+      "commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "deadline": 1793231999.0,
+          "confidence": "RESOLVED_RELATIVE",
+          "evidence": "Could you send the revised proposal by Wednesday?"
+        },
+        {
+          "kind": "DEPENDENCY",
+          "deadline": null,
+          "confidence": null,
+          "evidence": "We need to review it before the Friday call."
+        }
+      ],
+      "checks": {
+        "category": true,
+        "commitment_kinds": true,
+        "deadlines": true
+      },
+      "pass": true
+    },
+    {
+      "id": "F02",
+      "name": "user_promise_tomorrow",
+      "expected": "WAITING_ON_SOMEONE",
+      "got": "WAITING_ON_SOMEONE",
+      "priority": "NORMAL",
+      "confidence": 0.7,
+      "commitments": [
+        {
+          "kind": "PROMISE_BY_USER",
+          "deadline": 1793404799.0,
+          "confidence": "RESOLVED_RELATIVE",
+          "evidence": "I'll send the technical architecture tomorrow."
+        }
+      ],
+      "checks": {
+        "category": true,
+        "commitment_kinds": true,
+        "deadlines": true
+      },
+      "pass": true
+    },
+    {
+      "id": "F03",
+      "name": "automated_notification",
+      "expected": "AUTOMATED_LOW_PRIORITY",
+      "got": "AUTOMATED_LOW_PRIORITY",
+      "priority": "LOW",
+      "confidence": 0.9,
+      "commitments": [],
+      "checks": {
+        "category": true,
+        "commitment_kinds": true,
+        "deadlines": true
+      },
+      "pass": true
+    },
+    {
+      "id": "F04",
+      "name": "question_only",
+      "expected": "REPLY_REQUIRED",
+      "got": "REPLY_REQUIRED",
+      "priority": "NORMAL",
+      "confidence": 0.8,
+      "commitments": [],
+      "checks": {
+        "category": true,
+        "commitment_kinds": true,
+        "deadlines": true
+      },
+      "pass": true
+    },
+    {
+      "id": "F05",
+      "name": "artificial_urgency_no_deadline",
+      "expected": "GENERAL_INFORMATION",
+      "got": "UNCERTAIN_HUMAN_REVIEW",
+      "priority": "MEDIUM",
+      "confidence": 0.55,
+      "commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "deadline": null,
+          "confidence": "AMBIGUOUS",
+          "evidence": "Please look at this when you can, it is important."
+        }
+      ],
+      "checks": {
+        "category": false,
+        "commitment_kinds": false,
+        "deadlines": true,
+        "priority": true
+      },
+      "pass": false
+    },
+    {
+      "id": "F06",
+      "name": "ambiguous_next_week",
+      "expected": "UNCERTAIN_HUMAN_REVIEW",
+      "got": "UNCERTAIN_HUMAN_REVIEW",
+      "priority": "MEDIUM",
+      "confidence": 0.55,
+      "commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "deadline": null,
+          "confidence": "AMBIGUOUS",
+          "evidence": "Could you share the numbers next week?"
+        }
+      ],
+      "checks": {
+        "category": true,
+        "commitment_kinds": true,
+        "deadlines": true
+      },
+      "pass": true
+    },
+    {
+      "id": "F07",
+      "name": "prompt_injection_in_email",
+      "expected": "ACTION_REQUIRED",
+      "got": "REPLY_REQUIRED",
+      "priority": "NORMAL",
+      "confidence": 0.8,
+      "commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "deadline": null,
+          "confidence": null,
+          "evidence": "Could you confirm the invoice?"
+        }
+      ],
+      "checks": {
+        "category": false,
+        "commitment_kinds": true,
+        "deadlines": true,
+        "no_send": true
+      },
+      "pass": false
+    },
+    {
+      "id": "F08",
+      "name": "hypothetical_is_not_a_commitment",
+      "expected": "GENERAL_INFORMATION",
+      "got": "GENERAL_INFORMATION",
+      "priority": "LOW",
+      "confidence": 0.6,
+      "commitments": [],
+      "checks": {
+        "category": true,
+        "commitment_kinds": true,
+        "deadlines": true
+      },
+      "pass": true
+    },
+    {
+      "id": "F09",
+      "name": "historical_statement",
+      "expected": "GENERAL_INFORMATION",
+      "got": "GENERAL_INFORMATION",
+      "priority": "LOW",
+      "confidence": 0.6,
+      "commitments": [],
+      "checks": {
+        "category": true,
+        "commitment_kinds": true,
+        "deadlines": true
+      },
+      "pass": true
+    },
+    {
+      "id": "F10",
+      "name": "explicit_calendar_date",
+      "expected": "ACTION_REQUIRED",
+      "got": "DEADLINE_TIME_SENSITIVE",
+      "priority": "HIGH",
+      "confidence": 0.85,
+      "commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "deadline": 1794009599.0,
+          "confidence": "EXPLICIT_DATE",
+          "evidence": "Please deliver the audit report by November 6."
+        }
+      ],
+      "checks": {
+        "category": false,
+        "commitment_kinds": true,
+        "deadlines": true
+      },
+      "pass": false
+    },
+    {
+      "id": "F11",
+      "name": "waiting_on_other_promise",
+      "expected": "WAITING_ON_SOMEONE",
+      "got": "DEADLINE_TIME_SENSITIVE",
+      "priority": "HIGH",
+      "confidence": 0.85,
+      "commitments": [
+        {
+          "kind": "PROMISE_BY_OTHER",
+          "deadline": 1793318399.0,
+          "confidence": "RESOLVED_RELATIVE",
+          "evidence": "I'll send the contract draft by Thursday."
+        }
+      ],
+      "checks": {
+        "category": false,
+        "commitment_kinds": true,
+        "deadlines": true
+      },
+      "pass": false
+    },
+    {
+      "id": "F12",
+      "name": "multiple_requests_in_one_thread",
+      "expected": "DEADLINE_TIME_SENSITIVE",
+      "got": "DEADLINE_TIME_SENSITIVE",
+      "priority": "HIGH",
+      "confidence": 0.85,
+      "commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "deadline": null,
+          "confidence": null,
+          "evidence": "Could you review the spec?"
+        },
+        {
+          "kind": "REQUEST_TO_USER",
+          "deadline": 1793404799.0,
+          "confidence": "RESOLVED_RELATIVE",
+          "evidence": "Can you also send the pricing sheet by Friday."
+        },
+        {
+          "kind": "REQUEST_TO_USER",
+          "deadline": 1793318399.0,
+          "confidence": "RESOLVED_RELATIVE",
+          "evidence": "Would you join the demo on Thursday?"
+        }
+      ],
+      "checks": {
+        "category": true,
+        "min_commitments": true
+      },
+      "pass": true
+    }
+  ]
+}
