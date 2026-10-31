@@ -1,5 +1,16 @@
 # Progress
 
+## Release closeout — 2026-10-31 (branch `claude/gracious-ride-qzs42x`, fast-forwarded to `claude/dazzling-johnson-m8trhu` @ `359c3bf`)
+GATE: release closeout (computer benchmark + verification) | **PASS (portable/Linux)** · Vosk/Docker re-verification **BLOCKED in this sandbox** · `WINDOWS_NATIVE_TESTS_NOT_RUN`.
+- Benchmark WIP finished and wired in: `benchmarks/computer_bench.py`, `tests/test_computer_bench.py`, test-mode hooks in `src/controlled_apps.py`. The shipped patch failed one hunk only because a lint commit had dropped an `f` prefix on a context line; it was applied via a corrected temp copy (identical changes). `wip/` removed.
+- `python benchmarks/computer_bench.py --seeds 5 --json docs/computer_bench_raw.json` (real Chromium, 105 runs, 0 harness errors, 200.6 s): C_resolve 35/35 correct, 0 wrong-target/duplicate/stale effects, 0 false-success, 5/5 lost-ack recovered without resend; A_naive 3/35 correct (28 wrong-target, 10 duplicate, 27 false-success); B_target_guard 15/35 correct (0 wrong-target, 10 duplicate, 10 stale, 20 false-success). Report: `docs/COMPUTER_BENCHMARK.md`. Controlled local baselines, not commercial agents.
+- `python -m pytest tests/test_computer_bench.py -q` → 8 passed (51.8 s).
+- `python scripts/mutation_check.py` → baseline PASS, **22/22 mutants KILLED** (measured on this tree; `docs/MUTATION_REPORT.md` regenerated).
+- `python -m pytest tests -q -rs` → **694 passed, 24 skipped, 0 failed** (673.9 s). First full run had 1 failure: `tests/test_inbox_ui.py` took a one-shot `inner_text` snapshot that raced a re-render under load (passed alone); replaced by the retrying `expect(...).to_contain_text('not Gmail')` (same text asserted). Skips: 12 `STT_MODEL_NOT_PRESENT`, 3 tkinter absent, 9 Windows-native/Win32.
+- NOT reproduced here: `python scripts/fetch_stt_model.py` → proxy 403 for alphacephei.com, so the 12 real-Vosk tests (recorded audio → transcript → browser task CONFIRMED) were SKIPPED, not run; Docker has a client but no daemon, so the 13/13 smoke run was not repeated. Both are carried as historical results only.
+- Still user-dependent: public deployment (Render + master key), Wispr Flow Insights screenshot, two-minute demo video, live-microphone test. Handoff: `docs/HANDOFF_NEXT_ACCOUNT.md`.
+- NEXT COMMAND: on a host with network access, `python scripts/fetch_stt_model.py && python -m pytest tests/test_voice_real_stt.py -q -rs`, then `docker build --build-arg WITH_STT=1 -t resolve:smoke . && python scripts/docker_smoke.py --image resolve:smoke`.
+
 ## Sprint 2026-10-31 — branch `claude/fervent-gates-tsa6vp` (base: `819193d` from `claude/beautiful-bardeen-fw59qp` + `master` merged as `fed4750`)
 GATE: inbox operator LOCAL mode + hardening | **PASS (portable/Linux)** · live Gmail **EXTERNAL_ACCOUNT_AUTHORIZATION_REQUIRED** · MODEL_ENABLED **not run** · `WINDOWS_NATIVE_TESTS_NOT_RUN`.
 - Baseline after the merge: 586 passed, 12 skipped, **4 failed** (browser tests; the same 4 fail on `819193d`: stale nav assumptions and an unreachable Mission control view). Fixed.

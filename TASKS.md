@@ -38,12 +38,12 @@
 - [x] UI/UX pass: cream landing, account menu + sign-out, real workspace switcher, stepper, responsive mobile, phone PDF fallback, truthful privacy page (`test_ux_e2e`)
 - [x] Generalized browser tools: `browser.find/select/wait/extract/verify/close` (+ existing 7) bound to a real Chromium session; every Playwright call runs on the session's own worker thread (fixes "cannot switch thread" for any caller but the creator)
 - [x] Three controlled apps with persisted records (project board, research portal, contact workspace) and five supported computer tasks with exact-digest approval, stale-target refusal and database-side verification (`tests/test_computer_tasks.py`, `tests/test_computer_api.py`, mutation-checked)
-- [ ] `/api/computer/run` has no UI panel yet (API only)
-- [ ] Real STT provider verified with live speech (BLOCKED here: `vosk` installs but model hosts `alphacephei.com`, `huggingface.co` are unreachable from this sandbox, so no real transcription could run)
+- [x] `/api/computer/run` Live computer panel (run, approve, cancel) — `tests/test_computer_ui.py` (passes in the 694-test run)
+- [ ] Real STT re-verified on current code (recorded audio only; historically DONE and merged via PR #12; NOT re-run in the 2026-10-31 closeout: model download blocked, 12 tests skipped. Live microphone NEVER tested. Original note: `vosk` installs but model hosts `alphacephei.com`, `huggingface.co` are unreachable from this sandbox, so no real transcription could run)
 - [ ] Public deployment reachable by judges
 - [ ] GitHub Actions run green
 - [ ] Wispr Flow Insights screenshot (user), two-minute video (user)
-- [ ] Voice bug-report skill, persona skill, spec-studio editing, page reorder/compare, per-tenant VM isolation (PLANNED)
+- [ ] Voice bug-report skill, persona skill, spec-studio editing, per-tenant VM isolation (PLANNED). Document Studio reorder/extract/compare/print-status are implemented (`tests/test_document_studio.py`, `tests/test_document_print.py`; print status never claims a physical printer confirmed)
 
 ## College cloud sprint
 - [x] PDF upload, report creation, page rotation/removal, merge, version guard, authenticated download, workspace/account purge with focused tests
@@ -104,3 +104,15 @@
 - [ ] Connect production OAuth credentials for Google Workspace and GitHub when cloud provider API keys are provisioned
 - [ ] Implement remaining workspace adapters toward all 80 concepts TESTED (currently 28/80 TESTED)
 - [ ] Packaging, installer, demo video and authentic Wispr Flow Insights capture
+
+## Release closeout 2026-10-31 (ticked only with the command output in PROGRESS.md)
+- [x] Computer benchmark A naive / B target-guard / C RESOLVE moved into `benchmarks/` + `tests/`, run for real (105 runs), report `docs/COMPUTER_BENCHMARK.md`; `tests/test_computer_bench.py` 8 passed
+- [x] Mutation checker re-run on this tree: 22/22 KILLED (`docs/MUTATION_REPORT.md`)
+- [x] Full suite `python -m pytest tests -q`: 694 passed, 24 skipped (reasons recorded), 0 failed
+- [ ] Docker image smoke 13/13 re-run on current code (BLOCKED: no Docker daemon in the sandbox; 13/13 is a historical 2026-10-31 result)
+- [ ] Real Vosk tests re-run on current code (BLOCKED: model host unreachable; 12 skipped)
+- [ ] Live microphone test with physical hardware (NOT STARTED — user)
+- [ ] Public deployment on Render with `RESOLVE_MASTER_KEY` (BLOCKED — user account)
+- [ ] GitHub Actions run observed green (NOT MEASURED)
+- [ ] Wispr Flow Insights screenshot and two-minute demo recording (NOT STARTED — user-owned evidence)
+- [ ] Live Gmail and MODEL_ENABLED results (BLOCKED/NOT MEASURED: need OAuth credentials / model endpoint)

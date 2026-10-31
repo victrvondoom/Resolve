@@ -1,0 +1,2183 @@
+{
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "scenarios": [
+    "duplicate_name",
+    "duplicate_submission",
+    "reordered_after_approval",
+    "edited_after_approval",
+    "delayed_loading",
+    "lost_ack",
+    "wrong_version_document"
+  ],
+  "arms": [
+    "A_naive",
+    "B_target_guard",
+    "C_resolve_ieec"
+  ],
+  "ablate": [],
+  "rows": [
+    {
+      "arm": "A_naive",
+      "scenario": "duplicate_name",
+      "seed": 1,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 8,
+      "latency_ms": 659.9,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "duplicate_name",
+      "seed": 2,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 8,
+      "latency_ms": 514.6,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 1,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "duplicate_name",
+      "seed": 3,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 8,
+      "latency_ms": 495.3,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "duplicate_name",
+      "seed": 4,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 8,
+      "latency_ms": 449.0,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "duplicate_name",
+      "seed": 5,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 8,
+      "latency_ms": 493.7,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 1,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "duplicate_submission",
+      "seed": 1,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN",
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 14,
+      "latency_ms": 895.2,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "duplicate_submission",
+      "seed": 2,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN",
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 14,
+      "latency_ms": 909.5,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 2,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "duplicate_submission",
+      "seed": 3,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN",
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 14,
+      "latency_ms": 885.2,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 2,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "duplicate_submission",
+      "seed": 4,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN",
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 14,
+      "latency_ms": 1060.5,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 2,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "duplicate_submission",
+      "seed": 5,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN",
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 14,
+      "latency_ms": 1014.9,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "reordered_after_approval",
+      "seed": 1,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 10,
+      "latency_ms": 1831.2,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 1,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "reordered_after_approval",
+      "seed": 2,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 10,
+      "latency_ms": 1827.7,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 1,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "reordered_after_approval",
+      "seed": 3,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 10,
+      "latency_ms": 1847.8,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 1,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "reordered_after_approval",
+      "seed": 4,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 10,
+      "latency_ms": 1839.0,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 1,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "reordered_after_approval",
+      "seed": 5,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 10,
+      "latency_ms": 1808.1,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 1,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "edited_after_approval",
+      "seed": 1,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 10,
+      "latency_ms": 1827.4,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 1,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "edited_after_approval",
+      "seed": 2,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 10,
+      "latency_ms": 1863.2,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 1,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "edited_after_approval",
+      "seed": 3,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 10,
+      "latency_ms": 1824.7,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 1,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "edited_after_approval",
+      "seed": 4,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 10,
+      "latency_ms": 1840.7,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 1,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "edited_after_approval",
+      "seed": 5,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 10,
+      "latency_ms": 1835.9,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 1,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "delayed_loading",
+      "seed": 1,
+      "expect": "APPLY_ONCE",
+      "claimed_success": false,
+      "final": [
+        "NOT_PREPARED:NOT_FOUND"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 4,
+      "latency_ms": 865.1,
+      "correct": false,
+      "false_success": false,
+      "effects": 0,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "delayed_loading",
+      "seed": 2,
+      "expect": "APPLY_ONCE",
+      "claimed_success": false,
+      "final": [
+        "NOT_PREPARED:NOT_FOUND"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 4,
+      "latency_ms": 876.7,
+      "correct": false,
+      "false_success": false,
+      "effects": 0,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "delayed_loading",
+      "seed": 3,
+      "expect": "APPLY_ONCE",
+      "claimed_success": false,
+      "final": [
+        "NOT_PREPARED:NOT_FOUND"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 4,
+      "latency_ms": 867.9,
+      "correct": false,
+      "false_success": false,
+      "effects": 0,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "delayed_loading",
+      "seed": 4,
+      "expect": "APPLY_ONCE",
+      "claimed_success": false,
+      "final": [
+        "NOT_PREPARED:NOT_FOUND"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 4,
+      "latency_ms": 872.6,
+      "correct": false,
+      "false_success": false,
+      "effects": 0,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "delayed_loading",
+      "seed": 5,
+      "expect": "APPLY_ONCE",
+      "claimed_success": false,
+      "final": [
+        "NOT_PREPARED:NOT_FOUND"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 4,
+      "latency_ms": 867.9,
+      "correct": false,
+      "false_success": false,
+      "effects": 0,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "lost_ack",
+      "seed": 1,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 1,
+      "tool_calls": 13,
+      "latency_ms": 3766.5,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 2,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "lost_ack",
+      "seed": 2,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 1,
+      "tool_calls": 13,
+      "latency_ms": 3661.2,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 2,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "lost_ack",
+      "seed": 3,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 1,
+      "tool_calls": 13,
+      "latency_ms": 3704.7,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 2,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "lost_ack",
+      "seed": 4,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 1,
+      "tool_calls": 13,
+      "latency_ms": 3736.1,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 2,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "lost_ack",
+      "seed": 5,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 1,
+      "tool_calls": 13,
+      "latency_ms": 3731.6,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 2,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "wrong_version_document",
+      "seed": 1,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 11,
+      "latency_ms": 670.0,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 1,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "wrong_version_document",
+      "seed": 2,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 11,
+      "latency_ms": 714.8,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 1,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "wrong_version_document",
+      "seed": 3,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 11,
+      "latency_ms": 660.9,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 1,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "wrong_version_document",
+      "seed": 4,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 11,
+      "latency_ms": 712.0,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 1,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "A_naive",
+      "scenario": "wrong_version_document",
+      "seed": 5,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 11,
+      "latency_ms": 658.3,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 1,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "duplicate_name",
+      "seed": 1,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 13,
+      "latency_ms": 734.4,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "duplicate_name",
+      "seed": 2,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 13,
+      "latency_ms": 544.8,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "duplicate_name",
+      "seed": 3,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 13,
+      "latency_ms": 492.8,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "duplicate_name",
+      "seed": 4,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 13,
+      "latency_ms": 548.4,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "duplicate_name",
+      "seed": 5,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 13,
+      "latency_ms": 510.4,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "duplicate_submission",
+      "seed": 1,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN",
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 23,
+      "latency_ms": 1029.6,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "duplicate_submission",
+      "seed": 2,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN",
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 23,
+      "latency_ms": 1053.8,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "duplicate_submission",
+      "seed": 3,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN",
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 23,
+      "latency_ms": 1070.7,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "duplicate_submission",
+      "seed": 4,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN",
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 23,
+      "latency_ms": 1051.3,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "duplicate_submission",
+      "seed": 5,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN",
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 23,
+      "latency_ms": 1103.5,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "reordered_after_approval",
+      "seed": 1,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 9,
+      "latency_ms": 972.8,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "reordered_after_approval",
+      "seed": 2,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 9,
+      "latency_ms": 918.6,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "reordered_after_approval",
+      "seed": 3,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 9,
+      "latency_ms": 898.4,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "reordered_after_approval",
+      "seed": 4,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 9,
+      "latency_ms": 901.6,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "reordered_after_approval",
+      "seed": 5,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 9,
+      "latency_ms": 929.5,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "edited_after_approval",
+      "seed": 1,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 9,
+      "latency_ms": 890.5,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 1,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "edited_after_approval",
+      "seed": 2,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 9,
+      "latency_ms": 915.1,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 1,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "edited_after_approval",
+      "seed": 3,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 9,
+      "latency_ms": 921.1,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 1,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "edited_after_approval",
+      "seed": 4,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 9,
+      "latency_ms": 900.9,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 1,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "edited_after_approval",
+      "seed": 5,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 9,
+      "latency_ms": 876.7,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 1,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "delayed_loading",
+      "seed": 1,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 9,
+      "latency_ms": 4938.0,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "delayed_loading",
+      "seed": 2,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 9,
+      "latency_ms": 3903.6,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "delayed_loading",
+      "seed": 3,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 9,
+      "latency_ms": 4934.7,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "delayed_loading",
+      "seed": 4,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 9,
+      "latency_ms": 5975.7,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "delayed_loading",
+      "seed": 5,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 9,
+      "latency_ms": 4958.4,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "lost_ack",
+      "seed": 1,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 1,
+      "tool_calls": 28,
+      "latency_ms": 3924.2,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "lost_ack",
+      "seed": 2,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 1,
+      "tool_calls": 28,
+      "latency_ms": 3814.5,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "lost_ack",
+      "seed": 3,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 1,
+      "tool_calls": 28,
+      "latency_ms": 3823.4,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "lost_ack",
+      "seed": 4,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 1,
+      "tool_calls": 28,
+      "latency_ms": 3803.4,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "lost_ack",
+      "seed": 5,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 1,
+      "tool_calls": 28,
+      "latency_ms": 3811.0,
+      "correct": false,
+      "false_success": true,
+      "effects": 2,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 1,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "wrong_version_document",
+      "seed": 1,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 26,
+      "latency_ms": 946.2,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 1,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "wrong_version_document",
+      "seed": 2,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 26,
+      "latency_ms": 831.6,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 1,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "wrong_version_document",
+      "seed": 3,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 26,
+      "latency_ms": 759.2,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 1,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "wrong_version_document",
+      "seed": 4,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 26,
+      "latency_ms": 677.6,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 1,
+      "effect_ok": false
+    },
+    {
+      "arm": "B_target_guard",
+      "scenario": "wrong_version_document",
+      "seed": 5,
+      "expect": "HOLD",
+      "claimed_success": true,
+      "final": [
+        "SUCCESS_TEXT_SEEN"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 26,
+      "latency_ms": 736.1,
+      "correct": false,
+      "false_success": true,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 1,
+      "effect_ok": false
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "duplicate_name",
+      "seed": 1,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 20,
+      "latency_ms": 867.2,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "duplicate_name",
+      "seed": 2,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 20,
+      "latency_ms": 695.6,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "duplicate_name",
+      "seed": 3,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 20,
+      "latency_ms": 685.7,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "duplicate_name",
+      "seed": 4,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 20,
+      "latency_ms": 730.5,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "duplicate_name",
+      "seed": 5,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 20,
+      "latency_ms": 788.4,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "duplicate_submission",
+      "seed": 1,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED",
+        "REFUSED:APPROVAL_ALREADY_CONSUMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 20,
+      "latency_ms": 834.2,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "duplicate_submission",
+      "seed": 2,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED",
+        "REFUSED:APPROVAL_ALREADY_CONSUMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 20,
+      "latency_ms": 800.6,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "duplicate_submission",
+      "seed": 3,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED",
+        "REFUSED:APPROVAL_ALREADY_CONSUMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 20,
+      "latency_ms": 732.4,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "duplicate_submission",
+      "seed": 4,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED",
+        "REFUSED:APPROVAL_ALREADY_CONSUMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 20,
+      "latency_ms": 719.9,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "duplicate_submission",
+      "seed": 5,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED",
+        "REFUSED:APPROVAL_ALREADY_CONSUMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 20,
+      "latency_ms": 694.7,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "reordered_after_approval",
+      "seed": 1,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 11,
+      "latency_ms": 945.9,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "reordered_after_approval",
+      "seed": 2,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 11,
+      "latency_ms": 940.4,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "reordered_after_approval",
+      "seed": 3,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 11,
+      "latency_ms": 944.2,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "reordered_after_approval",
+      "seed": 4,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 11,
+      "latency_ms": 942.5,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "reordered_after_approval",
+      "seed": 5,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 11,
+      "latency_ms": 966.9,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "edited_after_approval",
+      "seed": 1,
+      "expect": "HOLD",
+      "claimed_success": false,
+      "final": [
+        "HELD:APPROVAL_MISMATCH"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 8,
+      "latency_ms": 884.5,
+      "correct": true,
+      "false_success": false,
+      "effects": 0,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "edited_after_approval",
+      "seed": 2,
+      "expect": "HOLD",
+      "claimed_success": false,
+      "final": [
+        "HELD:APPROVAL_MISMATCH"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 8,
+      "latency_ms": 887.3,
+      "correct": true,
+      "false_success": false,
+      "effects": 0,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "edited_after_approval",
+      "seed": 3,
+      "expect": "HOLD",
+      "claimed_success": false,
+      "final": [
+        "HELD:APPROVAL_MISMATCH"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 8,
+      "latency_ms": 837.1,
+      "correct": true,
+      "false_success": false,
+      "effects": 0,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "edited_after_approval",
+      "seed": 4,
+      "expect": "HOLD",
+      "claimed_success": false,
+      "final": [
+        "HELD:APPROVAL_MISMATCH"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 8,
+      "latency_ms": 818.9,
+      "correct": true,
+      "false_success": false,
+      "effects": 0,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "edited_after_approval",
+      "seed": 5,
+      "expect": "HOLD",
+      "claimed_success": false,
+      "final": [
+        "HELD:APPROVAL_MISMATCH"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 8,
+      "latency_ms": 823.8,
+      "correct": true,
+      "false_success": false,
+      "effects": 0,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "delayed_loading",
+      "seed": 1,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 11,
+      "latency_ms": 4949.0,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "delayed_loading",
+      "seed": 2,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 11,
+      "latency_ms": 3975.9,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "delayed_loading",
+      "seed": 3,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 11,
+      "latency_ms": 4993.6,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "delayed_loading",
+      "seed": 4,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 11,
+      "latency_ms": 6028.5,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "delayed_loading",
+      "seed": 5,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "CONFIRMED"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 11,
+      "latency_ms": 5006.2,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "lost_ack",
+      "seed": 1,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "UNCERTAIN->reconciled:1"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 27,
+      "latency_ms": 6764.0,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "lost_ack",
+      "seed": 2,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "UNCERTAIN->reconciled:1"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 27,
+      "latency_ms": 6737.5,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "lost_ack",
+      "seed": 3,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "UNCERTAIN->reconciled:1"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 27,
+      "latency_ms": 6748.9,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "lost_ack",
+      "seed": 4,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "UNCERTAIN->reconciled:1"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 27,
+      "latency_ms": 6825.8,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "lost_ack",
+      "seed": 5,
+      "expect": "APPLY_ONCE",
+      "claimed_success": true,
+      "final": [
+        "UNCERTAIN->reconciled:1"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 27,
+      "latency_ms": 6836.7,
+      "correct": true,
+      "false_success": false,
+      "effects": 1,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "wrong_version_document",
+      "seed": 1,
+      "expect": "HOLD",
+      "claimed_success": false,
+      "final": [
+        "HELD:APPROVAL_MISMATCH"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 24,
+      "latency_ms": 689.3,
+      "correct": true,
+      "false_success": false,
+      "effects": 0,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "wrong_version_document",
+      "seed": 2,
+      "expect": "HOLD",
+      "claimed_success": false,
+      "final": [
+        "HELD:APPROVAL_MISMATCH"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 24,
+      "latency_ms": 667.1,
+      "correct": true,
+      "false_success": false,
+      "effects": 0,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "wrong_version_document",
+      "seed": 3,
+      "expect": "HOLD",
+      "claimed_success": false,
+      "final": [
+        "HELD:APPROVAL_MISMATCH"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 24,
+      "latency_ms": 673.6,
+      "correct": true,
+      "false_success": false,
+      "effects": 0,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "wrong_version_document",
+      "seed": 4,
+      "expect": "HOLD",
+      "claimed_success": false,
+      "final": [
+        "HELD:APPROVAL_MISMATCH"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 24,
+      "latency_ms": 653.0,
+      "correct": true,
+      "false_success": false,
+      "effects": 0,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    },
+    {
+      "arm": "C_resolve_ieec",
+      "scenario": "wrong_version_document",
+      "seed": 5,
+      "expect": "HOLD",
+      "claimed_success": false,
+      "final": [
+        "HELD:APPROVAL_MISMATCH"
+      ],
+      "resend_clicks": 0,
+      "tool_calls": 24,
+      "latency_ms": 790.3,
+      "correct": true,
+      "false_success": false,
+      "effects": 0,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "effect_ok": true
+    }
+  ],
+  "summary": {
+    "A_naive": {
+      "runs": 35,
+      "correct": 3,
+      "wrong_target_effects": 28,
+      "duplicate_effects": 10,
+      "stale_or_unapproved_effects": 5,
+      "false_success_claims": 27,
+      "lost_ack_runs": 5,
+      "lost_ack_recovered_without_resend": 0,
+      "resend_clicks": 5,
+      "median_latency_ms": 909.5,
+      "peak_browser_rss_mb": 1259.0
+    },
+    "B_target_guard": {
+      "runs": 35,
+      "correct": 15,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 10,
+      "stale_or_unapproved_effects": 10,
+      "false_success_claims": 20,
+      "lost_ack_runs": 5,
+      "lost_ack_recovered_without_resend": 0,
+      "resend_clicks": 5,
+      "median_latency_ms": 929.5,
+      "peak_browser_rss_mb": 1276.2
+    },
+    "C_resolve_ieec": {
+      "runs": 35,
+      "correct": 35,
+      "wrong_target_effects": 0,
+      "duplicate_effects": 0,
+      "stale_or_unapproved_effects": 0,
+      "false_success_claims": 0,
+      "lost_ack_runs": 5,
+      "lost_ack_recovered_without_resend": 5,
+      "resend_clicks": 0,
+      "median_latency_ms": 867.2,
+      "peak_browser_rss_mb": 1280.5
+    }
+  },
+  "wall_seconds": 200.6
+}
