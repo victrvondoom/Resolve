@@ -6,3 +6,6 @@ data/cursor.lock
 data/fixtures/
 data/resolve.sqlite3*
 data/documents/
+
+# runtime sandbox data (never commit)
+data/sandboxes/
