@@ -15,6 +15,7 @@ The server **refuses to start** in production without `RESOLVE_ALLOWED_HOSTS` (a
 RESOLVE_MODE=production
 RESOLVE_ALLOWED_HOSTS=resolve.example.com        # exact Host header(s)
 RESOLVE_BIND=0.0.0.0
+RESOLVE_MASTER_KEY=<urlsafe base64, 32 bytes>        # REQUIRED in production; keep it secret and stable or sealed data becomes unreadable
 RESOLVE_PORT=8765
 RESOLVE_DOCUMENTS_DIR=/data/documents            # persistent volume
 RESOLVE_TENANTS_DB=/data/tenants.sqlite3
@@ -41,3 +42,9 @@ filesystem is ephemeral — use a mounted volume or accept that judge data reset
 ## Judge-demo checklist
 1. Deploy with the env above. 2. Open the URL → account dialog → **Create demo account**. 3. Flagship mission → **Load sample brief** →
 **Start mission** → **Approve** → download. 4. Delete from *Privacy & data* afterwards.
+
+## Render (Blueprint)
+`render.yaml` defines the service. Steps: Render dashboard -> New -> Blueprint -> pick this repo -> set `RESOLVE_MASTER_KEY` when prompted. The Blueprint needs a paid instance (persistent disk). Verified locally only: production-mode start with a master key returns 200 for `/api/health`, `/`, `/app` and static files; no Render deploy was run from this session.
+
+## Why not Vercel
+The server is a long-running stdlib HTTP server with SQLite files, background mission workers and a persistent disk. Vercel functions are short-lived with ephemeral storage, so the flagship mission would not work reliably there.

@@ -1,5 +1,6 @@
 <p align="center">
-  <img src="docs/readme/no-hands-challenge.png" alt="No Hands: The Wispr Challenge. WeMakeDevs × Wispr Flow" width="62%">
+<img width="632" height="631" alt="image" src="https://github.com/user-attachments/assets/993fdb9c-34d9-41af-9ac2-df77b08cfcbc" />
+
 </p>
 
 <p align="center">

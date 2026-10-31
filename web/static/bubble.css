@@ -169,3 +169,4 @@ th,td{border-bottom-color:rgba(120,90,50,.1)}
   .btn:hover:not(:disabled),.cards .card:hover,.status-card:hover,.bubble[data-interactive]:hover{transform:none}
 }
 @media (forced-colors:active){.btn,.card,.status-card{border:1px solid CanvasText}}
+
