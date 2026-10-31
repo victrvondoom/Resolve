@@ -672,10 +672,10 @@ class Handler(BaseHTTPRequestHandler):
         """Every inbox route goes through the tenant-scoped service. Unexpected failures return a generic message only."""
         try:
             status, payload = inbox_api.handle(method, path, query, data, user)
-        except Exception:
-            import traceback
-            traceback.print_exc()
-            status, payload = 500, {'error': 'inbox request failed; the server log has the details'}
+        except Exception as exc:
+            # log the route and the exception TYPE only: exception text can contain email content
+            print(f'inbox error: {method} {path} {type(exc).__name__}')
+            status, payload = 500, {'error': 'inbox request failed'}
         self.send_json(status, payload)
 
     def do_PUT(self):

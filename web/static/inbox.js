@@ -376,7 +376,8 @@
           <dl class="ib-kv"><dt>Recipient</dt><dd>${E(d.recipient)}</dd><dt>Cc</dt><dd>${E(d.cc || '—')}</dd><dt>Subject</dt><dd>${E(d.subject)}</dd>
           <dt>Draft version</dt><dd>${E(d.version)}</dd><dt>Digest</dt><dd><code>${E(d.digest)}</code></dd><dt>Approval expires</dt><dd>${E(when(approval.expires_at))}</dd></dl>
           <p class="ib-hint">The exact text that will be sent:</p><pre>${E(d.body)}</pre>
-          <p class="ib-hint">Source conversation: <a href="#thread:${E(d.thread_id)}" data-ib="nav" data-route="#thread:${E(d.thread_id)}">open</a>. Missing information: ${missing ? '' : 'none listed'}</p>
+          <p class="ib-hint">Source conversation: <a href="#thread:${E(d.thread_id)}" data-ib="nav" data-route="#thread:${E(d.thread_id)}">open</a>.</p>
+          <p class="ib-hint"><strong>Missing information:</strong> ${missing ? '<ul>' + missing + '</ul>' : 'none listed'}</p>
           ${IB.mode === 'LIVE' ? '' : '<p class="ib-banner ib-replay">Simulated. This will not be delivered by Gmail.</p>'}
           <div class="ib-actions">
             ${IB.mode === 'LIVE' ? `<button class="btn" type="button" data-ib="gmail-draft" data-approval="${E(approval.id)}" data-digest="${E(d.digest)}">Save as Gmail draft (verified by read-back)</button>` : ''}

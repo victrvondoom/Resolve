@@ -590,6 +590,23 @@ class InboxApiTests(unittest.TestCase):
         self.assertNotIn('AT-', text)
         self.assertNotIn('client-secret', text)
 
+    def test_email_text_never_appears_in_plaintext_in_the_database_file(self):
+        """A unique phrase from the message, the draft and the correction is searched for in the raw SQLite file after a full
+        sync, draft, approval, send and correction. Encryption at rest is checked end to end, not only in the store."""
+        marker = 'ZQXPHRASE-7741'
+        self.connect()
+        self.google.add_inbound('m1', 't1', 'Priya <priya@partner.example>', 'Checklist',
+                                f'Could you send the revised checklist by Friday? {marker}', self.clock[0] - 60)
+        self.live_sync()
+        tid = self.store.list_threads('usr_a', 'ws_a')[0]['id']
+        st, d = self.call('POST', f'/api/inbox/threads/{tid}/drafts', self.a, {'facts': {'status': f'I will send it. {marker}'}})
+        appr = self.call('POST', f'/api/inbox/drafts/{d["id"]}/approve', self.a, {'digest': d['digest'], 'operation': 'SEND_EMAIL'})[1]
+        self.call('POST', f'/api/inbox/drafts/{d["id"]}/send', self.a, {'approval_id': appr['id'], 'digest': d['digest']})
+        self.call('POST', f'/api/inbox/threads/{tid}/corrections', self.a, {'kind': 'OTHER', 'scope': 'ONE_TIME', 'dictated_text': marker})
+        raw = self.db.read_bytes()
+        self.assertNotIn(marker.encode(), raw, 'email and draft text must be sealed at rest')
+        self.assertNotIn(b'RT-secret', raw)
+
     def test_unknown_inbox_route_returns_not_found(self):
         st, out = self.call('GET', '/api/inbox/nope', self.a)
         self.assertEqual(st, 404)
