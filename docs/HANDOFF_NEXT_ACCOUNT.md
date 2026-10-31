@@ -4,8 +4,8 @@ Read this file first; it is self-contained. Authoritative rules remain `AGENTS.m
 
 ## A. Repository identity
 - Repository: https://github.com/victrvondoom/Resolve (project RESOLVE). Never touch `RESOLVE---wipsr-and-solve`.
-- Work branch: `claude/gracious-ride-qzs42x` (fast-forwarded from `claude/dazzling-johnson-m8trhu` @ `359c3bf`, which was based on `master` @ `06278fa`). Latest commit: see `git log -1` / PR below (HEAD_PLACEHOLDER).
-- Handoff date: 2026-10-31. Draft PR: PR_PLACEHOLDER (target `master`; not merged).
+- Work branch: `claude/gracious-ride-qzs42x` (fast-forwarded from `claude/dazzling-johnson-m8trhu` @ `359c3bf`, which was based on `master` @ `06278fa`). Latest commit: `930bc80` (content commit; later commits only update this file).
+- Handoff date: 2026-10-31. Draft PR: https://github.com/victrvondoom/Resolve/pull/14 (target `master`; not merged).
 - Why this branch: the session was assigned `claude/gracious-ride-qzs42x`; the earlier branch had no PR and was not checked out anywhere, so it was merged in by fast-forward and nothing was force-pushed.
 
 ## B. Work completed
