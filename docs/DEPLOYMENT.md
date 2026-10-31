@@ -1,4 +1,4 @@
-# Deployment (prepared, NOT deployed)
+# Deployment (container verified locally; NOT deployed to a public host)
 
 No hosting credentials existed in this session, so **there is no live URL**. Nothing here has been run on a hosting provider.
 
@@ -34,8 +34,20 @@ TLS must be terminated by the platform (the app speaks plain HTTP). Persistent d
   process is not tenant isolation.
 The flagship mission (documents, workers, PDF, privacy) needs no browser and works in production mode.
 
-## Image
-`Dockerfile` (untested — no image was built in this session). Single container, non-root user, health check `GET /api/health`.
+## Image (built and smoke-tested locally, 2026-10-31)
+`Dockerfile`: single container, non-root user, health check `GET /api/health`. `--build-arg WITH_STT=1` adds `vosk` and the offline
+English model so speech works with no API key. `BASE_IMAGE` can point at a registry mirror.
+
+```
+docker build --build-arg WITH_STT=1 -t resolve:smoke .
+python scripts/docker_smoke.py --image resolve:smoke
+```
+Measured on this host (Docker 29.9.2, base `mirror.gcr.io/library/python:3.12-slim`, built behind a TLS-inspecting proxy with
+`--network host --secret id=ca,src=<ca bundle> --build-arg https_proxy=...`): **13/13 checks passed** — production mode, security
+headers, register, PDF create + download with matching SHA-256, cross-user download 404, Vosk health, real WAV transcribed inside the
+container, restart on the same volume keeps the account and the document, forged token 401.
+The smoke run found a real defect: the image crashed on boot because `apps/` was not copied (fixed; `tests/test_dockerfile.py` guards it).
+CI runs the same build and smoke script (`.github/workflows/ci.yml`, job `docker-smoke`); no CI run result has been observed from this session.
 Suggested hosts: any container PaaS with a persistent volume and TLS (Fly.io, Render, Railway, Cloud Run + volume). Cloud Run's
 filesystem is ephemeral — use a mounted volume or accept that judge data resets on restart.
 

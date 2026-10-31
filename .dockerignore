@@ -1,0 +1,13 @@
+.git
+.venv
+.claude
+**/__pycache__
+tests
+harness
+docs
+benchmarks
+data/*.sqlite3*
+data/models
+data/documents
+data/sandboxes
+data/fixtures
