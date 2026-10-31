@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="docs/readme/no-hands-challenge.png" alt="No Hands: The Wispr Challenge. WeMakeDevs × Wispr Flow" width="62%">
+</p>
+
+<p align="center">
   <img src="docs/readme/intro.gif" alt="RESOLVE intro video: two sculpted blocks enter from opposite sides, assemble, and reveal RESOLVE, Wispr &amp; Solve, the Wispr Flow mark and the WeMakeDevs challenge" width="86%">
   <br>
   <a href="docs/readme/intro.mp4">▶ Watch the full intro video (MP4)</a> · generated from the running app by <code>python scripts/record_intro_video.py</code>
