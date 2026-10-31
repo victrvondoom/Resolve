@@ -77,13 +77,14 @@ class InboxServiceTests(unittest.TestCase):
         self.assertEqual(self.store.list_triage('usr_b', 'ws_b'), [])
 
     def test_morning_brief_is_empty_without_data_and_built_from_records(self):
-        empty = morning_brief(self.store, *self.a)
-        self.assertTrue(all(v == [] for v in empty.values()))
+        empty = morning_brief(self.store, *self.a, user_address=ME, tz_name='Europe/Berlin', now=NOW)
+        self.assertTrue(all(v == 0 for v in empty['summary'].values()))
+        self.assertTrue(all(v == [] for k, v in empty.items() if isinstance(v, list)))
         sync_connection(self.store, *self.a, FakeClient([msg('m1', 't1', 'Ana <ana@example.test>', "Could you send the revised proposal by Friday?")]), ME)
-        brief = morning_brief(self.store, *self.a)
-        surfaced = len(brief['upcoming_deadlines']) + len(brief['needs_reply']) + len(brief['needs_attention'])
-        self.assertGreater(surfaced, 0, "the stored request should surface in the brief")
-        self.assertEqual(brief['you_promised'], [])
+        brief = morning_brief(self.store, *self.a, user_address=ME, tz_name='Europe/Berlin', now=NOW)
+        self.assertGreater(brief['summary']['needs_attention'] + brief['summary']['replies_required'] + len(brief['requests_to_me']), 0)
+        self.assertEqual(brief['my_commitments'], [])
+        self.assertEqual(brief['summary']['overdue'], 0)
 
     def test_draft_uses_only_facts_the_user_gave_and_asks_for_the_rest(self):
         thread = [{"id": "m1", "sender": "Ana <ana@example.test>", "subject": "Pricing",

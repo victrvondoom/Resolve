@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 CATEGORIES = ("ACTION_REQUIRED", "REPLY_REQUIRED", "WAITING_ON_SOMEONE", "DEADLINE_TIME_SENSITIVE", "IMPORTANT_INFORMATION",
               "GENERAL_INFORMATION", "AUTOMATED_LOW_PRIORITY", "UNCERTAIN_HUMAN_REVIEW")
@@ -30,57 +31,131 @@ def sentences(text: str) -> list[str]:
     return [p.strip() for p in parts if p and p.strip()]
 
 
-def resolve_deadline(sentence: str, sent_at: float, tz_offset_hours: int = 0) -> tuple[float | None, str | None, str | None]:
-    """Return (deadline_ts, confidence, review_reason). deadline is the END of the due day in the configured timezone.
-    Never invents a date: no match -> (None, None, None). Ambiguous phrases -> (None, 'AMBIGUOUS', reason)."""
-    tz = timezone(timedelta(hours=tz_offset_hours))
+TIME_OF_DAY = re.compile(r"\b(?:by|before|at|until|no later than|around)\s+(noon|midnight|\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)|\d{1,2}:\d{2})\b", re.I)
+
+
+def _zone(tz_name):
+    """An IANA zone name. An integer is a fixed UTC offset in hours (kept for older callers only)."""
+    if isinstance(tz_name, int):
+        return timezone(timedelta(hours=tz_name)), f"UTC{tz_name:+d}"
+    try:
+        return ZoneInfo(tz_name or "UTC"), tz_name or "UTC"
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ValueError(f"unknown timezone: {tz_name!r}")
+
+
+def _clock(text):
+    """'noon' -> 12:00, '4 PM' -> 16:00, '16:30' -> 16:30. None when no clock time is stated."""
+    m = TIME_OF_DAY.search(text)
+    if not m:
+        return None
+    raw = m.group(1).lower().replace(".", "")
+    if raw == "noon":
+        return 12, 0
+    if raw == "midnight":
+        return 0, 0
+    mm = re.match(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$", raw)
+    hour, minute = int(mm.group(1)), int(mm.group(2) or 0)
+    if mm.group(3):
+        if not 1 <= hour <= 12:
+            return None
+        hour = hour % 12 + (12 if mm.group(3) == "pm" else 0)
+    if hour > 23 or minute > 59:
+        return None
+    return hour, minute
+
+
+def resolve_deadline_detail(sentence: str, sent_at: float, tz_name: str = "UTC") -> dict:
+    """Full deadline record: resolved instant, the original phrase, zone, confidence and whether it was explicit.
+    A date without a clock time resolves to the end of that day in the configured zone. A clock time resolves to that
+    instant. Vague phrases and 'next <weekday>' are AMBIGUOUS and get no date."""
+    tz, zone_label = _zone(tz_name)
     base = datetime.fromtimestamp(sent_at, tz)
     s = sentence.lower()
+    empty = {"deadline_at": None, "deadline_confidence": None, "review_reason": None, "phrase": None, "timezone": zone_label, "explicit": False}
     if AMBIGUOUS_TIME.search(s) and not re.search(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|\d{1,2}\s*(st|nd|rd|th)?\b)", s):
-        return None, "AMBIGUOUS", "the time phrase is vague; please set the deadline"
-    if re.search(r"\bnext (monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", s):
-        return None, "AMBIGUOUS", "'next <weekday>' can mean two different days; please confirm"
-    due = None
+        return {**empty, "deadline_confidence": "AMBIGUOUS", "review_reason": "the time phrase is vague; please set the deadline",
+                "phrase": AMBIGUOUS_TIME.search(s).group(0)}
+    nxt = re.search(r"\bnext (monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", s)
+    if nxt:
+        return {**empty, "deadline_confidence": "AMBIGUOUS", "review_reason": "'next <weekday>' can mean two different days; please confirm", "phrase": nxt.group(0)}
+    due, conf, phrase, explicit = None, None, None, False
     if re.search(r"\btomorrow\b", s):
-        due = base + timedelta(days=1)
-        conf = "RESOLVED_RELATIVE"
+        due, conf, phrase = base + timedelta(days=1), "RESOLVED_RELATIVE", "tomorrow"
     elif re.search(r"\btoday\b", s):
-        due = base
-        conf = "RESOLVED_RELATIVE"
+        due, conf, phrase = base, "RESOLVED_RELATIVE", "today"
     else:
         for i, name in enumerate(WEEKDAYS):
-            if re.search(rf"\b(by|on|before|until)\s+{name}\b", s):
+            hit = re.search(rf"\b(by|on|before|until)\s+({name})\b", s)
+            if hit:
                 delta = (i - base.weekday()) % 7
-                due = base + timedelta(days=delta)
-                conf = "RESOLVED_RELATIVE"
+                due, conf, phrase = base + timedelta(days=delta), "RESOLVED_RELATIVE", hit.group(0)
                 break
         else:
             m = re.search(r"\b(by|on|before)\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})\b", s)
             if m:
                 month, day = MONTHS[m.group(2)], int(m.group(3))
                 year = base.year if (month, day) >= (base.month, base.day) else base.year + 1
-                due = datetime(year, month, day, tzinfo=tz)
-                conf = "EXPLICIT_DATE"
+                due, conf, phrase, explicit = datetime(year, month, day, tzinfo=tz), "EXPLICIT_DATE", m.group(0), True
             else:
                 iso = re.search(r"\b(20\d{2})-(\d{2})-(\d{2})\b", s)
                 if iso:
                     due = datetime(int(iso.group(1)), int(iso.group(2)), int(iso.group(3)), tzinfo=tz)
-                    conf = "EXPLICIT_DATE"
-    if due is None:
-        return None, None, None
+                    conf, phrase, explicit = "EXPLICIT_DATE", iso.group(0), True
+    clock = _clock(sentence)
+    if clock is None and due is None:
+        return empty
+    if clock is not None:
+        if due is None:
+            due, conf, phrase, explicit = base, "RESOLVED_RELATIVE", TIME_OF_DAY.search(sentence).group(0), True
+        else:
+            phrase = f"{phrase} {TIME_OF_DAY.search(sentence).group(0)}".strip()
+        due = due.replace(hour=clock[0], minute=clock[1], second=0, microsecond=0)
+        return {"deadline_at": due.timestamp(), "deadline_confidence": conf, "review_reason": None, "phrase": phrase, "timezone": zone_label, "explicit": explicit}
     end_of_day = due.replace(hour=23, minute=59, second=59, microsecond=0)
-    return end_of_day.timestamp(), conf, None
+    return {"deadline_at": end_of_day.timestamp(), "deadline_confidence": conf, "review_reason": None, "phrase": phrase, "timezone": zone_label, "explicit": explicit}
 
 
-def extract_commitments(messages: list[dict], user_address: str) -> list[dict]:
-    """messages: [{id, sender, body, sent_at}]. Returns commitments with exact evidence sentences."""
+def resolve_deadline(sentence: str, sent_at: float, tz_name="UTC") -> tuple[float | None, str | None, str | None]:
+    """Compatibility wrapper: (deadline_ts, confidence, review_reason). Never invents a date."""
+    d = resolve_deadline_detail(sentence, sent_at, tz_name)
+    return d["deadline_at"], d["deadline_confidence"], d["review_reason"]
+
+
+_STOP = {"could", "would", "will", "please", "that", "this", "with", "from", "your", "have", "just", "need", "want", "into", "about", "them", "there", "should", "they", "their", "then", "than"}
+_DEADLINE_WORDS = re.compile(r"\b(by|before|until|on|no later than|tomorrow|today|next|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|midnight|at)\b|\d{1,2}(:\d{2})?\s*(am|pm)|\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}\b|\b20\d{2}-\d{2}-\d{2}\b", re.I)
+
+
+def obligation_key(action: str) -> str:
+    """Stable identity of an obligation inside a thread: its content words with the deadline phrase removed.
+    'Could you send the revised proposal by Wednesday?' and '... by Friday?' share one key (one obligation, two dates);
+    'send the checklist' and 'send the schema' do not."""
+    text = _DEADLINE_WORDS.sub(" ", action.lower())
+    words = sorted({w for w in re.findall(r"[a-z0-9]+", text) if len(w) > 2 and w not in _STOP and w not in {"you", "the", "and", "for"}})
+    return " ".join(words)[:200]
+
+
+def _person(header: str) -> str:
+    m = re.search(r"<([^>]+)>", header or "")
+    return (m.group(1) if m else (header or "")).strip().lower()
+
+
+def extract_commitments(messages: list[dict], user_address: str, tz_name="UTC") -> list[dict]:
+    """messages: [{id, sender, to, body, sent_at}]. Returns commitments with the exact evidence sentence and the owners.
+
+    Ownership is resolved from the authenticated mailbox address and the actual sender or recipient, never from a
+    display name alone. If a party cannot be resolved the field is None and ownership_state says so.
+    """
     out = []
-    user = (user_address or "").lower()
+    user = (user_address or "").lower().strip()
     for m in messages:
-        sender = (m.get("sender") or "").lower()
+        sender_raw = m.get("sender") or ""
+        sender = sender_raw.lower()
         if AUTOMATED_SENDER.search(sender) or AUTOMATED_BODY.search(m.get("body", "")):
             continue                      # automated notices never create commitments
         from_user = bool(user) and user in sender
+        sender_addr = _person(sender_raw)
+        recipient_addr = _person((m.get("to") or "").split(",")[0]) if m.get("to") else None
         for sent in sentences(m.get("body", "")):
             if HYPOTHETICAL_RE.search(sent) or HISTORICAL_RE.search(sent):
                 continue
@@ -95,13 +170,25 @@ def extract_commitments(messages: list[dict], user_address: str) -> list[dict]:
                 kind, action = "DEPENDENCY", sent
             if kind is None:
                 continue
-            deadline, conf, review = resolve_deadline(sent, m["sent_at"])
+            if kind == "PROMISE_BY_USER":
+                requesting, responsible = (recipient_addr or None), user or None
+            elif kind == "PROMISE_BY_OTHER":
+                requesting, responsible = user or None, sender_addr or None
+            elif kind == "REQUEST_TO_USER":
+                requesting, responsible = sender_addr or None, user or None
+            else:                                           # a dependency names no owner the mail can prove
+                requesting, responsible = sender_addr or None, None
+            state = "RESOLVED" if (requesting and responsible) else ("UNRESOLVED" if responsible is None else "PARTIAL")
+            d = resolve_deadline_detail(sent, m["sent_at"], tz_name)
             out.append({"source_message_id": m["id"], "kind": kind, "required_action": action[:300], "evidence_text": sent[:500],
-                        "deadline_at": deadline, "deadline_confidence": conf, "review_reason": review})
+                        "deadline_at": d["deadline_at"], "deadline_confidence": d["deadline_confidence"], "review_reason": d["review_reason"],
+                        "deadline_phrase": d["phrase"], "deadline_timezone": d["timezone"], "deadline_explicit": d["explicit"],
+                        "requesting_person": requesting, "responsible_person": responsible, "ownership_state": state,
+                        "obligation_key": obligation_key(action), "sent_at": m["sent_at"]})
     return out
 
 
-def triage_thread(messages: list[dict], user_address: str) -> dict:
+def triage_thread(messages: list[dict], user_address: str, tz_name="UTC") -> dict:
     """Classify a thread from its messages. Returns category, priority, confidence, reasons and evidence sentences."""
     user = (user_address or "").lower()
     last = max(messages, key=lambda m: m["sent_at"])
@@ -110,8 +197,9 @@ def triage_thread(messages: list[dict], user_address: str) -> dict:
     if AUTOMATED_SENDER.search(last.get("sender", "")) or AUTOMATED_BODY.search(text):
         return _decision("AUTOMATED_LOW_PRIORITY", "LOW", 0.9, ["automated sender or unsubscribe footer"], [last.get("sender", "")], messages)
     from_user_last = bool(user) and user in last.get("sender", "").lower()
-    commitments = extract_commitments(messages, user_address)
-    deadlines = [c for c in commitments if c["deadline_at"]]
+    commitments = extract_commitments(messages, user_address, tz_name)
+    # a deadline the USER must act on drives the deadline category; a deadline on someone else's promise is 'waiting'
+    deadlines = [c for c in commitments if c["deadline_at"] and c["kind"] in ("REQUEST_TO_USER", "DEPENDENCY")]
     ambiguous = [c for c in commitments if c["deadline_confidence"] == "AMBIGUOUS"]
     questions = [s for s in sentences(last.get("body", "")) if s.endswith("?")]
     if ambiguous:

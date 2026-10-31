@@ -1,8 +1,8 @@
 {
   "summary": {
     "fixtures": 12,
-    "fixtures_fully_passing": 8,
-    "category_accuracy": 0.667,
+    "fixtures_fully_passing": 9,
+    "category_accuracy": 0.75,
     "note": "measured on labelled fixtures only; not a claim about live inboxes"
   },
   "rows": [
@@ -210,9 +210,9 @@
       "id": "F11",
       "name": "waiting_on_other_promise",
       "expected": "WAITING_ON_SOMEONE",
-      "got": "DEADLINE_TIME_SENSITIVE",
-      "priority": "HIGH",
-      "confidence": 0.85,
+      "got": "WAITING_ON_SOMEONE",
+      "priority": "NORMAL",
+      "confidence": 0.7,
       "commitments": [
         {
           "kind": "PROMISE_BY_OTHER",
@@ -222,11 +222,11 @@
         }
       ],
       "checks": {
-        "category": false,
+        "category": true,
         "commitment_kinds": true,
         "deadlines": true
       },
-      "pass": false
+      "pass": true
     },
     {
       "id": "F12",

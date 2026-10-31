@@ -167,6 +167,11 @@ class GmailClient:
     def get_message(self, message_id: str) -> dict:
         return parse_message(self._call("GET", f"/messages/{message_id}", params={"format": "full"}))
 
+    def profile(self) -> dict:
+        """The authenticated mailbox identity. Ownership of commitments is decided against this address."""
+        data = self._call("GET", "/profile")
+        return {"email": (data.get("emailAddress") or "").lower(), "messages_total": data.get("messagesTotal")}
+
     def sync_all(self, query: str = "", max_pages: int = 50) -> list[dict]:
         """Full pagination. Incremental sync is done by the caller with a stored history checkpoint (see inbox_sync)."""
         out, token = [], None
@@ -179,23 +184,40 @@ class GmailClient:
         return out
 
 
-# ---------- send path: build, send, draft, read back, search by operation marker
+# ---------- send path: build, send, draft, read back, correlate by RFC 822 Message-ID
 
-def operation_marker(operation_key: str) -> str:
-    """A visible line placed in the message body. Gmail search can find it later, so a timed-out send can be checked."""
-    return f"[RESOLVE operation {operation_key}]"
+# The correlation identifier is an RFC 822 Message-ID header. It is not visible in the message body (no marker, footer,
+# comment or invisible text is ever added to the approved content). Gmail search supports `rfc822msgid:` for Sent and
+# Drafts, so a send whose response was lost can be located read-only. Whether Gmail keeps a client-supplied Message-ID
+# unchanged is provider behaviour that must be confirmed with a live account; if it is rewritten, read-back fails
+# closed to UNCERTAIN and nothing is resent.
+CORRELATION_DOMAIN = "mail.resolve.invalid"
 
 
-def build_raw_message(to: str, subject: str, body: str, operation_key: str) -> str:
+def correlation_id(operation_key: str) -> str:
+    """Message-ID value without angle brackets (the form Gmail's rfc822msgid: operator uses)."""
+    return f"resolve.{operation_key}@{CORRELATION_DOMAIN}"
+
+
+def normalize_body(text: str) -> str:
+    """Safe normalization for comparing the approved body with the stored body: line endings and surrounding whitespace only."""
+    return (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def build_raw_message(to: str, subject: str, body: str, operation_key: str, cc: str | None = None) -> str:
+    """The message carries exactly the approved content plus standard addressing headers and the correlation Message-ID."""
     msg = EmailMessage()
     msg["To"] = to
+    if cc:
+        msg["Cc"] = cc
     msg["Subject"] = subject
-    msg.set_content(f"{body}\n\n{operation_marker(operation_key)}")
+    msg["Message-ID"] = f"<{correlation_id(operation_key)}>"
+    msg.set_content(body)
     return base64.urlsafe_b64encode(msg.as_bytes()).decode().rstrip("=")
 
 
 def parse_raw(raw_b64: str) -> dict:
-    """Read back a raw message (what the provider actually stored): recipient, subject, body text."""
+    """Read back a raw message (what the provider actually stored): addressing, subject, Message-ID and body text."""
     data = base64.urlsafe_b64decode(raw_b64 + "=" * (-len(raw_b64) % 4))
     m = message_from_bytes(data)
     body = ""
@@ -206,7 +228,8 @@ def parse_raw(raw_b64: str) -> dict:
                 break
     else:
         body = m.get_payload(decode=True).decode("utf-8", errors="replace")
-    return {"to": m.get("To", ""), "subject": m.get("Subject", ""), "body": body}
+    return {"to": m.get("To", ""), "cc": m.get("Cc", ""), "subject": m.get("Subject", ""),
+            "message_id": (m.get("Message-ID", "") or "").strip().strip("<>"), "body": body}
 
 
 class GmailSendClient(GmailClient):
@@ -224,8 +247,11 @@ class GmailSendClient(GmailClient):
         data = self._call("GET", f"/messages/{message_id}", params={"format": "raw"})
         return parse_raw(data["raw"])
 
-    def find_by_marker(self, operation_key: str) -> list[str]:
-        """Messages in Sent that carry this operation's marker. An empty list does NOT prove the send did not happen."""
-        q = f'in:sent "{operation_marker(operation_key)}"'
-        data = self._call("GET", "/messages", params={"q": q, "maxResults": 5})
+    def find_by_correlation(self, operation_key: str) -> list[str]:
+        """Sent messages with this correlation Message-ID. An empty list does NOT prove the send did not happen."""
+        data = self._call("GET", "/messages", params={"q": f"in:sent rfc822msgid:{correlation_id(operation_key)}", "maxResults": 5})
+        return [m["id"] for m in data.get("messages", [])]
+
+    def find_draft_by_correlation(self, operation_key: str) -> list[str]:
+        data = self._call("GET", "/messages", params={"q": f"in:drafts rfc822msgid:{correlation_id(operation_key)}", "maxResults": 5})
         return [m["id"] for m in data.get("messages", [])]
