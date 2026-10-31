@@ -283,3 +283,15 @@ textarea,input,select{padding:12px 14px}
   .view-head{margin-bottom:22px}
   .fm-table td{padding:0}
 }
+
+/* ---- editorial typography: serif headings, sans body. Local font stacks only (CSP blocks remote font files). */
+:root{
+  --font-display:"Iowan Old Style","Palatino Linotype",Palatino,Charter,"Book Antiqua",Georgia,serif;
+  --font-body:"Inter","Segoe UI",system-ui,-apple-system,sans-serif;
+}
+body{font-family:var(--font-body);color:#272722}
+h1,h2,h3,.card-head h2{font-family:var(--font-display);font-weight:500;letter-spacing:-.005em;color:#272722}
+h1{font-size:34px;line-height:1.2;margin:0 0 10px}
+h2{font-size:21px;line-height:1.3}
+.view-head p,.muted{color:#737168}
+.lead{font-size:16.5px;line-height:1.7}
