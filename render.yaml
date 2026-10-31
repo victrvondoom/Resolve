@@ -1,0 +1,24 @@
+# Render Blueprint: one-click deploy of the full stack (Python server + web UI) as a single Docker web service.
+# Needs a paid instance type because the SQLite files and PDFs live on a persistent disk (disks are not available on free plans).
+services:
+  - type: web
+    name: resolve
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    disk:
+      name: resolve-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: RESOLVE_MODE
+        value: production
+      - key: RESOLVE_BIND
+        value: 0.0.0.0
+      - key: RESOLVE_PORT
+        value: "8765"
+      - key: RESOLVE_ALLOWED_HOSTS
+        fromService: {type: web, name: resolve, property: host}   # exact Host header, e.g. resolve-xxxx.onrender.com
+      - key: RESOLVE_MASTER_KEY
+        generateValue: false   # set once in the dashboard: python -c "import os,base64;print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+        sync: false

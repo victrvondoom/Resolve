@@ -169,3 +169,9 @@ th,td{border-bottom-color:rgba(120,90,50,.1)}
   .btn:hover:not(:disabled),.cards .card:hover,.status-card:hover,.bubble[data-interactive]:hover{transform:none}
 }
 @media (forced-colors:active){.btn,.card,.status-card{border:1px solid CanvasText}}
+
+/* ---------- bold text (requested): every text role is heavier; display type keeps its serif at bold weight ---------- */
+body,p,li,dd,dt,td,th,label,small,span,a,button,input,select,textarea,.lede,.section-lede,.card p,.muted{font-weight:600}
+h1,h2,h3,h4,.brand,.step,.eyebrow,th,.btn,.chip,b,strong{font-weight:800}
+.brand span{font-size:1.05rem;letter-spacing:.1em}
+.brand small{font-weight:600}
