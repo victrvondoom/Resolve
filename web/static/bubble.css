@@ -1,0 +1,171 @@
+/* RESOLVE — "creamy bubbles" design layer.
+   Loaded LAST on the landing page and Mission Control; only tokens, surfaces, motion and the hero scene change.
+   No external fonts or libraries (the app runs offline). Reduced-motion users get no float/parallax/3D animation. */
+:root{
+  --cream-50:#fffdf8;--cream-100:#fbf7ef;--cream-200:#f4ecdc;--cream-300:#ebe0c8;
+  --ink:#2b2622;--ink-muted:#625a50;
+  --peach:#ffcfb0;--butter:#ffe7a3;--sage-b:#cfe3cf;--sky:#cfe0f2;
+  --bg:var(--cream-50);--bg-alt:var(--cream-100);--text:var(--ink);--muted:var(--ink-muted);
+  --focus:#2b2622;--focus-ring:#ffcfb0;
+  --radius:32px;--radius-lg:44px;--pill:9999px;
+  --shadow-puff:0 1px 0 rgba(255,255,255,.9) inset,0 -10px 20px rgba(0,0,0,.04) inset,0 18px 40px -12px rgba(120,90,50,.22),0 4px 10px rgba(120,90,50,.10);
+  --shadow-puff-hover:0 1px 0 rgba(255,255,255,.95) inset,0 -12px 24px rgba(0,0,0,.05) inset,0 30px 56px -14px rgba(120,90,50,.30),0 8px 16px rgba(120,90,50,.12);
+  --shadow-press:0 6px 14px rgba(120,90,50,.16) inset,0 1px 0 rgba(255,255,255,.8);
+  --lift:var(--shadow-puff);--float:var(--shadow-puff-hover);--shadow:var(--shadow-puff);
+  --bubble-bg:radial-gradient(120% 120% at 30% 15%,#fff 0%,#fffaf0 45%,#f4ecdc 100%);
+  --spring:cubic-bezier(.34,1.56,.64,1);
+  --font-display:"EB Garamond",Garamond,"Iowan Old Style","Palatino Linotype",Georgia,serif;
+  --font-ui:"Figtree","Nunito","Avenir Next Rounded",ui-rounded,"Segoe UI",system-ui,-apple-system,sans-serif;
+}
+body{
+  font-family:var(--font-ui);color:var(--ink);position:relative;
+  background:radial-gradient(1400px 900px at 50% -10%,var(--cream-50) 0%,var(--cream-100) 100%) fixed,var(--cream-100);
+}
+/* faint grain, 3.5% */
+body::after{content:"";position:fixed;inset:0;z-index:200;pointer-events:none;opacity:.035;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
+:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:12px;box-shadow:0 0 0 5px var(--focus-ring)}
+
+/* ---------- the Bubble surface (also applied by selector to cards, tiles, chips, buttons) ---------- */
+.bubble,.landing .card,.status-card,.pipeline li,.try-steps li,.table-card,.card{
+  position:relative;background:var(--bubble-bg);border:0;border-radius:var(--radius-lg);box-shadow:var(--shadow-puff);isolation:isolate}
+.bubble::before,.landing .card::before,.status-card::before,.pipeline li::before,.table-card::before{
+  content:"";position:absolute;left:7%;top:5%;width:34%;height:22%;border-radius:50%;z-index:-1;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(255,255,255,.95),rgba(255,255,255,0));filter:blur(2px);transform:rotate(-18deg)}
+.bubble[data-tone=peach]{--bubble-bg:radial-gradient(120% 120% at 30% 15%,#fff 0%,#ffe9da 45%,#ffcfb0 130%)}
+.bubble[data-tone=butter]{--bubble-bg:radial-gradient(120% 120% at 30% 15%,#fff 0%,#fff3cf 45%,#ffe7a3 130%)}
+.bubble[data-tone=sage]{--bubble-bg:radial-gradient(120% 120% at 30% 15%,#fff 0%,#e7f1e7 45%,#cfe3cf 130%)}
+.bubble[data-tone=sky]{--bubble-bg:radial-gradient(120% 120% at 30% 15%,#fff 0%,#e6eff8 45%,#cfe0f2 130%)}
+.bubble[data-interactive],.cards .card,.status-card{transition:transform .35s var(--spring),box-shadow .35s ease}
+.bubble[data-interactive]:hover,.cards .card:hover,.status-card:hover{transform:translateY(-4px) scale(1.02);box-shadow:var(--shadow-puff-hover)}
+.bubble[data-interactive]:active{transform:scale(.98)}
+@keyframes bub-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.float{animation:bub-float var(--dur,7s) ease-in-out var(--delay,0s) infinite}
+/* staggered offsets so tiles overlap slightly */
+.cards .card:nth-child(2),.status-grid .status-card:nth-child(3n+2){margin-top:28px}
+.cards .card:nth-child(3){margin-top:-8px}
+.cards{gap:28px}.status-grid{gap:26px}
+
+/* ---------- header: floating pill that shrinks on scroll ---------- */
+.site-header{position:fixed;top:14px;left:0;right:0;z-index:50;background:none;border:0;backdrop-filter:none;-webkit-backdrop-filter:none;pointer-events:none}
+.site-header .header-row{pointer-events:auto;width:min(960px,calc(100% - 24px));margin:0 auto;height:64px;padding:0 12px 0 22px;border-radius:var(--pill);
+  background:color-mix(in srgb,var(--cream-50) 72%,transparent);backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);
+  box-shadow:var(--shadow-puff);transition:height .3s var(--spring),width .3s var(--spring)}
+.site-header.shrunk .header-row{height:50px;width:min(760px,calc(100% - 24px))}
+.nav-links a{border-radius:var(--pill);color:var(--ink-muted)}
+.nav-links a:hover{background:var(--cream-200);color:var(--ink)}
+main{padding-top:0}
+.hero-inner{padding-top:150px}
+
+/* ---------- buttons & chips: always pills ---------- */
+.btn{border:0;border-radius:var(--pill);background:var(--bubble-bg);color:var(--ink);box-shadow:var(--shadow-puff);
+  font-family:var(--font-ui);font-weight:650;transition:transform .35s var(--spring),box-shadow .35s ease}
+.btn:hover:not(:disabled){transform:translateY(-4px) scale(1.02);box-shadow:var(--shadow-puff-hover);border-color:transparent}
+.btn:active:not(:disabled){transform:scale(.98);box-shadow:var(--shadow-press)}
+.btn-primary{background:radial-gradient(120% 140% at 30% 10%,#4a423b 0%,#2b2622 60%,#1f1b18 100%);color:#fffdf8;
+  box-shadow:0 1px 0 rgba(255,255,255,.25) inset,0 -8px 16px rgba(0,0,0,.25) inset,0 18px 34px -12px rgba(43,38,34,.5),0 4px 10px rgba(43,38,34,.18)}
+.btn-ghost{background:var(--bubble-bg);box-shadow:var(--shadow-puff)}
+.btn-danger{background:radial-gradient(120% 120% at 30% 15%,#fff 0%,#ffe9e2 100%);color:#8c2a16;border:0}
+.btn-quiet{background:transparent;box-shadow:none}
+.btn-small{padding:8px 16px}.btn-lg{padding:15px 28px}
+.chip,.verdicts span,.i3d-dim{border:0;border-radius:var(--pill);box-shadow:0 1px 0 #fff inset,0 6px 14px -8px rgba(120,90,50,.35)}
+.chip-ok{background:linear-gradient(180deg,#f2f8f1,var(--sage-b))}.chip-warn{background:linear-gradient(180deg,#fff7e0,var(--butter))}
+.chip-muted{background:linear-gradient(180deg,#fffdf8,var(--cream-200))}
+.eyebrow{padding:7px 16px 7px 12px;border-radius:var(--pill);background:var(--bubble-bg);box-shadow:var(--shadow-puff);color:var(--ink);letter-spacing:.1em}
+.dot{background:var(--peach);box-shadow:0 0 0 4px rgba(255,207,176,.4)}
+code{border:0;border-radius:var(--pill);background:var(--cream-200)}
+input,select,textarea{border-radius:24px!important;border:0!important;background:var(--cream-100)!important;box-shadow:inset 0 3px 8px rgba(120,90,50,.14),inset 0 1px 0 rgba(120,90,50,.05),0 1px 0 #fff!important}
+
+/* ---------- type: big, round, friendly ---------- */
+h1,h2,h3{font-family:var(--font-display);font-weight:500;color:var(--ink)}
+h1{font-size:clamp(3rem,8vw,7rem);line-height:.98;letter-spacing:-.035em;max-width:11ch}
+h2{font-size:clamp(2.2rem,5vw,4rem);line-height:1.02;letter-spacing:-.03em;max-width:20ch}
+h3{font-size:1.5rem;line-height:1.15}
+.grad{background:linear-gradient(100deg,#8b5a2b,#c9843f 55%,#8b5a2b);-webkit-background-clip:text;background-clip:text;color:transparent;font-style:italic}
+.lede,.section-lede,.card p{color:var(--ink-muted)}
+.eyebrow,.step,.chip,.btn{font-family:var(--font-ui)}
+
+/* ---------- sections ---------- */
+.band{padding:clamp(96px,12vw,160px) 0;position:relative}
+.band-alt{background:transparent}
+.band-alt::before{content:"";position:absolute;inset:40px 0;z-index:-1;border-radius:var(--radius-lg);background:radial-gradient(900px 400px at 50% 0%,rgba(255,231,163,.22),transparent 70%),radial-gradient(700px 400px at 100% 100%,rgba(207,224,242,.35),transparent 70%)}
+.card-icon{border:0;border-radius:50%;background:radial-gradient(120% 120% at 30% 15%,#fff,var(--sage-b));box-shadow:var(--shadow-puff);width:56px;height:56px}
+.card-icon svg{stroke:#4f6e4e}
+.card .fix{border-top:0;box-shadow:0 -1px 0 rgba(120,90,50,.1)}
+
+/* How it works: oversized numbered bubbles joined by a soft line that draws on scroll */
+.pipeline{position:relative;gap:48px 28px}
+.pipeline li{padding:96px 28px 32px;text-align:left}
+.step{left:28px;top:-22px;width:84px;height:84px;border:0;border-radius:50%;font:500 2.4rem/1 var(--font-display);color:var(--ink);
+  background:radial-gradient(120% 120% at 30% 15%,#fff 0%,var(--butter) 100%);box-shadow:var(--shadow-puff)}
+.pipeline li:nth-child(3n+2) .step{background:radial-gradient(120% 120% at 30% 15%,#fff 0%,var(--peach) 100%)}
+.pipeline li:nth-child(3n) .step{background:radial-gradient(120% 120% at 30% 15%,#fff 0%,var(--sky) 100%)}
+.pipeline .step::before{content:none}
+.pipe-line{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:-1;overflow:visible}
+.pipe-line path{fill:none;stroke:var(--cream-300);stroke-width:14;stroke-linecap:round;opacity:.9}
+.try-steps li{border-radius:var(--pill);padding:20px 28px 20px 78px}
+.try-steps li::before{border:0;background:radial-gradient(120% 120% at 30% 15%,#fff,var(--peach));box-shadow:var(--shadow-puff);left:22px;top:50%;margin-top:-17px;width:34px;height:34px;z-index:0}
+
+/* Benchmark panel + live-ledger table */
+.table-card{padding:20px;border-radius:var(--radius-lg)}
+.table-scroll{border-radius:28px;background:var(--cream-100);box-shadow:inset 0 3px 10px rgba(120,90,50,.1)}
+th,td{border-bottom-color:rgba(120,90,50,.1)}
+.bar{border-radius:var(--pill);background:var(--cream-300);height:8px}.bar span{border-radius:var(--pill);background:#e48a64}.bar span.good{background:#8fb98f}
+.status-card.ok,.status-card.warn,.status-card.muted{border-top:0}
+.status-card.ok{--bubble-bg:radial-gradient(120% 120% at 30% 15%,#fff 0%,#f1f7ef 50%,#dcebdc 130%)}
+.status-card.warn{--bubble-bg:radial-gradient(120% 120% at 30% 15%,#fff 0%,#fff8e6 50%,#ffeab0 130%)}
+
+/* CTA: massive bubble the button sits on */
+.cta-band{background:none;overflow:hidden}
+.cta-inner{position:relative;padding:clamp(56px,9vw,110px) 24px;border-radius:999px;min-height:min(70vw,460px);justify-content:center;
+  background:radial-gradient(120% 120% at 30% 12%,#fff 0%,#fffaf0 40%,var(--cream-200) 100%);box-shadow:var(--shadow-puff),0 60px 90px -50px rgba(120,90,50,.4)}
+.cta-inner::before,.cta-inner::after{content:"";position:absolute;border-radius:50%;z-index:-1;background:radial-gradient(120% 120% at 30% 15%,#fff,var(--peach));box-shadow:var(--shadow-puff)}
+.cta-inner::before{width:clamp(120px,22vw,300px);aspect-ratio:1;left:-6%;bottom:-18%}
+.cta-inner::after{width:clamp(100px,18vw,240px);aspect-ratio:1;right:-5%;top:-12%;background:radial-gradient(120% 120% at 30% 15%,#fff,var(--sky))}
+@media (max-width:760px){.cta-inner{border-radius:64px}}
+
+/* Footer: a bubble rising from the bottom */
+.site-footer{border:0;background:radial-gradient(140% 160% at 50% 0%,#fffdf8 0%,var(--cream-200) 100%);border-radius:48px 48px 0 0;margin-top:40px;box-shadow:0 -20px 50px -30px rgba(120,90,50,.35)}
+
+/* ---------- hero scene ---------- */
+.hero{background:none;min-height:min(100vh,900px)}
+.hero-shade{background:radial-gradient(60% 55% at 28% 50%,rgba(255,253,248,.82),rgba(255,253,248,0) 100%)}
+@media (max-width:760px){.hero-shade{background:linear-gradient(0deg,rgba(255,253,248,.88) 30%,rgba(255,253,248,.4) 100%)}}
+.hero #scene{opacity:.22;z-index:-3}
+.hero .bubbles{position:absolute;inset:0;width:100%;height:100%;z-index:-2;touch-action:pan-y}
+.hero.no-webgl{background:none}
+/* CSS-bubble fallback (low tier, reduced motion, or no canvas) */
+.bubble-fallback{position:absolute;inset:0;z-index:-2;overflow:hidden;pointer-events:none;display:none}
+.hero.bubbles-css .bubble-fallback{display:block}
+.hero.bubbles-css .bubbles{display:none}
+.bubble-fallback i{position:absolute;border-radius:50%;filter:blur(.4px);box-shadow:var(--shadow-puff),inset -14px -18px 36px rgba(180,140,90,.18);
+  background:radial-gradient(120% 120% at 30% 15%,#fff 0%,#fffaf0 45%,var(--c,#f4ecdc) 110%)}
+.bubble-fallback i:nth-child(1){--c:#f4ecdc;width:min(62vw,620px);aspect-ratio:1;right:-14vw;top:6%}
+.bubble-fallback i:nth-child(2){--c:#ffcfb0;width:min(26vw,260px);aspect-ratio:1;right:34vw;bottom:2%}
+.bubble-fallback i:nth-child(3){--c:#cfe0f2;width:min(18vw,170px);aspect-ratio:1;right:6vw;bottom:-4%}
+.bubble-fallback i:nth-child(4){--c:#ffe7a3;width:min(12vw,110px);aspect-ratio:1;left:6vw;top:22%}
+.bubble-fallback i:nth-child(5){--c:#cfe3cf;width:min(9vw,80px);aspect-ratio:1;left:44vw;top:14%}
+/* hero meta rendered as 3 floating pebbles */
+.hero-meta{gap:18px}
+.hero-meta>div{padding:14px 24px;border-radius:var(--pill);background:var(--bubble-bg);box-shadow:var(--shadow-puff);animation:bub-float 7s ease-in-out infinite}
+.hero-meta>div:nth-child(2){animation-duration:8.5s;animation-delay:-2s}.hero-meta>div:nth-child(3){animation-duration:6.5s;animation-delay:-4s}
+.hero-meta .chip{box-shadow:none;padding:0;background:none}
+.legend{display:none}
+.hero-model .i3d-host{filter:drop-shadow(0 30px 30px rgba(120,90,50,.18))}
+.i3d-screen{border-radius:26px}.i3d-face{border-radius:26px}
+
+/* ---------- scroll reveal: rise + scale-in with spring, stagger, once ---------- */
+.reveal{opacity:0;transform:translateY(34px) scale(.9)}
+.reveal.in{opacity:1;transform:none;transition:opacity .6s ease var(--rd,0ms),transform .8s var(--spring) var(--rd,0ms)}
+
+/* ---------- Mission Control + auth pages inherit the same tokens (light touch) ---------- */
+.topbar{border-radius:0 0 28px 28px;box-shadow:var(--shadow-puff)}
+.sidebar a{border-radius:var(--pill)}
+.sidebar a[aria-current="page"]{box-shadow:var(--shadow-puff)}
+
+@media (prefers-reduced-motion:reduce){
+  .float,.hero-meta>div{animation:none!important}
+  .reveal{opacity:1;transform:none}
+  .btn:hover:not(:disabled),.cards .card:hover,.status-card:hover,.bubble[data-interactive]:hover{transform:none}
+}
+@media (forced-colors:active){.btn,.card,.status-card{border:1px solid CanvasText}}

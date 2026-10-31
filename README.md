@@ -5,8 +5,7 @@
 <p align="center">
   <img src="docs/readme/intro.gif" alt="RESOLVE intro video: two sculpted blocks enter from opposite sides, assemble, and reveal RESOLVE, Wispr &amp; Solve, the Wispr Flow mark and the WeMakeDevs challenge" width="86%">
   <br>
-  <a href="docs/readme/intro.mp4">▶ Watch the full intro video (MP4)</a> · generated from the running app by <code>python scripts/record_intro_video.py</code>
-</p>
+  <a href="docs/readme/intro.mp4">
 
 <h1 align="center">RESOLVE</h1>
 <p align="center"><b>RESOLVE — Inbox-to-Commitment Operator</b><br><i>FROM INBOX NOISE TO VERIFIED FOLLOW-THROUGH.</i></p>
