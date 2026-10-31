@@ -103,3 +103,14 @@ This document describes what the inbox operator enforces, where, and which test 
 - **Model output is advisory.** It is schema-validated, every quote is checked against the stored message, and it cannot
   approve, send, activate rules or change permissions. The API key is read from the environment only.
 - **Privacy.** Export and workspace deletion cover LIVE, LOCAL and REPLAY scopes. Credentials are never exported.
+- **Key rotation.** Set the new key in `RESOLVE_MASTER_KEY` with a new version in `RESOLVE_MASTER_KEY_ID` (for example `2`)
+  and keep earlier keys readable with `RESOLVE_MASTER_KEYS_OLD="1:<old key>"`. New writes use the new version; older
+  blobs stay readable; `SealedStore.reseal()` re-encrypts a blob under the active version. Blind indexes stay on a pinned
+  version (`RESOLVE_BLIND_INDEX_KEY_ID`, default the oldest key) so duplicate detection survives rotation. A bulk re-seal
+  command is **not** implemented: until every blob is re-sealed, keep the old key configured. Before this sprint the
+  active version was fixed at 1, so configuring an "old" key at version 1 silently replaced the new key (fixed; the
+  existing test now asserts that new writes use the new version).
+- **What is encrypted.** Email bodies and subjects, drafts and draft metadata, OAuth tokens and local mailbox credentials,
+  correction text and evidence are sealed per field with AES-256-GCM under a per-(user, workspace) HKDF data key and
+  bound to their record id. Ids, timestamps, statuses, provider ids, sender/recipient addresses used for ownership and
+  counts remain metadata in clear. The SQLite file itself is not encrypted (no full-database encryption is claimed).

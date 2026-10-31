@@ -37,21 +37,33 @@ class SealedStore:
     def __init__(self, key_file: Path | str, require_env: bool = False, env: dict | None = None):
         env = os.environ if env is None else env
         self._keys: dict[int, bytes] = {}
+        # Rotation: give the new master key a new version with RESOLVE_MASTER_KEY_ID and list earlier keys in
+        # RESOLVE_MASTER_KEYS_OLD ("1:<key>,2:<key>"). New writes use the active version; older blobs stay readable.
+        self.current_id = int(env.get("RESOLVE_MASTER_KEY_ID", str(CURRENT_KEY_ID)) or CURRENT_KEY_ID)
+        if not 1 <= self.current_id <= 255:
+            raise SealError("RESOLVE_MASTER_KEY_ID must be 1..255")
         raw = env.get("RESOLVE_MASTER_KEY", "").strip()
         if raw:
-            self._keys[CURRENT_KEY_ID] = self._decode(raw)
+            self._keys[self.current_id] = self._decode(raw)
             self.source = "environment (RESOLVE_MASTER_KEY)"
         elif require_env:
             raise SealError("production requires RESOLVE_MASTER_KEY; refusing to start on a development key file")
         else:
-            self._keys[CURRENT_KEY_ID] = self._dev_key(Path(key_file))
+            self._keys[self.current_id] = self._dev_key(Path(key_file))
             self.source = "development key file (local, mode 0600, not for production)"
         # previous key versions stay readable so rotation can re-seal data gradually
         for item in env.get("RESOLVE_MASTER_KEYS_OLD", "").split(","):
             item = item.strip()
             if ":" in item:
                 kid, value = item.split(":", 1)
+                if int(kid) == self.current_id:
+                    raise SealError("an old key cannot reuse the active key version")
                 self._keys[int(kid)] = self._decode(value)
+        # Blind indexes (equality matching, e.g. obligation keys) must not change on rotation, or duplicates would no longer
+        # be recognised. They stay on a pinned version (RESOLVE_BLIND_INDEX_KEY_ID, default: the oldest available key).
+        self.blind_id = int(env.get("RESOLVE_BLIND_INDEX_KEY_ID", "0") or 0) or min(self._keys)
+        if self.blind_id not in self._keys:
+            raise SealError("the blind-index key version is not available")
 
     @staticmethod
     def _decode(value: str) -> bytes:
@@ -84,10 +96,19 @@ class SealedStore:
 
     def seal(self, plaintext: bytes, user_id: str, workspace_id: str, record_id: str) -> bytes:
         nonce = os.urandom(_NONCE)
-        key = self._data_key(CURRENT_KEY_ID, user_id, workspace_id)
+        key = self._data_key(self.current_id, user_id, workspace_id)
         aad = b"|".join([record_id.encode(), user_id.encode(), workspace_id.encode()])
         body = AESGCM(key).encrypt(nonce, plaintext, aad)
-        return MAGIC + bytes([CURRENT_KEY_ID]) + nonce + body
+        return MAGIC + bytes([self.current_id]) + nonce + body
+
+    def key_version(self, blob: bytes) -> int:
+        return blob[len(MAGIC)]
+
+    def reseal(self, blob: bytes, user_id: str, workspace_id: str, record_id: str) -> bytes:
+        """Re-encrypt a blob under the active key version (used by gradual rotation). Same scope and record binding."""
+        if self.key_version(blob) == self.current_id:
+            return blob
+        return self.seal(self.open(blob, user_id, workspace_id, record_id), user_id, workspace_id, record_id)
 
     def open(self, blob: bytes, user_id: str, workspace_id: str, record_id: str) -> bytes:
         if not blob.startswith(MAGIC) or len(blob) < len(MAGIC) + 1 + _NONCE + 16:
@@ -109,7 +130,7 @@ class SealedStore:
         Equal inputs in the same tenant give equal indexes; the database alone cannot be used to guess the input."""
         import hmac
         info = b"resolve-blind-index|" + user_id.encode() + b"|" + workspace_id.encode()
-        key = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=info).derive(self._keys[CURRENT_KEY_ID])
+        key = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=info).derive(self._keys[self.blind_id])
         return hmac.new(key, text.encode("utf-8"), hashlib.sha256).hexdigest()
 
     @staticmethod
@@ -118,4 +139,4 @@ class SealedStore:
 
     def fingerprint(self) -> str:
         """Non-secret identifier of the active key, safe to show in an export or the Privacy Center."""
-        return hashlib.sha256(b"resolve-key-fingerprint|" + self._keys[CURRENT_KEY_ID]).hexdigest()[:16]
+        return hashlib.sha256(b"resolve-key-fingerprint|" + self._keys[self.current_id]).hexdigest()[:16]
