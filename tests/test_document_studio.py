@@ -19,6 +19,143 @@ def sample_pdf(pages=2):
     return buffer.getvalue()
 
 
+def text_pdf(labels, pagesize=None):
+    """Real PDF bytes with one text line per page (reportlab), so page order can be read back."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen.canvas import Canvas
+    buffer = io.BytesIO()
+    canvas = Canvas(buffer, pagesize=pagesize or A4)
+    for label in labels:
+        canvas.drawString(72, 720, label)
+        canvas.showPage()
+    canvas.save()
+    return buffer.getvalue()
+
+
+def page_texts(studio, user, workspace, doc_id):
+    reader = PdfReader(io.BytesIO(studio.read_pdf(user, workspace, doc_id)))
+    return [(p.extract_text() or "").strip() for p in reader.pages]
+
+
+class PageToolsTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.studio = DocumentStudio(self.temp.name)
+        self.doc = self.studio.import_pdf("alice", "work", text_pdf(["Alpha page", "Bravo page", "Charlie page", "Delta page"]), "abc.pdf")
+        self.src = {self.doc["id"]: self.doc["sha256"]}
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_reorder_writes_new_version_in_permutation_order(self):
+        out = self.studio.transform("alice", "work", "reorder", [self.doc["id"]], self.src, order=[3, 1, 4, 2])
+        self.assertNotEqual(out["id"], self.doc["id"])
+        self.assertEqual(page_texts(self.studio, "alice", "work", out["id"]),
+                         ["Charlie page", "Alpha page", "Delta page", "Bravo page"])
+        # the source is untouched and the new version records the exact source hash
+        self.assertEqual(page_texts(self.studio, "alice", "work", self.doc["id"])[0], "Alpha page")
+        self.assertEqual(out["source_ids"], self.doc["id"])
+        self.assertEqual(out["source_sha256"], self.doc["sha256"])
+        for bad in ([1, 2, 3], [1, 1, 2, 3], [0, 1, 2, 3], [1, 2, 3, 5], [1, 2, 3, 4], "4,3,2,1", [1.0, 2, 3, 4], None):
+            with self.assertRaises(DocumentError, msg=repr(bad)):
+                self.studio.transform("alice", "work", "reorder", [self.doc["id"]], self.src, order=bad)
+
+    def test_extract_page_ranges(self):
+        out = self.studio.transform("alice", "work", "extract", [self.doc["id"]], self.src, ranges="1-2, 4")
+        self.assertEqual(page_texts(self.studio, "alice", "work", out["id"]), ["Alpha page", "Bravo page", "Delta page"])
+        self.assertEqual(out["operation"], "extract")
+        for bad in ("", "0-2", "3-1", "1-5", "1,1", "1-3,2", "a-b", "1-4"):
+            with self.assertRaises(DocumentError, msg=bad):
+                self.studio.transform("alice", "work", "extract", [self.doc["id"]], self.src, ranges=bad)
+
+    def test_stale_or_missing_source_hash_rejected(self):
+        for expected in ({self.doc["id"]: "0" * 64}, {}, None, "abc"):
+            with self.assertRaises(DocumentError) as ctx:
+                self.studio.transform("alice", "work", "reorder", [self.doc["id"]], expected, order=[2, 1, 3, 4])
+            self.assertEqual(ctx.exception.status_code, 409)
+        with self.assertRaises(DocumentError) as ctx:
+            self.studio.transform("bob", "work", "extract", [self.doc["id"]], self.src, ranges="1")
+        self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_compare_detects_changed_page_and_reports_hashes(self):
+        other = self.studio.import_pdf("alice", "work", text_pdf(["Alpha page", "Bravo revised", "Charlie page"]), "abc2.pdf")
+        result = self.studio.compare("alice", "work", self.doc["id"], other["id"])
+        self.assertEqual(result["a"]["sha256"], self.doc["sha256"])
+        self.assertEqual(result["b"]["sha256"], other["sha256"])
+        self.assertEqual([p["status"] for p in result["pages"]], ["SAME", "CHANGED", "SAME", "REMOVED"])
+        self.assertEqual(result["summary"], {"same": 2, "changed": 1, "added": 0, "removed": 1})
+        self.assertIn("- Bravo page", result["pages"][1]["sample"])
+        self.assertIn("+ Bravo revised", result["pages"][1]["sample"])
+        with self.assertRaises(DocumentError):
+            self.studio.compare("alice", "work", self.doc["id"], self.doc["id"])
+        with self.assertRaises(DocumentError) as ctx:
+            self.studio.compare("alice", "work", self.doc["id"], other["id"], expected_sha256={self.doc["id"]: "x"})
+        self.assertEqual(ctx.exception.status_code, 409)
+        with self.assertRaises(DocumentError) as ctx:
+            self.studio.compare("bob", "work", self.doc["id"], other["id"])
+        self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_page_info_reads_real_size_and_rotation(self):
+        from reportlab.lib.pagesizes import letter
+        mixed = self.studio.import_pdf("alice", "work", text_pdf(["one", "two"], pagesize=letter), "letter.pdf")
+        rotated = self.studio.transform("alice", "work", "rotate", [mixed["id"]], {mixed["id"]: mixed["sha256"]}, degrees=90, pages=[2])
+        info = self.studio.page_info("alice", "work", rotated["id"])
+        self.assertEqual(info["page_count"], 2)
+        self.assertEqual([(p["width_pt"], p["height_pt"]) for p in info["pages"]], [(612.0, 792.0)] * 2)
+        self.assertEqual([p["rotation"] for p in info["pages"]], [0, 90])
+        self.assertEqual([p["orientation"] for p in info["pages"]], ["portrait", "landscape"])
+        self.assertEqual({p["paper"] for p in info["pages"]}, {"Letter"})
+        self.assertEqual(self.studio.page_info("alice", "work", self.doc["id"])["pages"][0]["paper"], "A4")
+        thumbs = info["thumbnails"]
+        if thumbs["available"]:
+            png = self.studio.render_thumbnail("alice", "work", rotated["id"], 2, width=120)
+            self.assertTrue(png.startswith(b"\x89PNG"))
+        else:
+            self.assertIn("rasterizer", thumbs["reason"])
+            with self.assertRaises(DocumentError) as ctx:
+                self.studio.render_thumbnail("alice", "work", rotated["id"], 1)
+            self.assertEqual(ctx.exception.status_code, 501)
+
+    def test_print_status_transitions_and_printer_confirmation_refused(self):
+        job = self.studio.create_print_job("alice", "work", self.doc["id"], self.doc["sha256"], paper="Letter",
+                                           orientation="landscape", page_range="2-3")
+        self.assertEqual((job["status"], job["paper"], job["orientation"], job["pages"]), ("PREVIEW_READY", "Letter", "landscape", [2, 3]))
+        with self.assertRaises(DocumentError) as ctx:   # cannot skip the artifact
+            self.studio.record_print_status("alice", "work", self.doc["id"], job["id"], "PRINT_DIALOG_OPENED", artifact_sha256="x")
+        self.assertEqual(ctx.exception.status_code, 409)
+        job = self.studio.record_print_status("alice", "work", self.doc["id"], job["id"], "ARTIFACT_GENERATED")
+        self.assertEqual(page_texts(self.studio, "alice", "work", job["artifact_id"]), ["Bravo page", "Charlie page"])
+        with self.assertRaises(DocumentError):          # the dialog report must name the exact artifact
+            self.studio.record_print_status("alice", "work", self.doc["id"], job["id"], "PRINT_DIALOG_OPENED", artifact_sha256="0" * 64)
+        job = self.studio.record_print_status("alice", "work", self.doc["id"], job["id"], "PRINT_DIALOG_OPENED", artifact_sha256=job["artifact_sha256"])
+        for status in ("SUBMITTED", "PRINTER_CONFIRMED"):
+            if status == "PRINTER_CONFIRMED":
+                with self.assertRaises(DocumentError) as ctx:
+                    self.studio.record_print_status("alice", "work", self.doc["id"], job["id"], status)
+                self.assertEqual(ctx.exception.status_code, 403)
+            else:
+                job = self.studio.record_print_status("alice", "work", self.doc["id"], job["id"], status)
+        self.assertEqual(job["status"], "SUBMITTED")
+        self.assertFalse(job["physical_printing_verified"])
+        self.assertEqual([(e["to_status"], e["source"]) for e in job["events"]],
+                         [("PREVIEW_READY", "server"), ("ARTIFACT_GENERATED", "server"), ("PRINT_DIALOG_OPENED", "browser"), ("SUBMITTED", "user_attested")])
+        with self.assertRaises(DocumentError) as ctx:
+            self.studio.record_print_status("bob", "work", self.doc["id"], job["id"], "UNKNOWN")
+        self.assertEqual(ctx.exception.status_code, 404)
+        with self.assertRaises(DocumentError):
+            self.studio.create_print_job("alice", "work", self.doc["id"], "stale")
+        with self.assertRaises(DocumentError):
+            self.studio.create_print_job("alice", "work", self.doc["id"], self.doc["sha256"], paper="A3")
+        whole = self.studio.create_print_job("alice", "work", self.doc["id"], self.doc["sha256"])
+        whole = self.studio.record_print_status("alice", "work", self.doc["id"], whole["id"], "ARTIFACT_GENERATED")
+        self.assertEqual((whole["artifact_id"], whole["page_range"]), (self.doc["id"], "1-4"))
+        self.assertEqual(len(self.studio.list_print_jobs("alice", "work", self.doc["id"])), 2)
+        self.studio.delete_document("alice", "work", self.doc["id"])
+        with self.studio._db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM print_jobs").fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM print_events").fetchone()[0], 0)
+
+
 class DocumentStudioTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

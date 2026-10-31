@@ -31,7 +31,7 @@ from cloud_browser import CloudBrowserPool, CloudBrowserError, CloudBrowserSessi
 from effect_graph import EffectDependencyGraph, NodeType, EdgeType
 from connectors import ConnectorRegistry, ConnectorError
 from privacy_engine import PrivacyEngine
-from document_studio import DocumentStudio, DocumentError
+from document_studio import DocumentStudio, DocumentError, PRINT_STATES, PRINT_NOTE
 from brief_mission import BriefMissionStore, MissionError, BUNDLED_PROJECTS, load_bundled
 from command_router import interpret as interpret_command
 from demo_webapp import DemoWebApp
@@ -421,8 +421,9 @@ class Handler(BaseHTTPRequestHandler):
                     raise ApiError(422, f'{exc.code}: {exc.message}')
                 frame = session.capture_frame()
                 result['frame'] = {'data_url': frame.get('frame'), 'url': frame.get('url'), 'title': frame.get('title')}
-                result['evidence'] = [{k: r.get(k) for k in ('tool', 'ok', 'error_code', 'args_sha256')} for r in trail]
+                result['evidence'] = [{'ref': f'tool_{i}', **{k: r.get(k) for k in ('tool', 'ok', 'error_code', 'args_sha256')}} for i, r in enumerate(trail, 1)]   # ref matches steps[].evidence_ref
                 result['app_origin'] = origin_of(base)
+                result['session'] = {'kind': 'one-shot', 'live': False, 'actions': 'DOM-level (Playwright), not physical cursor movement'}   # closed when this request returns
                 return result
             finally:
                 if session:
@@ -593,6 +594,29 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(raw)
                 return
+            m_dpg = re.fullmatch(r'/api/documents/([A-Za-z0-9_-]+)/pages', path)
+            if m_dpg:
+                user = self.document_user()
+                return self.send_json(200, document_studio.page_info(user['user_id'], user['workspace_id'], m_dpg.group(1)))
+            m_dth = re.fullmatch(r'/api/documents/([A-Za-z0-9_-]+)/pages/([0-9]{1,5})/thumbnail\.png', path)
+            if m_dth:
+                user = self.document_user()
+                width = parse_qs(parsed.query).get('width', ['160'])[0]
+                png = document_studio.render_thumbnail(user['user_id'], user['workspace_id'], m_dth.group(1), int(m_dth.group(2)),
+                                                       width=int(width) if width.isdigit() else 160)
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/png')
+                self.send_header('Cache-Control', 'private, no-store')
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.send_header('Content-Length', str(len(png)))
+                self.end_headers()
+                self.wfile.write(png)
+                return
+            m_dps = re.fullmatch(r'/api/documents/([A-Za-z0-9_-]+)/print-status', path)
+            if m_dps:
+                user = self.document_user()
+                return self.send_json(200, {'jobs': document_studio.list_print_jobs(user['user_id'], user['workspace_id'], m_dps.group(1)),
+                                            'states': list(PRINT_STATES), 'note': PRINT_NOTE})
             if path == '/api/auth/me':
                 user = self.get_session()
                 return self.send_json(200, {k: v for k, v in user.items() if k != 'token'})   # the client already holds its token
@@ -800,9 +824,28 @@ class Handler(BaseHTTPRequestHandler):
                 doc = write_boundary(user, 'document.transform:' + str(data.get('operation', ''))[:20], ids[0] if len(ids) == 1 else None,
                     lambda: {'document': document_studio.transform(user['user_id'], user['workspace_id'],
                         str(data.get('operation', '')), ids,
-                        data.get('expected_sha256', {}), degrees=data.get('degrees'), pages=data.get('pages'))},
+                        data.get('expected_sha256', {}), degrees=data.get('degrees'), pages=data.get('pages'),
+                        order=data.get('order'), ranges=data.get('ranges'))},
                     digest_of=lambda r: r['document']['sha256'])
                 return self.send_json(201, doc)
+            if path == '/api/documents/compare':
+                return self.send_json(200, document_studio.compare(user['user_id'], user['workspace_id'], data.get('a'), data.get('b'),
+                    expected_sha256=data.get('expected_sha256')))
+            m_dps = re.fullmatch(r'/api/documents/([A-Za-z0-9_-]+)/print-status', path)
+            if m_dps:
+                # The browser path can report PRINT_DIALOG_OPENED / UNKNOWN / FAILED and the user's own SUBMITTED
+                # attestation. PRINTER_CONFIRMED is refused (403): a print dialog is not proof of printing.
+                doc_id, status = m_dps.group(1), str(data.get('status', ''))
+                if status == 'PREVIEW_READY' and not data.get('job_id'):
+                    job = write_boundary(user, 'document.print_job', doc_id, lambda: document_studio.create_print_job(
+                        user['user_id'], user['workspace_id'], doc_id, data.get('expected_sha256'),
+                        paper=str(data.get('paper', 'A4')), orientation=str(data.get('orientation', 'portrait')),
+                        page_range=data.get('page_range') if isinstance(data.get('page_range'), str) else None))
+                    return self.send_json(201, {'job': job, 'note': PRINT_NOTE})
+                job = write_boundary(user, 'document.print_status:' + status[:24], doc_id, lambda: document_studio.record_print_status(
+                    user['user_id'], user['workspace_id'], doc_id, str(data.get('job_id', '')), status,
+                    artifact_sha256=data.get('artifact_sha256') if isinstance(data.get('artifact_sha256'), str) else None))
+                return self.send_json(200, {'job': job, 'note': PRINT_NOTE})
             if path == '/api/projects/upload':
                 try:
                     raw = base64.b64decode(data.get('content_base64', ''), validate=True)

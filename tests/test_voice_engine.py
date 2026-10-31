@@ -166,3 +166,14 @@ class VoiceHttpTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class VocabularyCorrectionTests(unittest.TestCase):
+    def test_typed_or_punctuated_text_is_never_rewritten(self):
+        from voice_engine import correct_command_vocabulary
+        text = 'Resolve, inspect my project brief, create a corrected architecture, generate a polished report.'
+        self.assertEqual(correct_command_vocabulary(text), (text, []))
+
+    def test_split_recognizer_word_is_repaired_and_reported(self):
+        from voice_engine import correct_command_vocabulary
+        self.assertEqual(correct_command_vocabulary('show my over do tasks'), ('show my overdue tasks', [{'from': 'over do', 'to': 'overdue'}]))

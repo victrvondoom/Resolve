@@ -90,6 +90,9 @@ class ComputerTaskRunner:
         m = re.search(r"find\s+(\w+)\s+from\s+(\w+)(?:\s*,?\s*not\s+\w+\s+from\s+(\w+))?", t, re.I)
         if m:
             return "find_person", {"first": m.group(1), "department": m.group(2), "exclude": (m.group(3) or "")}
+        m = re.fullmatch(r"find\s+(\w+)\s*[.!?]?", t, re.I)
+        if m:   # no department given: resolved only if exactly one person matches, otherwise the user is asked
+            return "find_person", {"first": m.group(1), "department": "", "exclude": ""}
         raise TaskRefused("UNSUPPORTED_TASK", "this task type is not supported; supported: overdue tasks, latest report, update task, save report, find person")
 
     def run(self, text: str, approved_digest: str | None = None, proposal: dict | None = None) -> dict:
@@ -104,10 +107,12 @@ class ComputerTaskRunner:
         self.call("browser.navigate", url=f"{self.bases['pm']}/pm/?project={p['project']}")
         self.call("browser.wait", selector="#tasks tr", timeout_ms=8000)
         rows = self.call("browser.extract", selector="#tasks")["rows"]
-        overdue = sorted(r[0] for r in rows if "overdue" in r[2].lower())
+        hits = [r for r in rows if len(r) > 2 and "overdue" in r[2].lower()]
+        overdue = sorted(r[0] for r in hits)
         truth = self.verifier("overdue_tasks", {"project": p["project"]})
         ok = overdue == sorted(truth["titles"])
-        return self._done("overdue_tasks", ok=ok, status="CONFIRMED" if ok else "MISMATCH", project=p["project"], overdue=overdue, verified_against="application database")
+        page_rows = sorted(({"title": r[0], "owner": r[1], "due": r[2].lower().replace("overdue", "").strip()} for r in hits), key=lambda r: r["title"])   # as read from the page
+        return self._done("overdue_tasks", ok=ok, status="CONFIRMED" if ok else "MISMATCH", project=p["project"], overdue=overdue, overdue_rows=page_rows, verified_against="application database")
 
     def _latest_report(self, p, *_):
         doc = self._pick_latest_report()
@@ -188,13 +193,22 @@ class ComputerTaskRunner:
         items = self.call("browser.find", role="listitem")["matches"]
         want = p["department"].lower()
         hits = [i for i in items if i["text"].split()[0].lower() == p["first"].lower() and want in i["context"].lower()]
+        if len(hits) > 1:   # ask instead of guessing: list what the page shows for each candidate (read through the registry)
+            cands = []
+            for h in hits:
+                name = self.call("browser.find", selector=f"{h['handle']} a")["matches"]
+                dept = self.call("browser.find", selector=f"{h['handle']} span")["matches"]
+                cands.append({"name": name[0]["text"] if name else h["text"], "department": dept[0]["text"] if dept else ""})
+            where = f" in {p['department']}" if p["department"] else ""
+            return self._done("find_person", ok=False, status="NEEDS_CLARIFICATION", candidates=cands,
+                              question=f"{len(hits)} people named {p['first']}{where}. Which one do you mean?", note="nothing was chosen; not guessing")
         if len(hits) != 1:
-            raise TaskRefused("AMBIGUOUS_TARGET" if hits else "NOT_FOUND", f"{len(hits)} people match {p['first']} in {p['department']}; not guessing")
+            raise TaskRefused("NOT_FOUND", f"{len(hits)} people match {p['first']}{' in ' + p['department'] if p['department'] else ''}; not guessing")
         link = self.call("browser.find", selector=f"{hits[0]['handle']} a")["matches"][0]
         self.call("browser.click", selector=link["handle"])
         self.call("browser.wait", selector="#card")
         card = self.call("browser.extract", selector="#card")["text"]
         cid = int(re.search(r"/crm/contact/(\d+)", self.call("browser.inspect")["url"]).group(1))
         truth = self.verifier("contact", {"id": cid})
-        ok = truth["department"].lower() == want and truth["name"].split()[0].lower() == p["first"].lower() and truth["email"] in card
+        ok = (not want or truth["department"].lower() == want) and truth["name"].split()[0].lower() == p["first"].lower() and truth["email"] in card
         return self._done("find_person", ok=ok, status="CONFIRMED" if ok else "MISMATCH", person={"id": cid, "name": truth["name"], "department": truth["department"], "email": truth["email"]}, excluded_department=p["exclude"] or None)

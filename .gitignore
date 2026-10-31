@@ -9,3 +9,5 @@ data/documents/
 
 # runtime sandbox data (never commit)
 data/sandboxes/
+data/models/
+.claude/worktrees/

@@ -958,7 +958,11 @@ api('/api/web/benchmark').then(b => {
           const wav = encodeWav(chunks, rate);
           const res = await api('/api/voice/transcribe-audio', { audio_base64: toB64(wav), consent: true, language: navigator.language || 'en-US' });
           if (target) { target.value = res.transcript; target.dispatchEvent(new Event('input', { bubbles: true })); }
-          micMsg('Transcript ready — review and edit it, then run the mission. (' + res.provider + ', ' + res.duration_s + 's, audio not stored)');
+          const fixes = (res.corrections || []).map(c => '"' + c.from + '" → "' + c.to + '"').join(', ');
+          const unsure = (res.low_confidence_words || []).join(', ');
+          micMsg('Transcript ready — review and edit it, then run the mission. (' + res.provider + ', ' + res.duration_s + 's, audio not stored)'
+            + (fixes ? ' Corrected: ' + fixes + '.' : '') + (unsure ? ' Low confidence: ' + unsure + '.' : '')
+            + (res.raw_transcript && res.raw_transcript !== res.transcript ? ' Heard: "' + res.raw_transcript + '".' : ''));
         } catch (e) { micMsg('Could not transcribe: ' + (e.message || e) + '. You can type the command instead.'); }
         btn.disabled = false; refreshVoiceHealth();
       };
@@ -998,13 +1002,15 @@ api('/api/web/benchmark').then(b => {
 (() => {
   const list = $('#docList');
   if (!list) return;
-  let documents = [], selected = [], active = null, previewUrl = null;
+  let documents = [], selected = [], active = null, previewUrl = null, printJob = null, thumbUrls = [];
   const status = $('#docStatus');
   const busy = (value) => {
     $('#docUploadBtn').disabled = value;
     $('#docTransform').disabled = value;
     $('#docRefresh').disabled = value;
+    $('#docCompare').disabled = value;
   };
+  const el = (tag, text, cls) => { const n = document.createElement(tag); if (text != null) n.textContent = text; if (cls) n.className = cls; return n; };
   const report = (message, error = false) => setMsg(status, message, error ? 'err' : 'ok');
   async function token() {
     return ensureToken();
@@ -1057,17 +1063,80 @@ api('/api/web/benchmark').then(b => {
       row.append(label, del); list.append(row);
     });
   }
+  function renderCompareChoices() {
+    ['#docCompareA', '#docCompareB'].forEach((sel, i) => {
+      const box = $(sel), keep = box.value;
+      box.replaceChildren(...documents.map(d => { const o = el('option', (d.name || 'PDF') + ' · ' + String(d.sha256 || '').slice(0, 8)); o.value = idOf(d); return o; }));
+      if (documents.some(d => idOf(d) === keep)) box.value = keep;
+      else if (documents[i]) box.value = idOf(documents[i]);
+    });
+  }
+  function clearPages() {
+    thumbUrls.forEach(u => URL.revokeObjectURL(u)); thumbUrls = [];
+    $('#docPageList').replaceChildren();
+    $('#docPageSummary').textContent = 'Page sizes and rotation are read from the selected PDF.';
+  }
+  async function loadPages(id) {
+    clearPages();
+    const info = await (await request('/api/documents/' + encodeURIComponent(id) + '/pages')).json();
+    if (!active || idOf(active) !== String(id)) return;
+    $('#docPageSummary').textContent = info.page_count + (info.page_count === 1 ? ' page' : ' pages') + ' · read from the PDF (SHA-256 ' + info.sha256.slice(0, 12) + '…). ' +
+      (info.thumbnails.available ? 'Thumbnails rendered by ' + info.thumbnails.renderer + '.' : 'Thumbnails unavailable: ' + info.thumbnails.reason);
+    const items = info.pages.map(p => {
+      const li = el('li');
+      li.dataset.page = p.page;
+      li.append(el('strong', 'Page ' + p.page), el('span', (p.paper || 'Custom size') + ' · ' + Math.round(p.width_pt) + '×' + Math.round(p.height_pt) + ' pt · ' + p.orientation + ' · ' + p.rotation + '°'));
+      return li;
+    });
+    $('#docPageList').replaceChildren(...items);
+    if (!info.thumbnails.available) return;
+    for (const li of items.slice(0, 12)) {
+      try {
+        const blob = await (await request('/api/documents/' + encodeURIComponent(id) + '/pages/' + li.dataset.page + '/thumbnail.png?width=140')).blob();
+        if (!active || idOf(active) !== String(id)) return;
+        const url = URL.createObjectURL(blob); thumbUrls.push(url);
+        const img = el('img'); img.src = url; img.alt = 'Page ' + li.dataset.page + ' thumbnail'; img.width = 140;
+        li.prepend(img);
+      } catch (_) { return; /* the metadata stays; images are optional */ }
+    }
+  }
+  const PRINT_LABELS = { PREVIEW_READY: 'Preview ready', ARTIFACT_GENERATED: 'Print file generated', PRINT_DIALOG_OPENED: 'Print dialog opened (not proof of printing)',
+    SUBMITTED: 'You reported pressing Print (unverified)', PRINTER_CONFIRMED: 'Printer confirmed', FAILED: 'Failed', UNKNOWN: 'Outcome unknown' };
+  function renderPrint(job) {
+    printJob = job || null;
+    const chip = $('#docPrintState');
+    chip.textContent = job ? PRINT_LABELS[job.status] || job.status : 'No print job';
+    chip.className = 'chip ' + (!job ? 'chip-muted' : job.status === 'FAILED' ? 'chip-bad' : job.status === 'UNKNOWN' || job.status === 'PRINT_DIALOG_OPENED' || job.status === 'SUBMITTED' ? 'chip-warn' : 'chip-ok');
+    chip.dataset.status = job ? job.status : '';
+    $('#docPrintReport').hidden = !job || !['PRINT_DIALOG_OPENED', 'UNKNOWN'].includes(job.status);
+    [['#docPrintSubmitted', 'SUBMITTED'], ['#docPrintUnknown', 'UNKNOWN'], ['#docPrintFailed', 'FAILED']]
+      .forEach(([sel, s]) => { $(sel).hidden = !job || !(job.allowed_next || []).includes(s); });
+    $('#docPrintHistory').replaceChildren(...(job ? job.events : []).map(e =>
+      el('li', new Date(e.at * 1000).toLocaleTimeString() + ' · ' + e.to_status + ' · by ' + e.source.replace('_', ' ') + (e.note ? ' · ' + e.note : ''))));
+    if (job) $('#docPrintHistory').prepend(el('li', job.paper + ' · ' + job.orientation + ' · pages ' + job.page_range + ' · document SHA-256 ' + job.document_sha256.slice(0, 12) + '…'));
+  }
+  async function loadPrintJobs(id) {
+    const data = await (await request('/api/documents/' + encodeURIComponent(id) + '/print-status')).json();
+    if (active && idOf(active) === String(id)) renderPrint((data.jobs || [])[0]);
+  }
+  async function postPrint(body) {
+    const res = await request('/api/documents/' + encodeURIComponent(idOf(active)) + '/print-status', body);
+    const data = await res.json();
+    renderPrint(data.job);
+    return data.job;
+  }
   async function refresh(selectId) {
     const data = await (await request('/api/documents')).json();
     documents = data.documents || [];
     if (selectId) selected = [String(selectId)];
     else selected = selected.filter(id => documents.some(d => idOf(d) === id));
-    renderList();
+    renderList(); renderCompareChoices();
     if (selected.length === 1) await preview(selected[0]);
   }
   function clearPreview() {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = null; active = null;
+    clearPages(); renderPrint(null);
     $('#docPreview').removeAttribute('src');
     $('#docPreviewEmpty').hidden = false;
     $('#docDownload').disabled = true; $('#docPrint').disabled = true;
@@ -1087,6 +1156,8 @@ api('/api/web/benchmark').then(b => {
       $('#docDownload').disabled = false;
       $('#docPrint').disabled = false;
       report('Previewing ' + (d.name || d.filename || 'PDF') + '.');
+      renderPrint(null);
+      await Promise.all([loadPages(id), loadPrintJobs(id)]).catch(e => report('Page details unavailable: ' + e.message, true));
     } catch (e) { report('Preview unavailable: ' + e.message, true); }
   }
   document.addEventListener('resolve:view', (e) => { if (e.detail === 'documents') refresh().catch(err => report(err.message, true)); });
@@ -1114,6 +1185,8 @@ api('/api/web/benchmark').then(b => {
     const op = $('#docOperation').value;
     $('#docDegreesWrap').hidden = op !== 'rotate';
     $('#docPagesWrap').hidden = op !== 'delete_pages';
+    $('#docOrderWrap').hidden = op !== 'reorder';
+    $('#docRangeWrap').hidden = op !== 'extract';
   };
   $('#docTransform').onclick = async () => {
     const operation = $('#docOperation').value;
@@ -1129,6 +1202,16 @@ api('/api/web/benchmark').then(b => {
       const raw = $('#docPages').value.trim();
       if (!/^\d+(\s*,\s*\d+)*$/.test(raw)) return report('Enter page numbers such as 2, 4.', true);
       body.pages = raw.split(',').map(Number);
+    }
+    if (operation === 'reorder') {
+      const raw = $('#docOrder').value.trim();
+      if (!/^\d+(\s*,\s*\d+)*$/.test(raw)) return report('Enter the new order such as 3, 1, 2.', true);
+      body.order = raw.split(',').map(Number);
+    }
+    if (operation === 'extract') {
+      const raw = $('#docRange').value.trim();
+      if (!/^\d+(-\d+)?(\s*,\s*\d+(-\d+)?)*$/.test(raw)) return report('Enter a page range such as 1-3, 5.', true);
+      body.ranges = raw;
     }
     busy(true); report('Creating a new PDF…');
     try {
@@ -1154,10 +1237,74 @@ api('/api/web/benchmark').then(b => {
     const a = document.createElement('a'); a.href = previewUrl; a.download = active.name || active.filename || 'resolve.pdf';
     document.body.append(a); a.click(); a.remove();
   };
-  $('#docPrint').onclick = () => {
+  async function sha256Hex(blob) {
+    if (!window.crypto?.subtle) return null;   // not a secure context: the server-side hash check still applies
+    const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+    return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  // Print flow: the server records the job (PREVIEW_READY) and writes the print file (ARTIFACT_GENERATED); the
+  // browser reports PRINT_DIALOG_OPENED when it invokes window.print(). That is not proof of printing: the
+  // strongest state reachable from here is the user's own SUBMITTED report, and PRINTER_CONFIRMED is never set.
+  $('#docPrint').onclick = async () => {
     if (!active || !previewUrl) return;
-    try { $('#docPreview').contentWindow.print(); report('Browser print dialog opened. Physical printing is unverified.'); }
-    catch (e) { report('Open the PDF preview and use your browser Print command. ' + e.message, true); }
+    const doc = active, frame = $('#docPreview');
+    busy(true); $('#docPrint').disabled = true; report('Preparing the print file…');
+    try {
+      let job = await postPrint({ status: 'PREVIEW_READY', expected_sha256: doc.sha256, paper: $('#docPaper').value,
+        orientation: $('#docOrientation').value, page_range: $('#docPrintRange').value.trim() });
+      job = await postPrint({ status: 'ARTIFACT_GENERATED', job_id: job.id });
+      if (job.artifact_id !== idOf(doc)) {
+        const blob = await (await request('/api/documents/' + encodeURIComponent(job.artifact_id) + '/download')).blob();
+        const digest = await sha256Hex(blob);
+        if (digest && digest !== job.artifact_sha256) {
+          await postPrint({ status: 'FAILED', job_id: job.id }).catch(() => {});
+          throw Error('the downloaded print file does not match its recorded SHA-256');
+        }
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        previewUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+        await new Promise(done => { frame.addEventListener('load', done, { once: true }); frame.src = previewUrl; setTimeout(done, 4000); });
+      }
+      job = await postPrint({ status: 'PRINT_DIALOG_OPENED', job_id: job.id, artifact_sha256: job.artifact_sha256 });
+      try {
+        frame.contentWindow.print();
+        report('Browser print dialog opened for pages ' + job.page_range + '. This is not proof of printing; tell RESOLVE what happened below.');
+      } catch (e) {
+        await postPrint({ status: 'FAILED', job_id: job.id }).catch(() => {});
+        report('The browser could not open its print dialog: ' + e.message, true);
+      }
+    } catch (e) { report('Print failed: ' + e.message, true); }
+    finally { busy(false); $('#docPrint').disabled = !active; }
+  };
+  const reportPrint = (statusName, message) => async () => {
+    if (!printJob || !active) return;
+    try { await postPrint({ status: statusName, job_id: printJob.id }); report(message); }
+    catch (e) { report(e.message, true); }
+  };
+  $('#docPrintSubmitted').onclick = reportPrint('SUBMITTED', 'Recorded that you pressed Print. RESOLVE cannot verify that paper came out of a printer.');
+  $('#docPrintUnknown').onclick = reportPrint('UNKNOWN', 'Recorded as outcome unknown.');
+  $('#docPrintFailed').onclick = reportPrint('FAILED', 'Recorded as failed.');
+  $('#docCompare').onclick = async () => {
+    const a = $('#docCompareA').value, b = $('#docCompareB').value, out = $('#docCompareResult');
+    if (!a || !b || a === b) return report('Choose two different PDFs to compare.', true);
+    const sha = id => documents.find(d => idOf(d) === id)?.sha256 || '';
+    busy(true); report('Comparing…');
+    try {
+      const r = await (await request('/api/documents/compare', { a, b, expected_sha256: { [a]: sha(a), [b]: sha(b) } })).json();
+      const table = el('table'), head = el('thead'), body = el('tbody'), hr = el('tr');
+      ['Page', 'Result', 'Similarity', 'Lines +/−', 'Changed text'].forEach(h => { const th = el('th', h); th.scope = 'col'; hr.append(th); });
+      head.append(hr);
+      r.pages.forEach(p => {
+        const tr = el('tr', null, p.status === 'SAME' ? 'doc-compare-same' : '');
+        tr.dataset.status = p.status;
+        [String(p.page), p.status, Math.round(p.similarity * 100) + '%', '+' + p.lines_added + ' / −' + p.lines_removed, (p.sample || []).join('  ')].forEach(t => tr.append(el('td', t)));
+        body.append(tr);
+      });
+      table.append(head, body);
+      const s = r.summary;
+      out.replaceChildren(el('p', s.changed + ' changed · ' + s.added + ' added · ' + s.removed + ' removed · ' + s.same + ' unchanged. ' +
+        'First SHA-256 ' + r.a.sha256.slice(0, 12) + '…, second ' + r.b.sha256.slice(0, 12) + '…. Compared: ' + r.compared + '.', 'muted small'), table);
+      report('Comparison ready.');
+    } catch (e) { out.replaceChildren(); report('Compare failed: ' + e.message, true); } finally { busy(false); }
   };
   window.addEventListener('beforeunload', () => { if (previewUrl) URL.revokeObjectURL(previewUrl); });
   refresh().catch(e => report('Documents unavailable: ' + e.message, true));
