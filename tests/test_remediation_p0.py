@@ -99,7 +99,7 @@ class ProductionSandboxIsolation(unittest.TestCase):
         self.assertEqual(self.srv.req('GET', f"/api/sandboxes/{sbx['id']}", headers=ha)[1]['status'], 'READY')
 
     def test_missing_identity_is_rejected_at_the_manager_boundary(self):
-        from sandbox_manager import SandboxManager, SandboxError
+        from sandbox_manager import SandboxManager
         with tempfile.TemporaryDirectory() as tmp:
             mgr = SandboxManager(base_dir=Path(tmp) / 's', db_path=Path(tmp) / 'd.sqlite3')
             sbx = mgr.create_sandbox('usr_a', 'ws_a')

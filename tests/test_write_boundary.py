@@ -1,6 +1,5 @@
 """Every direct document write goes through one boundary and is audited; cross-tenant attempts are refused and
 never persist the foreign id; export includes the audit; deletion removes it. Real server, production mode."""
-import hashlib
 import sys
 import tempfile
 import unittest

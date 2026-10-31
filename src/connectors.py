@@ -9,7 +9,6 @@ import sqlite3
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = Path(os.environ.get('RESOLVE_CONNECTORS_DB', ROOT / 'data' / 'connectors.sqlite3'))

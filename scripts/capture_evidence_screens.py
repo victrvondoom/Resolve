@@ -1,5 +1,4 @@
 """Capture fresh high-resolution screenshots of Mission Control and Landing Page for G9 release evidence."""
-import os
 import sys
 import tempfile
 import time

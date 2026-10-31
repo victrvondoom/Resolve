@@ -226,7 +226,6 @@ class RealDocumentWrite(unittest.TestCase):
 
     def test_stale_revision_cannot_write_a_report(self):
         from test_brief_mission import Base, INTENT, wait_state
-        import brief_mission as bm
         from brief_mission import MissionError
         class Case(Base):
             def runTest(self):

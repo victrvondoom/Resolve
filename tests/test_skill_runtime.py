@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from resolve_core import Action, Ledger, asdict, seed_demo, uid, verify_outbox
+from resolve_core import Action, Ledger, seed_demo, uid, verify_outbox
 from skill_runtime import AmbiguousEntity, SkillError, SkillStore, candidate_from_confirmed
 
 

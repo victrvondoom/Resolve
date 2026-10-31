@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / "apps"))
 sys.path.insert(0, str(ROOT / "src"))
 from demo_suite import DemoStore
 from demo_controller import ControllerError, DemoController, canonical_hash
-from resolve_core import Action, digest, uid
+from resolve_core import Action, uid
 
 
 class ControllerKernelTests(unittest.TestCase):

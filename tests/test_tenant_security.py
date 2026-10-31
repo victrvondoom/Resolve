@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import tempfile
-import time
 import unittest
 from pathlib import Path
 import sys
@@ -11,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 from tenant_auth import TenantAuthManager, TenantError
 from isolation_fixtures import TestOnlyNonIsolatedDouble
-from sandbox_manager import SandboxManager, SandboxSecurityError, SandboxError, SandboxState
+from sandbox_manager import SandboxManager, SandboxError
 from cloud_browser import CloudBrowserPool, CloudBrowserError
 from effect_graph import EffectDependencyGraph, NodeType, EdgeType
 from connectors import ConnectorRegistry, ConnectorError

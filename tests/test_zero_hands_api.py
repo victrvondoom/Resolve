@@ -5,7 +5,6 @@ DOM-level browser automation (Playwright); not physical cursor control. WINDOWS_
 """
 import hashlib
 import io
-import re
 import sys
 import tempfile
 import time

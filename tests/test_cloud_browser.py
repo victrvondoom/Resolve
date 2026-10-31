@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 import http.server
 import threading
-from cloud_browser import CloudBrowserPool, CloudBrowserSession, CloudBrowserError
+from cloud_browser import CloudBrowserPool, CloudBrowserError
 from net_policy import NetPolicy, PolicyViolation
 
 

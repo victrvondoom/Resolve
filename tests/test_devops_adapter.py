@@ -1,5 +1,4 @@
 """Tests for DevOpsAdapter (Development Operations workspace)."""
-import os
 import sys
 import tempfile
 import unittest

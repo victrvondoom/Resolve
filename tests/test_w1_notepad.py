@@ -82,7 +82,6 @@ class W1NativeNotepad(unittest.TestCase):
             self.assertEqual(Path(r['path']).read_text(encoding='utf-8-sig').rstrip('\r\n'), 'RESOLVE smoke test')
 
     def test_real_focus_steal_blocks_typing(self):
-        import subprocess
         with tempfile.TemporaryDirectory() as d:
             w1 = NotepadW1(Ledger(Path(d) / 'l.sqlite3'), Path(d) / 'ws')
             thief = []
