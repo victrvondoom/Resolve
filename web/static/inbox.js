@@ -133,8 +133,14 @@
           ? empty('No local mailbox connected', 'Create a mailbox on the local mail server in Connections, deliver a test message to it, then sync.',
                   `<p><a class="btn btn-primary" href="#connections" data-ib="nav" data-route="#connections">Open Connections</a></p>`)
           : IB.mode === 'LIVE'
-          ? empty('No inbox connected', brief.connection_status === 'NOT_CONNECTED' ? 'Gmail is optional. You can work with the local mail server (no account, no internet) or connect Gmail with read-only access. Nothing is read until you choose.' : 'Your Gmail connection needs attention. Check Connections.',
-                  `<p><button class="btn btn-primary" type="button" data-ib="mode" data-value="LOCAL">Use local mail</button> <a class="btn" href="#connections" data-ib="nav" data-route="#connections">Connection options</a> <a class="btn" href="#replay" data-ib="nav" data-route="#replay">Try the replay lab</a></p>`)
+          ? (() => {
+            const hasLocal = !!(IB.conn && IB.conn.local && IB.conn.local !== 'NOT_CONFIGURED');
+            const text = brief.connection_status !== 'NOT_CONNECTED' ? 'Your Gmail connection needs attention. Check Connections.'
+              : hasLocal ? 'Gmail is optional. You can work with the local mail server (no account, no internet) or connect Gmail with read-only access. Nothing is read until you choose.'
+              : 'Gmail is optional and is not configured on this server, and there is no local mail server here. The replay lab runs the whole flow on labelled synthetic mail; connections lists what an operator can enable.';
+            return empty('No inbox connected', text,
+              `<p>${hasLocal ? '<button class="btn btn-primary" type="button" data-ib="mode" data-value="LOCAL">Use local mail</button> ' : ''}<a class="btn ${hasLocal ? '' : 'btn-primary'}" href="#replay" data-ib="nav" data-route="#replay">Try the replay lab</a> <a class="btn" href="#connections" data-ib="nav" data-route="#connections">Connection options</a></p>`);
+          })()
           : empty('No replay started', 'Open the replay lab to run the synthetic morning.', `<p><a class="btn btn-primary" href="#replay" data-ib="nav" data-route="#replay">Open the replay lab</a></p>`));
         return;
       }

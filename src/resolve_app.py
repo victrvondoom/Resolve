@@ -469,7 +469,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if urlparse(self.path).path in {'/api/health', '/api/system/health'}:  # platform probes use arbitrary Host headers; nothing sensitive
                 return self.send_json(200, {'status': 'ok', 'name': 'RESOLVE', 'version': '0.2', 'database': 'sqlite-wal', 'mode': SECURITY.mode,
-                                            'features': {'speech_server': voice_engine.health()['available'], 'cloud_browser': SECURITY.cloud_browser_enabled, 'diagnostics': brief_missions.diagnostics is not None}})
+                                            'features': {'speech_server': voice_engine.health()['available'], 'cloud_browser': SECURITY.cloud_browser_enabled, 'diagnostics': brief_missions.diagnostics is not None},
+                                            'disabled_in_production': list(LEGACY_GLOBAL_PREFIXES) if SECURITY.production else []})
             if urlparse(self.path).path == '/api/livez':          # liveness: the process serves HTTP; no dependency checks
                 return self.send_json(200, {'status': 'alive'})
             if urlparse(self.path).path == '/api/readyz':         # readiness: each subsystem reported separately, no secrets
