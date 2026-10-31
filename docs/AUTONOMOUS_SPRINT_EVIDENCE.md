@@ -57,3 +57,7 @@ Findings:
 - 061–070 security/privacy: partially covered by the write-boundary and export tests; the full audit has not been done.
 - 071–080 benchmark rework: not done in this round; the existing local simulation is unchanged.
 - Mutation check for the write boundary (disable recording → tests must fail): not yet run.
+
+### Full regression (round 1 integrated code)
+- `python -m pytest tests -q`: **407 passed, 12 skipped, 0 failed** (377 s). The 12 skips are the tkinter desktop tests,
+  which cannot run on headless Linux. Run started after the code changes above; the commit `e3396b3` contains that code.
