@@ -2,7 +2,7 @@
 
 **Status: user-owned evidence. Nothing in this repository records a Wispr Flow session, a usage screenshot or an Insights report. Do not add any without a real recording made by the account holder.**
 
-RESOLVE has no Wispr Flow integration. There is no Wispr SDK or API call in this code, and none is claimed. Wispr Flow is an operating-system dictation tool. In this workflow it types into ordinary text fields: the coding assistant's prompt box, the RESOLVE instruction field, and the RESOLVE correction field. RESOLVE receives only the text that appears in those fields.
+Wispr Flow was used while building this project (confirmed by the project owner). RESOLVE has no Wispr SDK or API integration: no Wispr call exists in this code, and none is needed. Wispr Flow is an operating-system dictation tool. In this workflow it types into ordinary text fields: the coding assistant's prompt box, the RESOLVE instruction field, and the RESOLVE correction field. RESOLVE receives only the text that appears in those fields.
 
 ## What the recording must show
 

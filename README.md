@@ -178,11 +178,18 @@ pip install -r requirements-dev.txt
 python src/resolve_app.py
 ```
 
-Open **http://127.0.0.1:8765/app**, then **Replay lab → Start → Step** and look at **Morning brief**.
+Open **http://127.0.0.1:8765/app**. It works with **no Google account, no API key and no internet connection**.
+
+| Area | What is in it |
+|---|---|
+| **Workbench** (opens first) | **Advanced Tools**: agents, live computer, cloud (local Chromium) browser, skills, documents and research, evidence, files, benchmarks, voice simulator, Windows native, mission control, tool registry. The tiles and the registry table are read live from the server. |
+| **Operations** | Morning brief, Inbox, **Outbox**, Commitments, Drafts, Approvals, Activity, Voice rules, Connections, Replay lab, Privacy and data, Settings. |
+
+**Local mode.** On first use of Operations, RESOLVE connects a real, empty mailbox (`me@mail.resolve.test`) on its own local mail server (SMTP and POP3 on loopback). **Connections → Local mail server** lets you deliver a test message into it and sync. Gmail is optional: it appears as connected only when it genuinely is, otherwise the app says **No Gmail connected**. Local test mail never leaves the computer and is never labelled as sent to an external recipient.
 
 | Variable | Purpose |
 |---|---|
-| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI` | Live Gmail. Without them the app shows GMAIL NOT CONFIGURED |
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI` | **Optional.** Only for live Gmail. Without them the app shows GMAIL NOT CONFIGURED and everything else works |
 | `RESOLVE_MASTER_KEY` | Encryption key. **Required in production** |
 | `RESOLVE_INBOX_DB` | Inbox database path (default `data/inbox.sqlite3`) |
 | `RESOLVE_PUBLIC_BASE` | Base URL for OAuth redirects |
@@ -228,9 +235,32 @@ These are controlled, labelled fixtures in this repository, **not real inboxes**
 | Live microphone with real hardware | **NOT TESTED** |
 | Native Windows input (UI Automation, Win32) | `WINDOWS_NATIVE_TESTS_NOT_RUN` |
 | Public deployment | **NOT DONE** (needs your hosting account and master key) |
-| Wispr Flow | RESOLVE has **no Wispr SDK integration**. Wispr Flow dictates into ordinary text fields. The Insights screenshot and demo recording must come from your real account ([`docs/WISPR_DEMO_SCRIPT.md`](docs/WISPR_DEMO_SCRIPT.md)) |
+| Wispr Flow Insights screenshot and demo recording | **Pending, needs your account.** Wispr Flow was used on this project, but no Insights report or recording is stored in the repo yet, and none will be invented ([`docs/WISPR_DEMO_SCRIPT.md`](docs/WISPR_DEMO_SCRIPT.md)) |
 
 ---
+
+## How Wispr Flow was used
+
+**Wispr Flow was used while building this project.** The project owner dictated prompts, specs and documentation with it, and RESOLVE is designed to be driven the same way: Wispr Flow (or any dictation tool) types into the app's ordinary text fields, such as the Voice rules box, the reply editor and the instruction field, and RESOLVE receives only the text that appears there.
+
+It is a dictation tool, not an SDK integration: there is no Wispr API call in this code, because none is needed. The earlier README wording implied the opposite; that was wrong and is corrected here. The Insights screenshot and demo recording must come from the owner's real account, so they are not included.
+
+## What the latest UI pass did, and did not do
+
+| Item | Status |
+|---|---|
+| Stylesheets restored (a merge had dropped `inbox.css`, `brand-theme.css`, `bubble.css`, leaving the inbox screens unstyled) | **DONE** |
+| Works with no Google and no internet (tested with external requests blocked) | **DONE**, `tests/test_offline_local_mode.py` |
+| Truthful connector label (Gmail shown connected only when connected) and Gmail-optional default | **DONE** |
+| Two areas (Workbench, Operations) replace the 24-item list; old links and hashes still work | **DONE** |
+| Outbox view (approved, uncertain, sent and verified, provider drafts) | **DONE** (failed-send history is not listed yet) |
+| React/TypeScript rebuild, 3D architecture visualizer, command palette | **NOT DONE** (the frontend is still plain JavaScript; there is no npm build) |
+| Agent run timeline, skill editor, evidence gallery, research-from-PDF report, benchmark Run button | **NOT DONE** in this pass; the existing views are unchanged |
+| Model selector that switches the backend model | **NOT DONE** (no model routing UI; the engine is still RULES_ONLY unless you set the model variables) |
+| `.eml` / `.mbox` import | **NOT DONE** |
+| Intro video re-exported with large captions and audio | **PARTLY**: regenerated from the new UI with large captions; there is no narration audio |
+
+Details and next steps: [`docs/HANDOFF_NEXT_ACCOUNT.md`](docs/HANDOFF_NEXT_ACCOUNT.md).
 
 ## Security in plain words
 

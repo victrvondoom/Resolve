@@ -79,14 +79,18 @@ def main() -> int:
         with sync_playwright() as p:
             b = p.chromium.launch(executable_path=_chromium_executable(), args=['--no-sandbox'])
             pg = b.new_context(viewport={'width': 1280, 'height': 720}).new_page()
-            pg.goto(f'http://127.0.0.1:{port}/app#morning', wait_until='networkidle')
-            pg.wait_for_timeout(600)
+            pg.goto(f'http://127.0.0.1:{port}/app', wait_until='networkidle')
+            pg.wait_for_selector('#wbBody .wb-tile', timeout=15000)
             r = Recorder(pg, frames)
 
-            r.caption('RESOLVE: from inbox noise to verified follow-through')
+            r.caption('RESOLVE: Advanced Tools first. Everything shown is read live from this server')
+            r.hold(4.0)
+            r.caption('Two areas: Workbench for tools and agents, Operations for your inbox and commitments')
+            pg.click('[data-area-btn="operations"]')
+            pg.wait_for_selector('#view-morning:not([hidden])', timeout=8000)
             r.hold(3.0)
 
-            r.caption('1  Connect and synchronize. Here: the labelled synthetic REPLAY mailbox')
+            r.caption('1  Connect and synchronize. No Google needed: local mail, or the labelled synthetic REPLAY mailbox')
             pg.click('a[data-view="replay"]')
             pg.click('button[data-action="start"]')
             r.hold(1.5)

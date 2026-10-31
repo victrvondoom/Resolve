@@ -9,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_web_api_g1 import HAVE_PW, Server, free_port
+from ui_nav import click_nav
 
 CHROMIUM = '/opt/pw-browsers/chromium'
 OVERFLOW_JS = 'document.scrollingElement.scrollWidth <= window.innerWidth'
@@ -81,7 +82,7 @@ class LandingAndAppUI(unittest.TestCase):
         self.assertTrue(page.evaluate(OVERFLOW_JS))
         page.get_by_role('link', name='Open Mission Control').first.click()
         page.wait_for_url('**/app')
-        page.wait_for_selector('#view-morning')          # the Morning brief is the default destination (inbox operator)
+        page.wait_for_selector('#view-workbench:not([hidden])')   # the Workbench (Advanced Tools) is the default destination
         self.assertEqual(errors, [])
 
     def test_landing_mobile_has_no_horizontal_overflow(self):
@@ -113,7 +114,7 @@ class LandingAndAppUI(unittest.TestCase):
                 # every view fits the viewport too
                 for view in ('agents', 'skills', 'files', 'bench', 'sim', 'windows', 'ledger', 'mission'):
                     page.evaluate("document.querySelectorAll('.nav-more').forEach(d => d.open = true)")  # 'More tools' is collapsed by default
-                    page.locator(f'.sidebar a[data-view="{view}"]').click()
+                    click_nav(page, view)
                     self.assertTrue(page.locator(f'#view-{view}').is_visible())
                     self.assertTrue(page.evaluate(OVERFLOW_JS), (view, page.evaluate('[document.scrollingElement.scrollWidth, innerWidth]')))
                 # no dead buttons: every disabled button explains itself

@@ -19,7 +19,7 @@ The text below is the earlier Windows-first automation statement. It describes c
 Distilled from the full execution-grade specification supplied by the user in chat (the verbatim text was too large to retain in this file; the 80-concept lists live in `capabilities/registry.json`). Where this file is silent, ask: "does a real user command cause a real, independently verified action?"
 
 ## Mission
-Windows-first, voice-operated, multi-agent automation of cursor, keyboard, desktop apps, browser, files and workflows. Runs locally with a deterministic no-key mode. Wispr Flow is used for *dictating development docs*; no Wispr SDK integration is claimed. The old repo (to be renamed PROXY) is separate and must not be modified.
+Windows-first, voice-operated, multi-agent automation of cursor, keyboard, desktop apps, browser, files and workflows. Runs locally with a deterministic no-key mode. Wispr Flow was used in building this project (dictating prompts, specs and docs); no Wispr SDK integration is claimed because none exists. The old repo (to be renamed PROXY) is separate and must not be modified.
 
 ## Hypothesis (measured, not asserted)
 IEEC: preserve the relationship between spoken intent, semantic entity, temporal version, application state and verified external effect across independent apps under focus theft, stale observation, ambiguous contacts, lost acks, duplicate delivery, concurrency and interruption. CSL: durable append-only action ledger. Not claimed: novelty of clicking/UIA, universal exactly-once.

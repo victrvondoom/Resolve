@@ -41,19 +41,35 @@ function chip(text, cls) { return `<span class="chip ${cls || chipClass(text)}">
 function setMsg(el, text, kind) { el.textContent = text; el.classList.toggle('err', kind === 'err'); el.classList.toggle('ok', kind === 'ok'); }
 
 /* ---------------- view router ---------------- */
+/* Two workspace areas. WORKBENCH (default) holds Advanced Tools; OPERATIONS holds the inbox, outbox, commitments and approvals.
+   Every old view id and deep link still works: showView() picks the area that owns the view. */
+const OPERATIONS_VIEWS = new Set(['morning', 'inbox', 'thread', 'outbox', 'commitments', 'commitment', 'drafts', 'draft', 'approvals', 'activity',
+                                  'rules', 'connections', 'replay', 'privacy', 'settings', 'connectors']);
 const views = [...document.querySelectorAll('section.view')];
 const navLinks = [...document.querySelectorAll('.sidebar a[data-view]')];
+const areaBtns = [...document.querySelectorAll('[data-area-btn]')];
+const areaPanels = [...document.querySelectorAll('[data-area]')];
+const lastInArea = { workbench: 'workbench', operations: 'morning' };
+const areaOf = name => OPERATIONS_VIEWS.has(name) ? 'operations' : 'workbench';
+function setArea(area) {
+  areaBtns.forEach(b => b.setAttribute('aria-selected', String(b.dataset.areaBtn === area)));
+  areaPanels.forEach(p => { p.hidden = p.dataset.area !== area; });
+}
 function showView(name, focus) {
   name = String(name || '').split(':')[0];                 // deep links carry an id after a colon: #thread:<id>
-  if (!views.some(v => v.dataset.view === name)) name = 'morning';
+  if (!views.some(v => v.dataset.view === name)) name = 'workbench';
+  const area = areaOf(name);
+  lastInArea[area] = name;
+  setArea(area);
   views.forEach(v => { v.hidden = v.dataset.view !== name; });
   navLinks.forEach(a => { if (a.dataset.view === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   if (focus) { const h = document.querySelector(`#view-${name} h1`); if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); } window.scrollTo(0, 0); }
   document.dispatchEvent(new CustomEvent('resolve:view', { detail: name }));   // views refresh their data when shown
 }
 navLinks.forEach(a => a.addEventListener('click', ev => { ev.preventDefault(); history.replaceState(null, '', '#' + a.dataset.view); showView(a.dataset.view, true); }));
+areaBtns.forEach(b => b.addEventListener('click', () => { const v = lastInArea[b.dataset.areaBtn]; history.pushState(null, '', '#' + v); showView(v, true); }));
 window.addEventListener('hashchange', () => showView(location.hash.slice(1), true));
-showView(location.hash.slice(1) || 'morning', false);
+showView(location.hash.slice(1) || 'workbench', false);
 
 /* ---------------- desktop simulator (existing flow) ---------------- */
 function render() {
@@ -387,6 +403,9 @@ api('/api/web/status').then(s => {
     chip(s.test_mode ? 'Test mode: on (fixtures)' : 'Test mode: off', s.test_mode ? 'chip-warn' : 'chip-muted'),
     chip('Outbox: SIMULATED DELIVERY', 'chip-warn')
   ].join('');
+  const bad = [!s.playwright, wn.available === false].filter(Boolean).length;
+  $('#statusSummary').textContent = bad ? bad + ' unavailable here' : 'all available';
+  $('#statusSummary').className = 'chip ' + (bad ? 'chip-warn' : 'chip-ok');
   if (wn.available === false) disableWindows(wn.reason || 'not a Windows interactive session');
   else setMsg($('#winAvail'), 'Server reports native Windows control is available.', 'ok');
   if (sp.note) $('#utterMicChip').title = sp.note;

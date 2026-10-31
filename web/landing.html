@@ -181,7 +181,7 @@
         <article class="status-card warn"><span class="chip chip-warn">Partly verified</span><h3>Speech recognition</h3><p>Audio capture, consent, validation and error handling are tested. Recognition accuracy with a real speech engine has not been verified yet.</p></article>
         <article class="status-card warn"><span class="chip chip-warn">Not run on build host</span><h3>Native Windows control</h3><p>Cursor movement, clicks and typing into Notepad were not exercised here: <code>WINDOWS_NATIVE_TESTS_NOT_RUN</code> on the build host. To test, run <code>scripts/smoke-windows.ps1</code> in an interactive Windows session.</p></article>
         <article class="status-card warn"><span class="chip chip-warn">Simulated</span><h3>Message delivery &amp; connectors</h3><p>The fixture outbox is <b>SIMULATED DELIVERY</b>; no email or message is ever sent. The connectors use built-in fixture data, with no real OAuth.</p></article>
-        <article class="status-card muted"><span class="chip chip-muted">No integration</span><h3>Wispr Flow</h3><p>Wispr Flow can dictate into any RESOLVE text box like any other app. There is no Wispr SDK integration, and RESOLVE does not claim one.</p></article>
+        <article class="status-card muted"><span class="chip chip-ok">Used to build this</span><h3>Wispr Flow</h3><p>Wispr Flow was used while building this project, and it dictates into any RESOLVE text box like any other app. There is no Wispr SDK integration, because none is needed: RESOLVE only receives the text that appears in its fields.</p></article>
       </div>
     </div>
   </section>
