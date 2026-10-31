@@ -104,6 +104,7 @@ class LandingAndAppUI(unittest.TestCase):
                 self.assertTrue(page.evaluate(OVERFLOW_JS), page.evaluate('[document.scrollingElement.scrollWidth, innerWidth]'))
                 # every view fits the viewport too
                 for view in ('agents', 'skills', 'files', 'bench', 'sim', 'windows', 'ledger', 'mission'):
+                    page.evaluate("document.querySelectorAll('.nav-more').forEach(d => d.open = true)")  # 'More tools' is collapsed by default
                     page.locator(f'.sidebar a[data-view="{view}"]').click()
                     self.assertTrue(page.locator(f'#view-{view}').is_visible())
                     self.assertTrue(page.evaluate(OVERFLOW_JS), (view, page.evaluate('[document.scrollingElement.scrollWidth, innerWidth]')))
