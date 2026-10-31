@@ -3,13 +3,11 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-import hmac
 import os
 import secrets
 import sqlite3
 import time
 import uuid
-from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

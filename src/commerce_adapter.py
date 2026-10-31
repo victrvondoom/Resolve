@@ -8,13 +8,12 @@ alteration invalidates the authorization.
 from __future__ import annotations
 
 import hashlib
-import json
 import sqlite3
 import time
 from pathlib import Path
 from typing import Any
 
-from resolve_core import Action, Ledger, digest, now, uid
+from resolve_core import Action, Ledger, digest, uid
 
 
 class CommerceError(RuntimeError):

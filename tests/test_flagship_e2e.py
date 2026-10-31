@@ -10,7 +10,6 @@ HONEST SCOPE
 import hashlib
 import re
 import http.server
-import io
 import json
 import math
 import os
@@ -25,7 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from test_production_security import ProdServer
-from test_web_api_g1 import free_port, ROOT
+from test_web_api_g1 import free_port
 from cloud_browser import _chromium_executable
 
 try:

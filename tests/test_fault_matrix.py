@@ -24,7 +24,7 @@ sys.path[:0] = [str(ROOT / 'src'), str(ROOT / 'apps'), str(ROOT / 'benchmarks')]
 
 import windows_adapter
 from agent_runtime import CursorLeaseManager
-from resolve_core import Action, Ledger, uid
+from resolve_core import Ledger
 from web_fixtures import FixtureWorld
 from web_mission import MissionError, WebMissionRunner
 

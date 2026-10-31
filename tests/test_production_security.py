@@ -1,5 +1,4 @@
 """Production-mode security: no shared token, no demo fallback, cross-tenant denial, headers, rate limits."""
-import base64
 import json
 import os
 import subprocess

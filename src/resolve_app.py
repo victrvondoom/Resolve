@@ -26,7 +26,7 @@ import windows_adapter
 import uia_adapter
 from web_api import WebApi
 from tenant_auth import TenantAuthManager, TenantError
-from sandbox_manager import SandboxManager, SandboxError, SandboxSecurityError
+from sandbox_manager import SandboxManager, SandboxError
 from cloud_browser import CloudBrowserPool, CloudBrowserError, CloudBrowserSession
 from effect_graph import EffectDependencyGraph, NodeType, EdgeType
 from connectors import ConnectorRegistry, ConnectorError
@@ -37,7 +37,6 @@ from command_router import interpret as interpret_command
 from demo_webapp import DemoWebApp
 from write_audit import WriteAudit
 from isolation import ExecutionBlocked
-from document_studio import DocumentError
 from computer_tasks import BROWSER_CAPS, ComputerTaskRunner, TaskRefused, browser_services
 from controlled_apps import serve_controlled
 from net_policy import NetPolicy, origin_of

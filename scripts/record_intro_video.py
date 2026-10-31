@@ -49,7 +49,6 @@ def main() -> int:
                 stamps.append((fp.name, time.time() - t0))
                 i += 1
             b.close()
-        video = None
         mp4 = OUT / 'intro.mp4'
         gif = OUT / 'intro.gif'
         if shutil.which('ffmpeg') is None:

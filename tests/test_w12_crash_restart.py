@@ -1,5 +1,4 @@
 """W12: SIGKILL the backend while a send is DISPATCHING, restart, and reconcile from SQLite without resending."""
-import json
 import os
 import signal
 import sqlite3

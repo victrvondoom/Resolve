@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from sandbox_manager import SandboxManager, SandboxState, SandboxSecurityError, SandboxError
+from sandbox_manager import SandboxManager, SandboxState, SandboxError
 from isolation import ExecutionBlocked
 from isolation_fixtures import TestOnlyNonIsolatedDouble
 

@@ -10,7 +10,6 @@ import http.server
 import io
 import json
 import math
-import os
 import struct
 import sys
 import tempfile

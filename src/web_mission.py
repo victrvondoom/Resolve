@@ -8,10 +8,8 @@ from __future__ import annotations
 
 import re
 import sqlite3
-import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
 
 from agent_runtime import CursorLeaseManager, LeaseLost
 from resolve_core import Action, Ledger, digest, now, uid
