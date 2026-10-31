@@ -15,6 +15,8 @@ import base64
 import hashlib
 import secrets
 import time
+from email import message_from_bytes
+from email.message import EmailMessage
 from dataclasses import dataclass, field
 from email.utils import parsedate_to_datetime
 from typing import Callable
@@ -124,7 +126,7 @@ class GmailClient:
         self._sleep = sleep
         self._max_retries = max_retries
 
-    def _call(self, method: str, path: str, body=None, params: dict | None = None) -> dict:
+    def _call(self, method: str, path: str, body=None, params: dict | None = None) -> dict:  # noqa: C901
         url = f"{API}{path}" + (f"?{urlencode(params)}" if params else "")
         refreshed = False
         attempt = 0
@@ -175,3 +177,55 @@ class GmailClient:
             if not token:
                 break
         return out
+
+
+# ---------- send path: build, send, draft, read back, search by operation marker
+
+def operation_marker(operation_key: str) -> str:
+    """A visible line placed in the message body. Gmail search can find it later, so a timed-out send can be checked."""
+    return f"[RESOLVE operation {operation_key}]"
+
+
+def build_raw_message(to: str, subject: str, body: str, operation_key: str) -> str:
+    msg = EmailMessage()
+    msg["To"] = to
+    msg["Subject"] = subject
+    msg.set_content(f"{body}\n\n{operation_marker(operation_key)}")
+    return base64.urlsafe_b64encode(msg.as_bytes()).decode().rstrip("=")
+
+
+def parse_raw(raw_b64: str) -> dict:
+    """Read back a raw message (what the provider actually stored): recipient, subject, body text."""
+    data = base64.urlsafe_b64decode(raw_b64 + "=" * (-len(raw_b64) % 4))
+    m = message_from_bytes(data)
+    body = ""
+    if m.is_multipart():
+        for part in m.walk():
+            if part.get_content_type() == "text/plain":
+                body = part.get_payload(decode=True).decode("utf-8", errors="replace")
+                break
+    else:
+        body = m.get_payload(decode=True).decode("utf-8", errors="replace")
+    return {"to": m.get("To", ""), "subject": m.get("Subject", ""), "body": body}
+
+
+class GmailSendClient(GmailClient):
+    def send_raw(self, raw: str) -> dict:
+        return self._call("POST", "/messages/send", body={"raw": raw})
+
+    def create_draft(self, raw: str) -> dict:
+        return self._call("POST", "/drafts", body={"message": {"raw": raw}})
+
+    def get_draft_raw(self, draft_id: str) -> dict:
+        data = self._call("GET", f"/drafts/{draft_id}", params={"format": "raw"})
+        return parse_raw(data["message"]["raw"])
+
+    def get_message_raw(self, message_id: str) -> dict:
+        data = self._call("GET", f"/messages/{message_id}", params={"format": "raw"})
+        return parse_raw(data["raw"])
+
+    def find_by_marker(self, operation_key: str) -> list[str]:
+        """Messages in Sent that carry this operation's marker. An empty list does NOT prove the send did not happen."""
+        q = f'in:sent "{operation_marker(operation_key)}"'
+        data = self._call("GET", "/messages", params={"q": q, "maxResults": 5})
+        return [m["id"] for m in data.get("messages", [])]

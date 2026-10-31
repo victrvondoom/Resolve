@@ -65,6 +65,9 @@ class InboxStore:
             if 1 not in done:
                 conn.executescript(MIGRATION_1)
                 conn.execute("INSERT INTO schema_migrations VALUES (1, ?)", (time.time(),))
+            if 2 not in done:
+                conn.executescript(MIGRATION_2)
+                conn.execute("INSERT INTO schema_migrations VALUES (2, ?)", (time.time(),))
         finally:
             conn.close()
 
@@ -246,6 +249,100 @@ class InboxStore:
                               (user_id, workspace_id, int(limit))).fetchall()
         return [{"id": r["id"], "action": r["action"], "subject_id": r["subject_id"], "detail": json.loads(r["detail"]), "created_at": r["created_at"]} for r in rows]
 
+    # ---------- drafts, approvals and execution records (send path)
+    def create_draft(self, user_id: str, workspace_id: str, thread_id: str, recipient: str, subject: str, body: str, digest: str) -> dict:
+        with self._lock, self._db() as db:
+            if db.execute("SELECT 1 FROM email_threads WHERE id=? AND user_id=? AND workspace_id=?", (thread_id, user_id, workspace_id)).fetchone() is None:
+                raise InboxError("thread not found", 404)
+            did = self._id("drf")
+            db.execute("""INSERT INTO reply_drafts(id,user_id,workspace_id,thread_id,recipient,digest,subject_sealed,body_sealed,status,created_at,updated_at)
+                          VALUES (?,?,?,?,?,?,?,?,'DRAFT',?,?)""",
+                       (did, user_id, workspace_id, thread_id, recipient[:200], digest, self._seal(subject, user_id, workspace_id, did),
+                        self._seal(body, user_id, workspace_id, did), time.time(), time.time()))
+            self._audit(db, user_id, workspace_id, "draft.created", did, {})
+        return {"id": did, "digest": digest}
+
+    def get_draft(self, user_id: str, workspace_id: str, draft_id: str) -> dict:
+        with self._db() as db:
+            r = db.execute("SELECT * FROM reply_drafts WHERE id=? AND user_id=? AND workspace_id=?", (draft_id, user_id, workspace_id)).fetchone()
+        if r is None:
+            raise InboxError("draft not found", 404)
+        return {"id": r["id"], "thread_id": r["thread_id"], "recipient": r["recipient"], "digest": r["digest"], "status": r["status"],
+                "provider_draft_id": r["provider_draft_id"],
+                "subject": self._open(r["subject_sealed"], user_id, workspace_id, r["id"]), "body": self._open(r["body_sealed"], user_id, workspace_id, r["id"])}
+
+    def approve(self, user_id: str, workspace_id: str, draft_id: str, presented_digest: str, operation: str, now: float, ttl_seconds: float = 900) -> dict:
+        """Explicit approval bound to the draft digest. A changed draft, an expired approval or a reused approval is refused."""
+        draft = self.get_draft(user_id, workspace_id, draft_id)
+        if presented_digest != draft["digest"]:
+            raise InboxError("the draft changed after you reviewed it; approve the current version", 409)
+        if operation not in ("CREATE_GMAIL_DRAFT", "SEND_EMAIL"):
+            raise InboxError("unknown operation", 400)
+        with self._lock, self._db() as db:
+            aid = self._id("apr")
+            db.execute("INSERT INTO approvals(id,user_id,workspace_id,draft_id,operation,digest,approved_at,expires_at) VALUES (?,?,?,?,?,?,?,?)",
+                       (aid, user_id, workspace_id, draft_id, operation, draft["digest"], now, now + ttl_seconds))
+            db.execute("UPDATE reply_drafts SET status='APPROVED', updated_at=? WHERE id=?", (now, draft_id))
+            self._audit(db, user_id, workspace_id, "approval.granted", aid, {"operation": operation})
+        return {"id": aid, "operation": operation, "expires_at": now + ttl_seconds}
+
+    def consume_approval(self, user_id: str, workspace_id: str, approval_id: str, operation: str, digest: str, now: float) -> dict:
+        """Mark an approval used exactly once. Refuses expired, reused, wrong-operation or wrong-digest approvals."""
+        with self._lock, self._db() as db:
+            r = db.execute("SELECT * FROM approvals WHERE id=? AND user_id=? AND workspace_id=?", (approval_id, user_id, workspace_id)).fetchone()
+            if r is None:
+                raise InboxError("approval not found", 404)
+            if r["used_at"] is not None:
+                raise InboxError("this approval was already used", 409)
+            if now > r["expires_at"]:
+                raise InboxError("this approval expired; approve again", 409)
+            if r["operation"] != operation or r["digest"] != digest:
+                raise InboxError("approval does not match this operation", 409)
+            db.execute("UPDATE approvals SET used_at=? WHERE id=? AND used_at IS NULL", (now, approval_id))
+            return {"draft_id": r["draft_id"], "digest": r["digest"]}
+
+    def claim_execution(self, user_id: str, workspace_id: str, approval_id: str, operation_key: str, operation: str) -> tuple[dict, bool]:
+        """Returns (record, created). A repeated key returns the existing record and never a second dispatch."""
+        with self._lock, self._db() as db:
+            hit = db.execute("SELECT * FROM execution_records WHERE user_id=? AND workspace_id=? AND operation_key=?",
+                             (user_id, workspace_id, operation_key)).fetchone()
+            if hit is not None:
+                return dict(hit), False
+            eid = self._id("exe")
+            db.execute("""INSERT INTO execution_records(id,user_id,workspace_id,approval_id,operation_key,operation,state,created_at,updated_at)
+                          VALUES (?,?,?,?,?,?,'EXECUTING',?,?)""", (eid, user_id, workspace_id, approval_id, operation_key, operation, time.time(), time.time()))
+            self._audit(db, user_id, workspace_id, "execution.started", eid, {"operation": operation})
+            return {"id": eid, "state": "EXECUTING", "provider_id": None}, True
+
+    def finish_execution(self, user_id: str, workspace_id: str, execution_id: str, state: str, provider_id: str | None, reason: str, evidence: str) -> None:
+        if state not in EXECUTION_STATES:
+            raise InboxError("unknown execution state", 400)
+        with self._lock, self._db() as db:
+            # a fresh attempt finishes from EXECUTING; a read-only reconciliation may finish from UNCERTAIN or NEEDS_RECOVERY
+            r = db.execute("UPDATE execution_records SET state=?, provider_id=?, reason=?, updated_at=? WHERE id=? AND user_id=? AND workspace_id=? "
+                           "AND state IN ('EXECUTING','UNCERTAIN','NEEDS_RECOVERY')",
+                           (state, provider_id, reason[:200], time.time(), execution_id, user_id, workspace_id))
+            if r.rowcount != 1:
+                raise InboxError("execution is not in a state that can be finished", 409)
+            db.execute("INSERT INTO verification_records(id,user_id,workspace_id,execution_id,method,result,evidence,created_at) VALUES (?,?,?,?,?,?,?,?)",
+                       (self._id("ver"), user_id, workspace_id, execution_id, reason[:80], state, evidence[:500], time.time()))
+            self._audit(db, user_id, workspace_id, f"execution.{state.lower()}", execution_id, {"reason": reason[:80]})
+
+    def draft_for_execution(self, user_id: str, workspace_id: str, execution_id: str) -> dict:
+        with self._db() as db:
+            r = db.execute("SELECT a.draft_id FROM execution_records e JOIN approvals a ON a.id=e.approval_id "
+                           "WHERE e.id=? AND e.user_id=? AND e.workspace_id=?", (execution_id, user_id, workspace_id)).fetchone()
+        if r is None:
+            raise InboxError("execution not found", 404)
+        return self.get_draft(user_id, workspace_id, r["draft_id"])
+
+    def list_executions(self, user_id: str, workspace_id: str) -> list[dict]:
+        with self._db() as db:
+            rows = db.execute("SELECT e.*, v.method, v.evidence FROM execution_records e LEFT JOIN verification_records v ON v.execution_id=e.id "
+                              "WHERE e.user_id=? AND e.workspace_id=? ORDER BY e.created_at DESC", (user_id, workspace_id)).fetchall()
+        return [{"id": r["id"], "operation": r["operation"], "state": r["state"], "provider_id": r["provider_id"], "reason": r["reason"],
+                 "verification_method": r["method"], "verification_evidence": r["evidence"], "updated_at": r["updated_at"]} for r in rows]
+
     # ---------- export / deletion (tenant-scoped)
     def export_workspace(self, user_id: str, workspace_id: str) -> dict:
         return {"connections": [self.get_connection(user_id, workspace_id, p) for p in ("gmail",) if self.get_connection(user_id, workspace_id, p)],
@@ -291,4 +388,23 @@ CREATE TABLE audit_events (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL, workspace_id TEXT NOT NULL, action TEXT NOT NULL, subject_id TEXT,
   detail TEXT NOT NULL, created_at REAL NOT NULL);
 CREATE INDEX audit_scope ON audit_events(user_id, workspace_id, created_at);
+"""
+
+
+MIGRATION_2 = """
+CREATE TABLE reply_drafts (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, workspace_id TEXT NOT NULL, thread_id TEXT NOT NULL REFERENCES email_threads(id) ON DELETE CASCADE,
+  recipient TEXT NOT NULL, digest TEXT NOT NULL, subject_sealed BLOB NOT NULL, body_sealed BLOB NOT NULL,
+  status TEXT NOT NULL, provider_draft_id TEXT, created_at REAL NOT NULL, updated_at REAL NOT NULL);
+CREATE INDEX reply_drafts_scope ON reply_drafts(user_id, workspace_id, status);
+CREATE TABLE approvals (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, workspace_id TEXT NOT NULL, draft_id TEXT NOT NULL REFERENCES reply_drafts(id) ON DELETE CASCADE,
+  operation TEXT NOT NULL, digest TEXT NOT NULL, approved_at REAL NOT NULL, expires_at REAL NOT NULL, used_at REAL);
+CREATE TABLE execution_records (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, workspace_id TEXT NOT NULL, approval_id TEXT NOT NULL REFERENCES approvals(id) ON DELETE CASCADE,
+  operation_key TEXT NOT NULL, operation TEXT NOT NULL, state TEXT NOT NULL, provider_id TEXT, reason TEXT,
+  created_at REAL NOT NULL, updated_at REAL NOT NULL, UNIQUE(user_id, workspace_id, operation_key));
+CREATE TABLE verification_records (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, workspace_id TEXT NOT NULL, execution_id TEXT NOT NULL REFERENCES execution_records(id) ON DELETE CASCADE,
+  method TEXT NOT NULL, result TEXT NOT NULL, evidence TEXT NOT NULL, created_at REAL NOT NULL);
 """
