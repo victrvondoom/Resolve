@@ -206,6 +206,8 @@ class DocumentStudioUiE2E(unittest.TestCase):
         page.on('dialog', lambda d: d.accept())
         page.goto(f'http://127.0.0.1:{self.srv.port}/app')
         page.wait_for_selector('#authDialog[open]'); page.click('#authDemo'); page.wait_for_selector('#authDialog', state='hidden')
+        # Documents lives in the collapsed "Advanced tools" group; open it as a user would.
+        page.evaluate("document.querySelectorAll('.nav-more').forEach(d => d.open = true)")
         page.click('.sidebar a[data-view="documents"]')
         page.set_input_files('#docUpload', {'name': 'three.pdf', 'mimeType': 'application/pdf', 'buffer': text_pdf(['Page One', 'Page Two', 'Page Three'])})
         page.click('#docUploadBtn')
