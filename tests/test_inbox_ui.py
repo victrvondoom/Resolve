@@ -111,10 +111,11 @@ class InboxUI(unittest.TestCase):
             pg.wait_for_selector('#ibLocalPanel', timeout=8000)
             pg.click('a[data-view="morning"]')
             pg.click('#view-morning button[data-value="LOCAL"]')
-            pg.wait_for_selector('#view-morning .ib-kpi', timeout=8000)
-            text = pg.inner_text('#view-morning')
-            self.assertIn('LOCAL MAIL SERVER', text)
-            self.assertIn('not Gmail', text)
+            # The LOCAL toggle triggers a re-render; wait for the final content
+            # (retrying assertion) instead of sampling the DOM mid-render.
+            expect(pg.locator('#view-morning')).to_contain_text('LOCAL MAIL SERVER', timeout=8000)
+            expect(pg.locator('#view-morning .ib-kpi').first).to_be_visible(timeout=8000)
+            self.assertIn('not Gmail', pg.inner_text('#view-morning'))
             pg.click('a[data-view="inbox"]')
             pg.wait_for_selector('#view-inbox a.ib-item-title', timeout=8000)
             pg.locator('#view-inbox a.ib-item-title').first.click()

@@ -114,3 +114,6 @@ GATE: voice computer / brief mission | PASS (simulator + real Chromium; WINDOWS_
 ## Checkpoint: creamy-bubble UI restyle (frontend only)
 GATE | PASS (visual/DOM only) | `python -m pytest tests/test_landing_ui.py tests/test_ux_e2e.py -q` (8 passed) | landing + Mission Control render without errors or horizontal overflow at 360/768/1440px; hero bubble scene runs (Canvas2D, not WebGL) | web/static/bubble.css, web/static/bubble.js, web/landing.html, web/index.html | existing Playwright UI tests | NEXT: native Windows smoke unchanged (WINDOWS_NATIVE_TESTS_NOT_RUN)
 Note: the repo has no Next.js app, so the design was applied to the existing vanilla web/ UI. Lighthouse and 3D-bundle-size targets were not measured.
+
+## Checkpoint: test race fix + system-design coverage audit (2026-10-31)
+GATE | PASS | `python -m pytest tests -q` → 652 passed, 12 skipped (Windows-only, WINDOWS_NATIVE_TESTS_NOT_RUN), 0 failed | Fixed a race in `tests/test_inbox_ui.py::test_local_mail_journey_through_the_ui_ends_verified` (it sampled the Morning view mid re-render after the LOCAL toggle; now uses retrying Playwright assertions). Product code unchanged. Added `docs/SYSTEM_DESIGN_COVERAGE.md` mapping the 20 system-design topics to code; gaps (circuit breaker, DLQ, pub/sub, K8s) are listed as NOT PRESENT, not implemented | NEXT: `python src/resolve_app.py`
