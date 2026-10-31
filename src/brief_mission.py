@@ -542,9 +542,11 @@ def verify_chain(m: dict, doc_owner_ok: bool) -> list[str]:
 # ------------------------------------------------------------------ durable store + orchestration
 
 class BriefMissionStore:
-    def __init__(self, db_path: str | Path, studio: DocumentStudio, hooks: dict | None = None, projects: ProjectStore | None = None):
+    def __init__(self, db_path: str | Path, studio: DocumentStudio, hooks: dict | None = None, projects: ProjectStore | None = None, sealer=None):
         self.db_path, self.studio, self.hooks = Path(db_path), studio, hooks if hooks is not None else {}
         self.projects = projects
+        from at_rest import SealedStore
+        self.sealer = sealer or SealedStore(self.db_path.parent / "keys" / "master.key")   # encryption at rest for evidence frames
         self.diagnostics = None          # injected: callable(should_continue, on_step) -> result with .findings/.frames/.steps (see configure_diagnostics)
         self.diagnostics_url = None
         self.effects = None   # EffectLedger, created after the schema is in place
@@ -973,7 +975,8 @@ class BriefMissionStore:
             if n >= MAX_EVIDENCE_PER_MISSION:
                 return None
             db.execute("INSERT INTO mission_evidence(id,mission_id,user_id,workspace_id,rev,kind,label,mime,sha256,size_bytes,created_at,data) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                       (eid, mission_id, row["user_id"], row["workspace_id"], rev, kind[:20], _clean(label, 120), mime, hashlib.sha256(data).hexdigest(), len(data), time.time(), data))
+                       (eid, mission_id, row["user_id"], row["workspace_id"], rev, kind[:20], _clean(label, 120), mime, hashlib.sha256(data).hexdigest(), len(data), time.time(),
+                        self.sealer.seal(data, row["user_id"], row["workspace_id"], eid)))
         return eid
 
     def read_evidence(self, mission_id: str, evidence_id: str, user_id: str, workspace_id: str) -> tuple[bytes, str]:
@@ -983,16 +986,33 @@ class BriefMissionStore:
                             (evidence_id, mission_id, user_id, workspace_id)).fetchone()
         if ev is None:
             raise MissionError("Evidence not found", 404)
-        return bytes(ev["data"]), ev["mime"]
+        return self._open_evidence(ev["data"], user_id, workspace_id, evidence_id), ev["mime"]
+
+    def _open_evidence(self, blob, user_id, workspace_id, evidence_id) -> bytes:
+        raw = bytes(blob)
+        return self.sealer.open(raw, user_id, workspace_id, evidence_id) if self.sealer.is_sealed(raw) else raw
+
+    def seal_legacy_evidence(self) -> int:
+        """One-time migration: seal evidence frames stored before encryption at rest existed."""
+        n = 0
+        with self._db() as db:
+            rows = db.execute("SELECT id, user_id, workspace_id, data FROM mission_evidence").fetchall()
+            for r in rows:
+                raw = bytes(r["data"])
+                if not self.sealer.is_sealed(raw):
+                    db.execute("UPDATE mission_evidence SET data=? WHERE id=?",
+                               (self.sealer.seal(raw, r["user_id"], r["workspace_id"], r["id"]), r["id"]))
+                    n += 1
+        return n
 
     def _evidence_images(self, mission_id: str, rev: int, runtime: dict | None) -> dict:
         """sha256 -> jpeg bytes for the frames the approved plan cites (read back from the store, so the PDF embeds what was stored)."""
         out = {}
         for f in (runtime or {}).get("frames", [])[-1:]:
             with self._db() as db:
-                ev = db.execute("SELECT data,sha256 FROM mission_evidence WHERE id=? AND mission_id=? AND rev=?", (f["id"], mission_id, rev)).fetchone()
+                ev = db.execute("SELECT data,sha256,user_id,workspace_id FROM mission_evidence WHERE id=? AND mission_id=? AND rev=?", (f["id"], mission_id, rev)).fetchone()
             if ev is not None and ev["sha256"] == f.get("sha256"):
-                out[ev["sha256"]] = bytes(ev["data"])
+                out[ev["sha256"]] = self._open_evidence(ev["data"], ev["user_id"], ev["workspace_id"], f["id"])
         return out
 
     # ---- tenant skills: a saved, parameterised process (steps + intent template), never code

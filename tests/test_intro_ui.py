@@ -68,6 +68,27 @@ class IntroUi(unittest.TestCase):
         expect(page.locator('#intro')).to_have_class('intro is-done', timeout=3000)
         self.assertEqual(page.evaluate("getComputedStyle(document.getElementById('intro')).display"), 'none')
 
+    def test_scenes_play_in_the_required_order(self):
+        page = self.open()
+        order = page.evaluate("[...document.querySelectorAll('#intro .scene')].map(e => e.className.replace('scene ', ''))")
+        self.assertEqual(order, ['scene-a', 'scene-b', 'scene-c', 'scene-d'])
+        texts = page.evaluate("[...document.querySelectorAll('#intro .scene')].map(e => e.textContent.trim().replace(/\\s+/g, ' '))")
+        self.assertIn('RESOLVE', texts[0].replace(' ', ''))
+        self.assertEqual(texts[1], 'Wispr & Solve')
+        self.assertIn('Wispr Flow', texts[2])
+        self.assertIn('WeMakeDevs', texts[3])
+        self.assertIn('No Hands: The Wispr Challenge', texts[3])
+        page.click('.intro-skip')
+
+    def test_missing_partner_logos_fall_back_to_plain_names_not_imitations(self):
+        page = self.open()
+        page.wait_for_timeout(400)
+        missing = page.evaluate("[...document.querySelectorAll('[data-asset-missing]')].map(e => e.textContent)")
+        # the repository ships no official logo files, so both must fall back to the plain partner name
+        self.assertEqual(sorted(missing), sorted(['Wispr Flow', 'WeMakeDevs']))
+        self.assertEqual(page.evaluate("document.querySelectorAll('#intro img').length"), 0)
+        page.click('.intro-skip')
+
     def test_app_link_works_while_the_intro_plays(self):
         page = self.open()
         expect(page.locator('#intro')).to_be_visible()

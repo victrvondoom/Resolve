@@ -35,12 +35,15 @@ class DocumentStudio:
     MAX_PDF_BYTES = 20 * 1024 * 1024
     MAX_TEXT_PAGES = 100   # bound parser work when extracting text
 
-    def __init__(self, base_dir: str | Path):
+    def __init__(self, base_dir: str | Path, sealer=None):
         self._lock = threading.RLock()
         self.base_dir = Path(base_dir).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.files_dir = self.base_dir / "pdfs"
         self.files_dir.mkdir(exist_ok=True)
+        # encryption at rest: every PDF file is sealed per user/workspace (see src/at_rest.py)
+        from at_rest import SealedStore
+        self.sealer = sealer or SealedStore(self.base_dir / "keys" / "master.key")
         self.db_path = self.base_dir / "documents.sqlite3"
         with self._db() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS documents (
@@ -84,9 +87,32 @@ class DocumentStudio:
         return self._public(row)
 
     @synchronized
+    def seal_legacy_files(self) -> int:
+        """One-time migration: encrypt PDFs stored before encryption at rest existed. Returns how many were sealed."""
+        sealed = 0
+        with self._db() as db:
+            rows = db.execute("SELECT id, user_id, workspace_id, sha256 FROM documents").fetchall()
+        for r in rows:
+            path = self.files_dir / f"{r['id']}.pdf"
+            if not path.exists():
+                continue
+            raw = path.read_bytes()
+            if self.sealer.is_sealed(raw):
+                continue
+            if hashlib.sha256(raw).hexdigest() != r["sha256"]:
+                continue                      # do not seal a file that no longer matches its record
+            fd, tmp = tempfile.mkstemp(dir=self.files_dir, prefix=".seal-", suffix=".tmp")
+            with os.fdopen(fd, "wb") as out:
+                out.write(self.sealer.seal(raw, r["user_id"], r["workspace_id"], r["id"]))
+                out.flush(); os.fsync(out.fileno())
+            os.replace(tmp, path)
+            sealed += 1
+        return sealed
+
     def read_pdf(self, user_id: str, workspace_id: str, document_id: str) -> bytes:
         doc = self.get_document(user_id, workspace_id, document_id)
-        data = (self.files_dir / f"{doc['id']}.pdf").read_bytes()
+        raw = (self.files_dir / f"{doc['id']}.pdf").read_bytes()
+        data = self.sealer.open(raw, user_id, workspace_id, doc["id"]) if self.sealer.is_sealed(raw) else raw
         if hashlib.sha256(data).hexdigest() != doc["sha256"]:
             raise DocumentError("Document changed since storage; refusing to use it", 409)
         return data
@@ -116,7 +142,7 @@ class DocumentStudio:
         fd, temp_name = tempfile.mkstemp(dir=self.files_dir, prefix=".pdf-", suffix=".tmp")
         try:
             with os.fdopen(fd, "wb") as out:
-                out.write(data)
+                out.write(self.sealer.seal(data, user_id, workspace_id, doc_id))
                 out.flush()
                 os.fsync(out.fileno())
             os.replace(temp_name, dest)

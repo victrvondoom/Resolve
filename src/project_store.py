@@ -86,10 +86,12 @@ def read_archive(raw: bytes) -> dict[str, str]:
 
 
 class ProjectStore:
-    def __init__(self, base_dir: str | Path):
+    def __init__(self, base_dir: str | Path, sealer=None):
         self.base_dir = Path(base_dir)
         self.blob_dir = self.base_dir / "projects"
         self.blob_dir.mkdir(parents=True, exist_ok=True)
+        from at_rest import SealedStore
+        self.sealer = sealer or SealedStore(self.base_dir / "keys" / "master.key")   # encryption at rest for uploaded archives
         self.db_path = self.base_dir / "projects.sqlite3"
         self._lock = threading.RLock()
         with self._db() as db:
@@ -122,7 +124,7 @@ class ProjectStore:
                 if db.execute("SELECT COUNT(*) FROM projects WHERE user_id=?", (user_id,)).fetchone()[0] >= MAX_PROJECTS_PER_TENANT:
                     raise ProjectError("Project quota reached; delete an old project", 429)
             pid = "prj_" + uuid.uuid4().hex[:12]
-            (self.blob_dir / f"{pid}.zip").write_bytes(raw)
+            (self.blob_dir / f"{pid}.zip").write_bytes(self.sealer.seal(raw, user_id, workspace_id, pid))
             with self._db() as db:
                 db.execute("INSERT INTO projects VALUES (?,?,?,?,?,?,?,?)",
                            (pid, user_id, workspace_id, clean, hashlib.sha256(raw).hexdigest(), len(raw), len(files), time.time()))
@@ -143,7 +145,8 @@ class ProjectStore:
     def load(self, user_id: str, workspace_id: str, project_id: str) -> tuple[dict, dict[str, str]]:
         """Return (metadata, files) after re-verifying the stored blob against its recorded hash."""
         meta = self.get(user_id, workspace_id, project_id)
-        raw = (self.blob_dir / f"{project_id}.zip").read_bytes()
+        stored = (self.blob_dir / f"{project_id}.zip").read_bytes()
+        raw = self.sealer.open(stored, user_id, workspace_id, project_id) if self.sealer.is_sealed(stored) else stored
         if hashlib.sha256(raw).hexdigest() != meta["sha256"]:
             raise ProjectError("Stored project changed since upload; refusing to analyze it", 409)
         return meta, read_archive(raw)

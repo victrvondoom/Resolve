@@ -89,6 +89,30 @@ class ZeroHandsApi(unittest.TestCase):
         self.assertIn('RUNTIME-FRAME-SHA256', body)
         self.assertEqual(done['source'], 'voice')
 
+    def test_evidence_frames_are_sealed_in_the_database_file(self):
+        """Read the mission database file directly: stored frame bytes must be encrypted, not JPEG, and must open via the API."""
+        import sqlite3
+        a = self.user(); brief = self.brief(a)
+        s, m, _ = self.srv.req('POST', '/api/brief-missions', {'intent_text': INTENT, 'document_id': brief['id'],
+                                                             'steps': ['read_brief', 'analyze_code', 'inspect_web', 'architecture', 'report', 'print']}, headers=a)
+        self.assertEqual(s, 202, m)
+        m = self.poll(m['id'], a, {'AWAITING_APPROVAL', 'FAILED'})
+        frames = [e for e in m['evidence'] if e['kind'] == 'frame']
+        self.assertTrue(frames, 'the diagnostics run should have produced frames')
+        db = Path(self.tmp.name) / 'docs' / 'missions.sqlite3'
+        conn = sqlite3.connect(db)
+        try:
+            rows = conn.execute('SELECT id, data FROM mission_evidence WHERE mission_id = ?', (m['id'],)).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(len(rows), len(m['evidence']))
+        for _, blob in rows:
+            self.assertTrue(bytes(blob).startswith(b'RSEV1'), 'evidence bytes at rest must be sealed')
+            self.assertFalse(bytes(blob).startswith(b'\xff\xd8'), 'no plaintext JPEG may be stored')
+        s, jpg, hdr = self.srv.req('GET', f"/api/brief-missions/{m['id']}/evidence/{frames[0]['id']}", headers=a, raw=True)
+        self.assertEqual((s, hdr['Content-Type']), (200, 'image/jpeg'))
+        self.assertTrue(jpg.startswith(b'\xff\xd8'))
+
     def test_demo_app_is_served_without_csp_but_api_keeps_it(self):
         s, body, h = self.srv.req('GET', '/demo-app/', raw=True)
         self.assertEqual(s, 200); self.assertNotIn('Content-Security-Policy', h)

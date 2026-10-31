@@ -114,7 +114,7 @@ python scripts/capture_intro_frames.py 8772
 | Reading briefs, checking code, writing and re-checking PDFs | **Real** |
 | Browser tests against a controlled demo web app | **Real** (a real Chromium browser) |
 | Your files and records stored privately | **Real** (on the server's disk) |
-| Encryption of stored files | **Not yet** (planned; see the audit) |
+| Encryption of stored files | **Real, partial:** AES-256-GCM seals every stored PDF, project archive and evidence frame, with a separate key per user and workspace. Database rows and filenames are **not** encrypted. Production refuses to start without `RESOLVE_MASTER_KEY`. |
 | Sending email, calendar or cloud-drive changes | **Simulated** (no real accounts connected) |
 | Speech-to-text from a microphone | **Not verified here** (no speech model is installed) |
 | Browser sessions on a public server | **Blocked** until isolated infrastructure exists |

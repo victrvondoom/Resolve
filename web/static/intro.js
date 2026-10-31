@@ -9,6 +9,20 @@
   if (word && !word.childElementCount) {
     [...'RESOLVE'].forEach((ch, i) => { const s = document.createElement('span'); s.textContent = ch; s.style.setProperty('--i', i); word.append(s); });
   }
+  // Partner logos: if the official file is not in web/static/brand/, show the partner's plain name instead of a stand-in mark.
+  root.querySelectorAll('img[data-fallback]').forEach((img) => {
+    const useText = () => {
+      const span = document.createElement('span');
+      span.className = 'fallback';
+      span.textContent = img.dataset.fallback;
+      span.setAttribute('data-asset-missing', 'true');
+      img.replaceWith(span);
+      const cap = img.closest('figure') && img.closest('figure').querySelector('figcaption');
+      if (cap) cap.hidden = true;   // the name is already shown; avoid repeating it
+    };
+    img.addEventListener('error', useText);
+    if (img.complete && img.naturalWidth === 0) useText();
+  });
   const faces = '<i class="f f-front"></i><i class="f f-back"></i><i class="f f-right"></i><i class="f f-left"></i><i class="f f-top"></i><i class="f f-bottom"></i>';
   root.querySelectorAll('.intro-block').forEach((b) => { b.innerHTML = faces; });
 
@@ -24,11 +38,11 @@
     lastFocus = document.activeElement;
     root.classList.remove('is-done');
     root.removeAttribute('aria-hidden');
-    root.querySelectorAll('.intro-block, .intro-grid, .intro-sweep, .intro-tag, .intro-sub, .intro-word span').forEach((n) => {
+    root.querySelectorAll('.intro-block, .intro-grid, .intro-sweep, .scene, .intro-word span').forEach((n) => {
       n.style.animation = 'none'; void n.offsetWidth; n.style.animation = '';
     });
     root.querySelector('.intro-skip').focus({ preventScroll: true });
-    timer = setTimeout(finish, 4700);
+    timer = setTimeout(finish, 8400);
   }
   root.querySelector('.intro-skip').addEventListener('click', finish);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !root.classList.contains('is-done')) finish(); });

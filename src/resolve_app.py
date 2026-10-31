@@ -61,10 +61,15 @@ sandbox_mgr = SandboxManager()
 cloud_browser_pool = CloudBrowserPool()
 connector_registry = ConnectorRegistry()
 privacy_engine = PrivacyEngine(tenant_auth_mgr, sandbox_mgr, connector_registry)
-document_studio = DocumentStudio(Path(os.environ.get('RESOLVE_DOCUMENTS_DIR', ROOT / 'data' / 'documents')))
+from at_rest import SealedStore
+document_studio = DocumentStudio(Path(os.environ.get('RESOLVE_DOCUMENTS_DIR', ROOT / 'data' / 'documents')),
+                                 sealer=SealedStore(Path(os.environ.get('RESOLVE_DOCUMENTS_DIR', ROOT / 'data' / 'documents')) / 'keys' / 'master.key',
+                                                    require_env=ServerSecurity.from_env().production))
+document_studio.seal_legacy_files()   # idempotent: encrypts any PDF stored before encryption at rest existed
 default_demo = tenant_auth_mgr.seed_demo_tenant()
-project_store = ProjectStore(document_studio.base_dir)
-brief_missions = BriefMissionStore(Path(os.environ.get('RESOLVE_MISSIONS_DB', document_studio.base_dir / 'missions.sqlite3')), document_studio, projects=project_store)
+project_store = ProjectStore(document_studio.base_dir, sealer=document_studio.sealer)
+brief_missions = BriefMissionStore(Path(os.environ.get('RESOLVE_MISSIONS_DB', document_studio.base_dir / 'missions.sqlite3')), document_studio, projects=project_store, sealer=document_studio.sealer)
+brief_missions.seal_legacy_evidence()   # idempotent migration for evidence stored before encryption at rest
 privacy_engine.mission_store = brief_missions
 privacy_engine.project_store = project_store
 privacy_engine.browser_pool = cloud_browser_pool
@@ -410,6 +415,20 @@ class Handler(BaseHTTPRequestHandler):
                 status, body = web_api.call('GET', path, {})
                 return self.send_json(status, body)
             pages = {'/': 'landing.html', '/app': 'index.html', '/app/': 'index.html'}
+            brand = re.fullmatch(r'/static/brand/([A-Za-z0-9_-]+\.(svg|png|jpg|webp))', path)
+            if brand:   # official partner marks: only files placed in web/static/brand/, never a path from the request
+                brand_dir = (ROOT / 'web' / 'static' / 'brand').resolve()
+                asset = (brand_dir / brand.group(1)).resolve()
+                require(asset.parent == brand_dir and asset.is_file(), 404, 'brand asset not provided')
+                raw = asset.read_bytes()
+                kind = {'svg': 'image/svg+xml', 'png': 'image/png', 'jpg': 'image/jpeg', 'webp': 'image/webp'}[brand.group(2)]
+                self.send_response(200)
+                self.send_header('Content-Type', kind)
+                self.send_header('Cache-Control', 'public, max-age=86400')
+                self.send_header('Content-Length', str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
             static = re.fullmatch(r'/static/([A-Za-z0-9_.-]+\.(js|css|svg))', path)
             if static:
                 asset = ROOT / 'web' / 'static' / static.group(1)

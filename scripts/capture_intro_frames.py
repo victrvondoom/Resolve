@@ -34,7 +34,7 @@ def main() -> int:
             page.on('pageerror', lambda e: errors.append(str(e)))
             page.goto(f'http://127.0.0.1:{port}/')
             t0 = time.time()
-            for i, at in enumerate([0.9, 1.9, 2.9, 3.7, 4.6], 1):
+            for i, at in enumerate([1.0, 2.4, 3.6, 4.9, 6.3, 7.8], 1):
                 time.sleep(max(0, at - (time.time() - t0)))
                 page.screenshot(path=str(OUT / f'intro-0{i}.png'))
             page.wait_for_timeout(800)
