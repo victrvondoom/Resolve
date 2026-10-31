@@ -16,8 +16,8 @@ WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", 
 MONTHS = {m: i for i, m in enumerate(["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"], 1)}
 AUTOMATED_SENDER = re.compile(r"(no-?reply|donotreply|notifications?@|mailer-daemon|newsletter)", re.I)
 REQUEST_RE = re.compile(r"\b(could you|can you|would you|please|need you to|send me|can we get|will you)\b", re.I)
-PROMISE_RE = re.compile(r"\b(i'?ll|i will|i can|i'?m going to|i'?m sending|i promise|i'?ll send)\b", re.I)
-OTHER_PROMISE_RE = re.compile(r"\b(he'?ll|she'?ll|they'?ll|we'?ll|i'?ll|we will|i'?ll get back|will send|will share)\b", re.I)
+PROMISE_RE = re.compile(r"\b(i['\u2019]ll|i will|i can|i['\u2019]m going to|i['\u2019]m sending|i promise)\b", re.I)
+OTHER_PROMISE_RE = re.compile(r"\b(he['\u2019]ll|she['\u2019]ll|they['\u2019]ll|we['\u2019]ll|i['\u2019]ll|we will|will send|will share)\b", re.I)
 DEPENDENCY_RE = re.compile(r"\b(before|ahead of|prior to)\b.*\b(call|meeting|review|demo|launch)\b", re.I)
 HYPOTHETICAL_RE = re.compile(r"\b(maybe|might|possibly|perhaps|if we|we could consider|someday|would be nice)\b", re.I)
 HISTORICAL_RE = re.compile(r"\b(i sent|we discussed|last week|yesterday i|already sent|you sent)\b", re.I)
@@ -29,7 +29,9 @@ AUTOMATED_BODY = re.compile(r"(unsubscribe|this is an automated|do not reply|you
 
 
 def sentences(text: str) -> list[str]:
-    parts = re.split(r"(?<=[.!?])\s+|\n+", text or "")
+    """Sentences of the NEW text. Quoted lines (starting with '>') are earlier messages, not new statements, and are dropped."""
+    fresh = "\n".join(line for line in (text or "").splitlines() if not line.lstrip().startswith(">"))
+    parts = re.split(r"(?<=[.!?])\s+|\n+", fresh)
     return [p.strip() for p in parts if p and p.strip()]
 
 
@@ -132,7 +134,7 @@ def resolve_deadline(sentence: str, sent_at: float, tz_name="UTC") -> tuple[floa
     return d["deadline_at"], d["deadline_confidence"], d["review_reason"]
 
 
-_STOP = {"could", "would", "will", "please", "that", "this", "with", "from", "your", "have", "just", "need", "want", "into", "about", "them", "there",
+_STOP = {"reminder", "update", "updated", "updates", "again", "following", "follow", "checking", "ping", "could", "would", "will", "please", "that", "this", "with", "from", "your", "have", "just", "need", "want", "into", "about", "them", "there",
          "should", "they", "their", "then", "than", "instead", "moved", "legal", "following", "thanks", "thank", "also", "still", "again", "really",
          "today", "tomorrow", "soon", "when", "what", "which", "where", "while", "hello", "hope", "sorry", "kindly", "ahead", "anyway"}
 _DEADLINE_WORDS = re.compile(r"\b(by|before|until|on|no later than|tomorrow|today|next|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|midnight|at)\b|\d{1,2}(:\d{2})?\s*(am|pm)|\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}\b|\b20\d{2}-\d{2}-\d{2}\b", re.I)
@@ -186,6 +188,8 @@ def extract_commitments(messages: list[dict], user_address: str, tz_name="UTC") 
         for sent in sentences(m.get("body", "")):
             if HYPOTHETICAL_RE.search(sent) or HISTORICAL_RE.search(sent):
                 continue
+            if INJECTION_RE.search(sent):
+                continue                  # instruction-like text is never turned into an obligation
             kind, action = None, None
             if PROMISE_RE.search(sent) and from_user:
                 kind, action = "PROMISE_BY_USER", sent

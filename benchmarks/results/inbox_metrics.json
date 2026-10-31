@@ -1,0 +1,2010 @@
+{
+  "engines": {
+    "RULES_ONLY": "measured",
+    "MODEL_ENABLED": "NOT MEASURED (no model provider configured)",
+    "REPLAY_EXECUTION": "simulated broker run with scripted Gmail double (tests/test_send_broker.py)",
+    "LIVE_PROVIDER": "NOT MEASURED (no OAuth credentials or authorized test account in this environment)"
+  },
+  "category": {
+    "all": {
+      "fixtures": 44,
+      "category_accuracy": 0.909,
+      "per_category": {
+        "ACTION_REQUIRED": {
+          "precision": 1.0,
+          "recall": 0.6,
+          "support": 5
+        },
+        "REPLY_REQUIRED": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 3
+        },
+        "WAITING_ON_SOMEONE": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 7
+        },
+        "DEADLINE_TIME_SENSITIVE": {
+          "precision": 0.818,
+          "recall": 1.0,
+          "support": 9
+        },
+        "GENERAL_INFORMATION": {
+          "precision": 1.0,
+          "recall": 0.818,
+          "support": 11
+        },
+        "AUTOMATED_LOW_PRIORITY": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 4
+        },
+        "UNCERTAIN_HUMAN_REVIEW": {
+          "precision": 0.714,
+          "recall": 1.0,
+          "support": 5
+        }
+      }
+    },
+    "v1_earlier_fixtures": {
+      "fixtures": 12,
+      "category_accuracy": 0.75,
+      "per_category": {
+        "ACTION_REQUIRED": {
+          "precision": null,
+          "recall": 0.0,
+          "support": 2
+        },
+        "REPLY_REQUIRED": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 1
+        },
+        "WAITING_ON_SOMEONE": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 2
+        },
+        "DEADLINE_TIME_SENSITIVE": {
+          "precision": 0.667,
+          "recall": 1.0,
+          "support": 2
+        },
+        "GENERAL_INFORMATION": {
+          "precision": 1.0,
+          "recall": 0.667,
+          "support": 3
+        },
+        "AUTOMATED_LOW_PRIORITY": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 1
+        },
+        "UNCERTAIN_HUMAN_REVIEW": {
+          "precision": 0.333,
+          "recall": 1.0,
+          "support": 1
+        }
+      }
+    },
+    "v2_new_scenarios": {
+      "fixtures": 32,
+      "category_accuracy": 0.969,
+      "per_category": {
+        "ACTION_REQUIRED": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 3
+        },
+        "REPLY_REQUIRED": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 2
+        },
+        "WAITING_ON_SOMEONE": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 5
+        },
+        "DEADLINE_TIME_SENSITIVE": {
+          "precision": 0.875,
+          "recall": 1.0,
+          "support": 7
+        },
+        "GENERAL_INFORMATION": {
+          "precision": 1.0,
+          "recall": 0.875,
+          "support": 8
+        },
+        "AUTOMATED_LOW_PRIORITY": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 3
+        },
+        "UNCERTAIN_HUMAN_REVIEW": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "support": 4
+        }
+      }
+    }
+  },
+  "fixtures_fully_passing_v1": 8,
+  "commitment_extraction": {
+    "expected": 25,
+    "ledger_items": 30,
+    "matched_kind": 25,
+    "precision": 0.833,
+    "recall": 1.0
+  },
+  "owner_identification_accuracy": 1.0,
+  "deadline_accuracy": 0.92,
+  "ambiguity_detection": {
+    "expected": 2,
+    "detected": 2,
+    "rate": 1.0
+  },
+  "reply_needed": {
+    "precision": 0.923,
+    "recall": 0.857,
+    "tp": 12,
+    "fp": 1,
+    "fn": 2,
+    "note": "fixtures with reply_needed labels only (v2); v1 has no reply label"
+  },
+  "false_urgent_rate": 0.04,
+  "duplicate_commitments": {
+    "extra_items_beyond_expected": 5,
+    "reprocess_new_items_on_second_pass": 0
+  },
+  "unsupported_draft_claim_rate": 0.0,
+  "injection_resistance": {
+    "fixtures": 2,
+    "resisted": 2
+  },
+  "send_path_simulation": [
+    {
+      "scenario": "ok",
+      "label": "delivered once; read back",
+      "first_state": "VERIFIED",
+      "first_reason": null,
+      "second_state": "REFUSED_TERMINAL_DRAFT",
+      "sends_dispatched": 1,
+      "stored_exact_matches": 1,
+      "false_success": false,
+      "duplicate_send": false
+    },
+    {
+      "scenario": "timeout_after_store",
+      "label": "stored; response lost; retry must find it",
+      "first_state": "UNCERTAIN",
+      "first_reason": "TIMEOUT",
+      "second_state": "VERIFIED",
+      "sends_dispatched": 1,
+      "stored_exact_matches": 1,
+      "false_success": false,
+      "duplicate_send": false
+    },
+    {
+      "scenario": "timeout_before_store",
+      "label": "never stored; retry must not send silently",
+      "first_state": "UNCERTAIN",
+      "first_reason": "TIMEOUT",
+      "second_state": "NEEDS_RECOVERY",
+      "sends_dispatched": 1,
+      "stored_exact_matches": 0,
+      "false_success": false,
+      "duplicate_send": false
+    },
+    {
+      "scenario": "store_wrong_recipient",
+      "label": "stored a different recipient",
+      "first_state": "UNCERTAIN",
+      "first_reason": "RECIPIENT_MISMATCH",
+      "second_state": "UNCERTAIN",
+      "sends_dispatched": 1,
+      "stored_exact_matches": 0,
+      "false_success": false,
+      "duplicate_send": false
+    },
+    {
+      "scenario": "store_altered_body",
+      "label": "stored an altered body",
+      "first_state": "UNCERTAIN",
+      "first_reason": "BODY_MISMATCH",
+      "second_state": "UNCERTAIN",
+      "sends_dispatched": 1,
+      "stored_exact_matches": 0,
+      "false_success": false,
+      "duplicate_send": false
+    },
+    {
+      "scenario": "drop_message_id",
+      "label": "correlation header missing",
+      "first_state": "UNCERTAIN",
+      "first_reason": "CORRELATION_MISSING",
+      "second_state": "NEEDS_RECOVERY",
+      "sends_dispatched": 1,
+      "stored_exact_matches": 0,
+      "false_success": false,
+      "duplicate_send": false
+    }
+  ],
+  "send_path_summary": {
+    "false_success": 0,
+    "duplicate_sends": 0,
+    "scenarios": 6
+  },
+  "raw_fixture_results": [
+    {
+      "id": "F01",
+      "name": "request_with_weekday_deadline",
+      "expected_category": "DEADLINE_TIME_SENSITIVE",
+      "got_category": "DEADLINE_TIME_SENSITIVE",
+      "priority": "HIGH",
+      "ledger": [
+        {
+          "kind": "DEPENDENCY",
+          "owner": "none",
+          "deadline_at": null,
+          "deadline_confidence": null
+        },
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": 1793231999.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": "2026-10-28"
+        },
+        {
+          "kind": "DEPENDENCY",
+          "owner": "none",
+          "deadline": null
+        }
+      ]
+    },
+    {
+      "id": "F02",
+      "name": "user_promise_tomorrow",
+      "expected_category": "WAITING_ON_SOMEONE",
+      "got_category": "WAITING_ON_SOMEONE",
+      "priority": "NORMAL",
+      "ledger": [
+        {
+          "kind": "PROMISE_BY_USER",
+          "owner": "user",
+          "deadline_at": 1793404799.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "PROMISE_BY_USER",
+          "owner": "user",
+          "deadline": "2026-10-30"
+        }
+      ]
+    },
+    {
+      "id": "F03",
+      "name": "automated_notification",
+      "expected_category": "AUTOMATED_LOW_PRIORITY",
+      "got_category": "AUTOMATED_LOW_PRIORITY",
+      "priority": "LOW",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "F04",
+      "name": "question_only",
+      "expected_category": "REPLY_REQUIRED",
+      "got_category": "REPLY_REQUIRED",
+      "priority": "NORMAL",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "F05",
+      "name": "artificial_urgency_no_deadline",
+      "expected_category": "GENERAL_INFORMATION",
+      "got_category": "UNCERTAIN_HUMAN_REVIEW",
+      "priority": "MEDIUM",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": null,
+          "deadline_confidence": "AMBIGUOUS"
+        }
+      ],
+      "expected_commitments": []
+    },
+    {
+      "id": "F06",
+      "name": "ambiguous_next_week",
+      "expected_category": "UNCERTAIN_HUMAN_REVIEW",
+      "got_category": "UNCERTAIN_HUMAN_REVIEW",
+      "priority": "MEDIUM",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": null,
+          "deadline_confidence": "AMBIGUOUS"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": null
+        }
+      ]
+    },
+    {
+      "id": "F07",
+      "name": "prompt_injection_in_email",
+      "expected_category": "ACTION_REQUIRED",
+      "got_category": "UNCERTAIN_HUMAN_REVIEW",
+      "priority": "MEDIUM",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": null,
+          "deadline_confidence": null
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": null
+        }
+      ]
+    },
+    {
+      "id": "F08",
+      "name": "hypothetical_is_not_a_commitment",
+      "expected_category": "GENERAL_INFORMATION",
+      "got_category": "GENERAL_INFORMATION",
+      "priority": "LOW",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "F09",
+      "name": "historical_statement",
+      "expected_category": "GENERAL_INFORMATION",
+      "got_category": "GENERAL_INFORMATION",
+      "priority": "LOW",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "F10",
+      "name": "explicit_calendar_date",
+      "expected_category": "ACTION_REQUIRED",
+      "got_category": "DEADLINE_TIME_SENSITIVE",
+      "priority": "HIGH",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": 1794009599.0,
+          "deadline_confidence": "EXPLICIT_DATE"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": "2026-11-06"
+        }
+      ]
+    },
+    {
+      "id": "F11",
+      "name": "waiting_on_other_promise",
+      "expected_category": "WAITING_ON_SOMEONE",
+      "got_category": "WAITING_ON_SOMEONE",
+      "priority": "NORMAL",
+      "ledger": [
+        {
+          "kind": "PROMISE_BY_OTHER",
+          "owner": "other",
+          "deadline_at": 1793318399.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "PROMISE_BY_OTHER",
+          "owner": "other",
+          "deadline": "2026-10-29"
+        }
+      ]
+    },
+    {
+      "id": "F12",
+      "name": "multiple_requests_in_one_thread",
+      "expected_category": "DEADLINE_TIME_SENSITIVE",
+      "got_category": "DEADLINE_TIME_SENSITIVE",
+      "priority": "HIGH",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": 1793318399.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        },
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": 1793404799.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        },
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": null,
+          "deadline_confidence": null
+        }
+      ],
+      "expected_commitments": []
+    },
+    {
+      "id": "V01",
+      "name": "request_deadline_friday",
+      "expected_category": "DEADLINE_TIME_SENSITIVE",
+      "got_category": "DEADLINE_TIME_SENSITIVE",
+      "priority": "HIGH",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": 1793404799.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": "2026-10-30"
+        }
+      ]
+    },
+    {
+      "id": "V02",
+      "name": "thanks_only",
+      "expected_category": "GENERAL_INFORMATION",
+      "got_category": "GENERAL_INFORMATION",
+      "priority": "LOW",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "V03",
+      "name": "question_next_week_meeting",
+      "expected_category": "REPLY_REQUIRED",
+      "got_category": "REPLY_REQUIRED",
+      "priority": "NORMAL",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "V04",
+      "name": "user_promise_tomorrow_invoice",
+      "expected_category": "WAITING_ON_SOMEONE",
+      "got_category": "WAITING_ON_SOMEONE",
+      "priority": "NORMAL",
+      "ledger": [
+        {
+          "kind": "PROMISE_BY_USER",
+          "owner": "user",
+          "deadline_at": 1793231999.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "PROMISE_BY_USER",
+          "owner": "user",
+          "deadline": "2026-10-28"
+        }
+      ]
+    },
+    {
+      "id": "V05",
+      "name": "ci_notice_build_passed",
+      "expected_category": "AUTOMATED_LOW_PRIORITY",
+      "got_category": "AUTOMATED_LOW_PRIORITY",
+      "priority": "LOW",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "V06",
+      "name": "newsletter_digest",
+      "expected_category": "AUTOMATED_LOW_PRIORITY",
+      "got_category": "AUTOMATED_LOW_PRIORITY",
+      "priority": "LOW",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "V07",
+      "name": "vague_when_you_can_logs",
+      "expected_category": "UNCERTAIN_HUMAN_REVIEW",
+      "got_category": "UNCERTAIN_HUMAN_REVIEW",
+      "priority": "MEDIUM",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": null,
+          "deadline_confidence": "AMBIGUOUS"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": "AMBIG"
+        }
+      ]
+    },
+    {
+      "id": "V08",
+      "name": "other_promise_monday",
+      "expected_category": "WAITING_ON_SOMEONE",
+      "got_category": "WAITING_ON_SOMEONE",
+      "priority": "NORMAL",
+      "ledger": [
+        {
+          "kind": "PROMISE_BY_OTHER",
+          "owner": "other",
+          "deadline_at": 1793663999.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "PROMISE_BY_OTHER",
+          "owner": "other",
+          "deadline": "2026-11-02"
+        }
+      ]
+    },
+    {
+      "id": "V09",
+      "name": "historical_statement",
+      "expected_category": "GENERAL_INFORMATION",
+      "got_category": "GENERAL_INFORMATION",
+      "priority": "LOW",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "V10",
+      "name": "hypothetical_demo",
+      "expected_category": "GENERAL_INFORMATION",
+      "got_category": "GENERAL_INFORMATION",
+      "priority": "LOW",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "V11",
+      "name": "request_before_call_thursday",
+      "expected_category": "DEADLINE_TIME_SENSITIVE",
+      "got_category": "DEADLINE_TIME_SENSITIVE",
+      "priority": "HIGH",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": 1793318399.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": "2026-10-29"
+        }
+      ]
+    },
+    {
+      "id": "V12",
+      "name": "request_can_you_confirm_price",
+      "expected_category": "ACTION_REQUIRED",
+      "got_category": "ACTION_REQUIRED",
+      "priority": "NORMAL",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": null,
+          "deadline_confidence": null
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": null
+        }
+      ]
+    },
+    {
+      "id": "V13",
+      "name": "request_board_meeting_no_date",
+      "expected_category": "ACTION_REQUIRED",
+      "got_category": "ACTION_REQUIRED",
+      "priority": "NORMAL",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": null,
+          "deadline_confidence": null
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": null
+        }
+      ]
+    },
+    {
+      "id": "V14",
+      "name": "question_already_answered_by_user",
+      "expected_category": "GENERAL_INFORMATION",
+      "got_category": "GENERAL_INFORMATION",
+      "priority": "LOW",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "V15",
+      "name": "question_invoice_status",
+      "expected_category": "REPLY_REQUIRED",
+      "got_category": "REPLY_REQUIRED",
+      "priority": "NORMAL",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "V16",
+      "name": "injection_ignore_instructions",
+      "expected_category": "UNCERTAIN_HUMAN_REVIEW",
+      "got_category": "UNCERTAIN_HUMAN_REVIEW",
+      "priority": "MEDIUM",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "V17",
+      "name": "injection_request_inside",
+      "expected_category": "UNCERTAIN_HUMAN_REVIEW",
+      "got_category": "UNCERTAIN_HUMAN_REVIEW",
+      "priority": "MEDIUM",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "V18",
+      "name": "same_request_restated",
+      "expected_category": "DEADLINE_TIME_SENSITIVE",
+      "got_category": "DEADLINE_TIME_SENSITIVE",
+      "priority": "HIGH",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": 1793404799.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": "2026-10-30"
+        }
+      ]
+    },
+    {
+      "id": "V19",
+      "name": "two_distinct_requests_one_email",
+      "expected_category": "DEADLINE_TIME_SENSITIVE",
+      "got_category": "DEADLINE_TIME_SENSITIVE",
+      "priority": "HIGH",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": null,
+          "deadline_confidence": null
+        },
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": 1793404799.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": "2026-10-30"
+        },
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": "2026-11-02"
+        }
+      ]
+    },
+    {
+      "id": "V20",
+      "name": "changed_deadline_thursday_to_friday",
+      "expected_category": "DEADLINE_TIME_SENSITIVE",
+      "got_category": "DEADLINE_TIME_SENSITIVE",
+      "priority": "HIGH",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": 1793404799.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": "2026-10-30"
+        }
+      ]
+    },
+    {
+      "id": "V21",
+      "name": "ambiguous_soon",
+      "expected_category": "UNCERTAIN_HUMAN_REVIEW",
+      "got_category": "UNCERTAIN_HUMAN_REVIEW",
+      "priority": "MEDIUM",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": null,
+          "deadline_confidence": "AMBIGUOUS"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": "AMBIG"
+        }
+      ]
+    },
+    {
+      "id": "V22",
+      "name": "clock_time_today",
+      "expected_category": "DEADLINE_TIME_SENSITIVE",
+      "got_category": "DEADLINE_TIME_SENSITIVE",
+      "priority": "HIGH",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": 1793116800.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": "2026-10-27"
+        }
+      ]
+    },
+    {
+      "id": "V23",
+      "name": "other_promise_no_date",
+      "expected_category": "WAITING_ON_SOMEONE",
+      "got_category": "WAITING_ON_SOMEONE",
+      "priority": "NORMAL",
+      "ledger": [
+        {
+          "kind": "PROMISE_BY_OTHER",
+          "owner": "other",
+          "deadline_at": null,
+          "deadline_confidence": null
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "PROMISE_BY_OTHER",
+          "owner": "other",
+          "deadline": null
+        }
+      ]
+    },
+    {
+      "id": "V24",
+      "name": "user_promise_explicit_date",
+      "expected_category": "WAITING_ON_SOMEONE",
+      "got_category": "WAITING_ON_SOMEONE",
+      "priority": "NORMAL",
+      "ledger": [
+        {
+          "kind": "PROMISE_BY_USER",
+          "owner": "user",
+          "deadline_at": 1794009599.0,
+          "deadline_confidence": "EXPLICIT_DATE"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "PROMISE_BY_USER",
+          "owner": "user",
+          "deadline": "2026-11-06"
+        }
+      ]
+    },
+    {
+      "id": "V25",
+      "name": "automated_payment_notice",
+      "expected_category": "AUTOMATED_LOW_PRIORITY",
+      "got_category": "AUTOMATED_LOW_PRIORITY",
+      "priority": "LOW",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "V26",
+      "name": "greeting_only",
+      "expected_category": "GENERAL_INFORMATION",
+      "got_category": "GENERAL_INFORMATION",
+      "priority": "LOW",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "V27",
+      "name": "long_thread_last_request",
+      "expected_category": "DEADLINE_TIME_SENSITIVE",
+      "got_category": "DEADLINE_TIME_SENSITIVE",
+      "priority": "HIGH",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": 1793404799.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": "2026-10-30"
+        }
+      ]
+    },
+    {
+      "id": "V28",
+      "name": "quoted_old_request_only",
+      "expected_category": "GENERAL_INFORMATION",
+      "got_category": "GENERAL_INFORMATION",
+      "priority": "LOW",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "V29",
+      "name": "user_asks_partner_question",
+      "expected_category": "GENERAL_INFORMATION",
+      "got_category": "GENERAL_INFORMATION",
+      "priority": "LOW",
+      "ledger": [],
+      "expected_commitments": []
+    },
+    {
+      "id": "V30",
+      "name": "urgent_wording_no_deadline",
+      "expected_category": "ACTION_REQUIRED",
+      "got_category": "ACTION_REQUIRED",
+      "priority": "NORMAL",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": null,
+          "deadline_confidence": null
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline": null
+        }
+      ]
+    },
+    {
+      "id": "V31",
+      "name": "user_promise_pr_wednesday",
+      "expected_category": "WAITING_ON_SOMEONE",
+      "got_category": "WAITING_ON_SOMEONE",
+      "priority": "NORMAL",
+      "ledger": [
+        {
+          "kind": "PROMISE_BY_USER",
+          "owner": "user",
+          "deadline_at": 1793231999.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        }
+      ],
+      "expected_commitments": [
+        {
+          "kind": "PROMISE_BY_USER",
+          "owner": "user",
+          "deadline": "2026-10-28"
+        }
+      ]
+    },
+    {
+      "id": "V32",
+      "name": "quoted_repeat_with_new_thanks",
+      "expected_category": "GENERAL_INFORMATION",
+      "got_category": "DEADLINE_TIME_SENSITIVE",
+      "priority": "HIGH",
+      "ledger": [
+        {
+          "kind": "REQUEST_TO_USER",
+          "owner": "user",
+          "deadline_at": 1793145599.0,
+          "deadline_confidence": "RESOLVED_RELATIVE"
+        }
+      ],
+      "expected_commitments": []
+    }
+  ],
+  "scored_fixtures": [
+    {
+      "id": "F01",
+      "name": "request_with_weekday_deadline",
+      "version": 1,
+      "category_expected": "DEADLINE_TIME_SENSITIVE",
+      "category_got": "DEADLINE_TIME_SENSITIVE",
+      "category_ok": true,
+      "reply_pred": true,
+      "reply_expected": null,
+      "urgent_pred": true,
+      "urgent_expected": null,
+      "commit_expected": 2,
+      "commit_ledger": 2,
+      "commit_tp": 2,
+      "owner_correct": 2,
+      "deadline_checks": [
+        true,
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "F02",
+      "name": "user_promise_tomorrow",
+      "version": 1,
+      "category_expected": "WAITING_ON_SOMEONE",
+      "category_got": "WAITING_ON_SOMEONE",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": null,
+      "urgent_pred": false,
+      "urgent_expected": null,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "F03",
+      "name": "automated_notification",
+      "version": 1,
+      "category_expected": "AUTOMATED_LOW_PRIORITY",
+      "category_got": "AUTOMATED_LOW_PRIORITY",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": null,
+      "urgent_pred": false,
+      "urgent_expected": null,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "F04",
+      "name": "question_only",
+      "version": 1,
+      "category_expected": "REPLY_REQUIRED",
+      "category_got": "REPLY_REQUIRED",
+      "category_ok": true,
+      "reply_pred": true,
+      "reply_expected": null,
+      "urgent_pred": false,
+      "urgent_expected": null,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "F05",
+      "name": "artificial_urgency_no_deadline",
+      "version": 1,
+      "category_expected": "GENERAL_INFORMATION",
+      "category_got": "UNCERTAIN_HUMAN_REVIEW",
+      "category_ok": false,
+      "reply_pred": false,
+      "reply_expected": null,
+      "urgent_pred": false,
+      "urgent_expected": null,
+      "commit_expected": 0,
+      "commit_ledger": 1,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 1,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "F06",
+      "name": "ambiguous_next_week",
+      "version": 1,
+      "category_expected": "UNCERTAIN_HUMAN_REVIEW",
+      "category_got": "UNCERTAIN_HUMAN_REVIEW",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": null,
+      "urgent_pred": false,
+      "urgent_expected": null,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "F07",
+      "name": "prompt_injection_in_email",
+      "version": 1,
+      "category_expected": "ACTION_REQUIRED",
+      "category_got": "UNCERTAIN_HUMAN_REVIEW",
+      "category_ok": false,
+      "reply_pred": false,
+      "reply_expected": null,
+      "urgent_pred": false,
+      "urgent_expected": null,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "F08",
+      "name": "hypothetical_is_not_a_commitment",
+      "version": 1,
+      "category_expected": "GENERAL_INFORMATION",
+      "category_got": "GENERAL_INFORMATION",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": null,
+      "urgent_pred": false,
+      "urgent_expected": null,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "F09",
+      "name": "historical_statement",
+      "version": 1,
+      "category_expected": "GENERAL_INFORMATION",
+      "category_got": "GENERAL_INFORMATION",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": null,
+      "urgent_pred": false,
+      "urgent_expected": null,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "F10",
+      "name": "explicit_calendar_date",
+      "version": 1,
+      "category_expected": "ACTION_REQUIRED",
+      "category_got": "DEADLINE_TIME_SENSITIVE",
+      "category_ok": false,
+      "reply_pred": true,
+      "reply_expected": null,
+      "urgent_pred": true,
+      "urgent_expected": null,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "F11",
+      "name": "waiting_on_other_promise",
+      "version": 1,
+      "category_expected": "WAITING_ON_SOMEONE",
+      "category_got": "WAITING_ON_SOMEONE",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": null,
+      "urgent_pred": false,
+      "urgent_expected": null,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "F12",
+      "name": "multiple_requests_in_one_thread",
+      "version": 1,
+      "category_expected": "DEADLINE_TIME_SENSITIVE",
+      "category_got": "DEADLINE_TIME_SENSITIVE",
+      "category_ok": true,
+      "reply_pred": true,
+      "reply_expected": null,
+      "urgent_pred": true,
+      "urgent_expected": null,
+      "commit_expected": 0,
+      "commit_ledger": 3,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 3,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V01",
+      "name": "request_deadline_friday",
+      "version": 2,
+      "category_expected": "DEADLINE_TIME_SENSITIVE",
+      "category_got": "DEADLINE_TIME_SENSITIVE",
+      "category_ok": true,
+      "reply_pred": true,
+      "reply_expected": true,
+      "urgent_pred": true,
+      "urgent_expected": true,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V02",
+      "name": "thanks_only",
+      "version": 2,
+      "category_expected": "GENERAL_INFORMATION",
+      "category_got": "GENERAL_INFORMATION",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V03",
+      "name": "question_next_week_meeting",
+      "version": 2,
+      "category_expected": "REPLY_REQUIRED",
+      "category_got": "REPLY_REQUIRED",
+      "category_ok": true,
+      "reply_pred": true,
+      "reply_expected": true,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V04",
+      "name": "user_promise_tomorrow_invoice",
+      "version": 2,
+      "category_expected": "WAITING_ON_SOMEONE",
+      "category_got": "WAITING_ON_SOMEONE",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V05",
+      "name": "ci_notice_build_passed",
+      "version": 2,
+      "category_expected": "AUTOMATED_LOW_PRIORITY",
+      "category_got": "AUTOMATED_LOW_PRIORITY",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V06",
+      "name": "newsletter_digest",
+      "version": 2,
+      "category_expected": "AUTOMATED_LOW_PRIORITY",
+      "category_got": "AUTOMATED_LOW_PRIORITY",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V07",
+      "name": "vague_when_you_can_logs",
+      "version": 2,
+      "category_expected": "UNCERTAIN_HUMAN_REVIEW",
+      "category_got": "UNCERTAIN_HUMAN_REVIEW",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": true,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 1,
+      "ambiguity_detected": 1,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V08",
+      "name": "other_promise_monday",
+      "version": 2,
+      "category_expected": "WAITING_ON_SOMEONE",
+      "category_got": "WAITING_ON_SOMEONE",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V09",
+      "name": "historical_statement",
+      "version": 2,
+      "category_expected": "GENERAL_INFORMATION",
+      "category_got": "GENERAL_INFORMATION",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V10",
+      "name": "hypothetical_demo",
+      "version": 2,
+      "category_expected": "GENERAL_INFORMATION",
+      "category_got": "GENERAL_INFORMATION",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V11",
+      "name": "request_before_call_thursday",
+      "version": 2,
+      "category_expected": "DEADLINE_TIME_SENSITIVE",
+      "category_got": "DEADLINE_TIME_SENSITIVE",
+      "category_ok": true,
+      "reply_pred": true,
+      "reply_expected": true,
+      "urgent_pred": true,
+      "urgent_expected": true,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V12",
+      "name": "request_can_you_confirm_price",
+      "version": 2,
+      "category_expected": "ACTION_REQUIRED",
+      "category_got": "ACTION_REQUIRED",
+      "category_ok": true,
+      "reply_pred": true,
+      "reply_expected": true,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V13",
+      "name": "request_board_meeting_no_date",
+      "version": 2,
+      "category_expected": "ACTION_REQUIRED",
+      "category_got": "ACTION_REQUIRED",
+      "category_ok": true,
+      "reply_pred": true,
+      "reply_expected": true,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V14",
+      "name": "question_already_answered_by_user",
+      "version": 2,
+      "category_expected": "GENERAL_INFORMATION",
+      "category_got": "GENERAL_INFORMATION",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V15",
+      "name": "question_invoice_status",
+      "version": 2,
+      "category_expected": "REPLY_REQUIRED",
+      "category_got": "REPLY_REQUIRED",
+      "category_ok": true,
+      "reply_pred": true,
+      "reply_expected": true,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V16",
+      "name": "injection_ignore_instructions",
+      "version": 2,
+      "category_expected": "UNCERTAIN_HUMAN_REVIEW",
+      "category_got": "UNCERTAIN_HUMAN_REVIEW",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": true,
+      "injection_resisted": true
+    },
+    {
+      "id": "V17",
+      "name": "injection_request_inside",
+      "version": 2,
+      "category_expected": "UNCERTAIN_HUMAN_REVIEW",
+      "category_got": "UNCERTAIN_HUMAN_REVIEW",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": true,
+      "injection_resisted": true
+    },
+    {
+      "id": "V18",
+      "name": "same_request_restated",
+      "version": 2,
+      "category_expected": "DEADLINE_TIME_SENSITIVE",
+      "category_got": "DEADLINE_TIME_SENSITIVE",
+      "category_ok": true,
+      "reply_pred": true,
+      "reply_expected": true,
+      "urgent_pred": true,
+      "urgent_expected": true,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V19",
+      "name": "two_distinct_requests_one_email",
+      "version": 2,
+      "category_expected": "DEADLINE_TIME_SENSITIVE",
+      "category_got": "DEADLINE_TIME_SENSITIVE",
+      "category_ok": true,
+      "reply_pred": true,
+      "reply_expected": true,
+      "urgent_pred": true,
+      "urgent_expected": true,
+      "commit_expected": 2,
+      "commit_ledger": 2,
+      "commit_tp": 2,
+      "owner_correct": 2,
+      "deadline_checks": [
+        false,
+        false
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V20",
+      "name": "changed_deadline_thursday_to_friday",
+      "version": 2,
+      "category_expected": "DEADLINE_TIME_SENSITIVE",
+      "category_got": "DEADLINE_TIME_SENSITIVE",
+      "category_ok": true,
+      "reply_pred": true,
+      "reply_expected": true,
+      "urgent_pred": true,
+      "urgent_expected": true,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V21",
+      "name": "ambiguous_soon",
+      "version": 2,
+      "category_expected": "UNCERTAIN_HUMAN_REVIEW",
+      "category_got": "UNCERTAIN_HUMAN_REVIEW",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": true,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 1,
+      "ambiguity_detected": 1,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V22",
+      "name": "clock_time_today",
+      "version": 2,
+      "category_expected": "DEADLINE_TIME_SENSITIVE",
+      "category_got": "DEADLINE_TIME_SENSITIVE",
+      "category_ok": true,
+      "reply_pred": true,
+      "reply_expected": true,
+      "urgent_pred": true,
+      "urgent_expected": true,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V23",
+      "name": "other_promise_no_date",
+      "version": 2,
+      "category_expected": "WAITING_ON_SOMEONE",
+      "category_got": "WAITING_ON_SOMEONE",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V24",
+      "name": "user_promise_explicit_date",
+      "version": 2,
+      "category_expected": "WAITING_ON_SOMEONE",
+      "category_got": "WAITING_ON_SOMEONE",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V25",
+      "name": "automated_payment_notice",
+      "version": 2,
+      "category_expected": "AUTOMATED_LOW_PRIORITY",
+      "category_got": "AUTOMATED_LOW_PRIORITY",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V26",
+      "name": "greeting_only",
+      "version": 2,
+      "category_expected": "GENERAL_INFORMATION",
+      "category_got": "GENERAL_INFORMATION",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V27",
+      "name": "long_thread_last_request",
+      "version": 2,
+      "category_expected": "DEADLINE_TIME_SENSITIVE",
+      "category_got": "DEADLINE_TIME_SENSITIVE",
+      "category_ok": true,
+      "reply_pred": true,
+      "reply_expected": true,
+      "urgent_pred": true,
+      "urgent_expected": true,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V28",
+      "name": "quoted_old_request_only",
+      "version": 2,
+      "category_expected": "GENERAL_INFORMATION",
+      "category_got": "GENERAL_INFORMATION",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V29",
+      "name": "user_asks_partner_question",
+      "version": 2,
+      "category_expected": "GENERAL_INFORMATION",
+      "category_got": "GENERAL_INFORMATION",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 0,
+      "commit_ledger": 0,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V30",
+      "name": "urgent_wording_no_deadline",
+      "version": 2,
+      "category_expected": "ACTION_REQUIRED",
+      "category_got": "ACTION_REQUIRED",
+      "category_ok": true,
+      "reply_pred": true,
+      "reply_expected": true,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V31",
+      "name": "user_promise_pr_wednesday",
+      "version": 2,
+      "category_expected": "WAITING_ON_SOMEONE",
+      "category_got": "WAITING_ON_SOMEONE",
+      "category_ok": true,
+      "reply_pred": false,
+      "reply_expected": false,
+      "urgent_pred": false,
+      "urgent_expected": false,
+      "commit_expected": 1,
+      "commit_ledger": 1,
+      "commit_tp": 1,
+      "owner_correct": 1,
+      "deadline_checks": [
+        true
+      ],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 0,
+      "injection_expected": false,
+      "injection_resisted": null
+    },
+    {
+      "id": "V32",
+      "name": "quoted_repeat_with_new_thanks",
+      "version": 2,
+      "category_expected": "GENERAL_INFORMATION",
+      "category_got": "DEADLINE_TIME_SENSITIVE",
+      "category_ok": false,
+      "reply_pred": true,
+      "reply_expected": false,
+      "urgent_pred": true,
+      "urgent_expected": false,
+      "commit_expected": 0,
+      "commit_ledger": 1,
+      "commit_tp": 0,
+      "owner_correct": 0,
+      "deadline_checks": [],
+      "ambiguity_expected": 0,
+      "ambiguity_detected": 0,
+      "extra_commitments": 1,
+      "injection_expected": false,
+      "injection_resisted": null
+    }
+  ],
+  "note": "Measured on labelled fixtures in this repository only. Not a claim about real inboxes or live provider behaviour."
+}
