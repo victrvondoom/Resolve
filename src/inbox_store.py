@@ -68,6 +68,9 @@ class InboxStore:
             if 2 not in done:
                 conn.executescript(MIGRATION_2)
                 conn.execute("INSERT INTO schema_migrations VALUES (2, ?)", (time.time(),))
+            if 3 not in done:
+                conn.executescript(MIGRATION_3)
+                conn.execute("INSERT INTO schema_migrations VALUES (3, ?)", (time.time(),))
         finally:
             conn.close()
 
@@ -249,6 +252,38 @@ class InboxStore:
                               (user_id, workspace_id, int(limit))).fetchall()
         return [{"id": r["id"], "action": r["action"], "subject_id": r["subject_id"], "detail": json.loads(r["detail"]), "created_at": r["created_at"]} for r in rows]
 
+    # ---------- corrections: one-time or persistent, always with before and after, always reversible
+    def add_correction(self, user_id: str, workspace_id: str, thread_id: str | None, original: dict, corrected: dict,
+                       explanation: str, scope: str, confirmed: bool) -> dict:
+        if scope not in ("ONE_TIME", "PERSISTENT_THREAD", "PERSISTENT_WORKSPACE"):
+            raise InboxError("unknown correction scope", 400)
+        if scope == "PERSISTENT_WORKSPACE" and not confirmed:
+            raise InboxError("a workspace-wide preference needs your confirmation before it is stored", 409)
+        with self._lock, self._db() as db:
+            cid = self._id("cor")
+            db.execute("""INSERT INTO corrections(id,user_id,workspace_id,thread_id,original_json,corrected_json,explanation_sealed,scope,active,created_at)
+                          VALUES (?,?,?,?,?,?,?,?,1,?)""",
+                       (cid, user_id, workspace_id, thread_id, json.dumps(original, sort_keys=True), json.dumps(corrected, sort_keys=True),
+                        self._seal(explanation, user_id, workspace_id, cid), scope, time.time()))
+            self._audit(db, user_id, workspace_id, "correction.added", cid, {"scope": scope})
+        return {"id": cid, "scope": scope, "active": True}
+
+    def list_corrections(self, user_id: str, workspace_id: str) -> list[dict]:
+        with self._db() as db:
+            rows = db.execute("SELECT * FROM corrections WHERE user_id=? AND workspace_id=? ORDER BY created_at DESC", (user_id, workspace_id)).fetchall()
+        return [{"id": r["id"], "thread_id": r["thread_id"], "original": json.loads(r["original_json"]), "corrected": json.loads(r["corrected_json"]),
+                 "explanation": self._open(r["explanation_sealed"], user_id, workspace_id, r["id"]), "scope": r["scope"], "active": bool(r["active"]),
+                 "created_at": r["created_at"]} for r in rows]
+
+    def reverse_correction(self, user_id: str, workspace_id: str, correction_id: str) -> dict:
+        with self._lock, self._db() as db:
+            r = db.execute("UPDATE corrections SET active=0, reversed_at=? WHERE id=? AND user_id=? AND workspace_id=? AND active=1",
+                           (time.time(), correction_id, user_id, workspace_id))
+            if r.rowcount != 1:
+                raise InboxError("correction not found or already reversed", 404)
+            self._audit(db, user_id, workspace_id, "correction.reversed", correction_id, {})
+        return {"id": correction_id, "active": False}
+
     # ---------- drafts, approvals and execution records (send path)
     def create_draft(self, user_id: str, workspace_id: str, thread_id: str, recipient: str, subject: str, body: str, digest: str) -> dict:
         with self._lock, self._db() as db:
@@ -407,4 +442,13 @@ CREATE TABLE execution_records (
 CREATE TABLE verification_records (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL, workspace_id TEXT NOT NULL, execution_id TEXT NOT NULL REFERENCES execution_records(id) ON DELETE CASCADE,
   method TEXT NOT NULL, result TEXT NOT NULL, evidence TEXT NOT NULL, created_at REAL NOT NULL);
+"""
+
+
+MIGRATION_3 = """
+CREATE TABLE corrections (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, workspace_id TEXT NOT NULL, thread_id TEXT, original_json TEXT NOT NULL,
+  corrected_json TEXT NOT NULL, explanation_sealed BLOB NOT NULL, scope TEXT NOT NULL, active INTEGER NOT NULL,
+  created_at REAL NOT NULL, reversed_at REAL);
+CREATE INDEX corrections_scope ON corrections(user_id, workspace_id, active);
 """
