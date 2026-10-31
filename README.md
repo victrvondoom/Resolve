@@ -4,7 +4,7 @@
 
 <br><br>
 
-<img src="docs/readme/no-hands-challenge.png" alt="WeMakeDevs x Wispr Flow: No Hands. The Wispr Challenge" width="339">
+
 
 <br><br>
 
