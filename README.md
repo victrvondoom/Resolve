@@ -29,6 +29,8 @@
 5. **Drafting and approval.** Replies are prepared from the thread and from facts you supply; anything missing is listed, not invented. Approval applies to the exact recipient, subject, body and digest, is single-use, and expires after 15 minutes. Any edit invalidates it.
 6. **Verified execution.** A send is confirmed only when the stored message is read back and matches the approved content. A timeout is UNCERTAIN, shown as not successful, and reconciled read-only; nothing is resent automatically.
 7. **Replay mode.** A labelled synthetic morning (12 threads, 16 messages) runs through the same code as the live mailbox. Sends are simulated and labelled as such.
+8. **Local mail mode.** A real mail server on your machine (SMTP + POP3 on loopback, Maildir on disk) that RESOLVE starts for you. Create a mailbox, receive messages from local colleague addresses, approve a reply, and RESOLVE delivers it over SMTP and verifies it by reading the Sent folder back over POP3. It delivers only to `@mail.resolve.test` addresses and is never presented as Gmail.
+9. **Optional model endpoint.** `RULES_ONLY` by default and labelled so. With `RESOLVE_MODEL_BASE_URL` and `RESOLVE_MODEL_NAME` (Ollama, llama.cpp or any OpenAI-compatible server), RESOLVE can ask a model for an advisory thread analysis or a reply draft; answers are schema-validated, every quote is checked against the stored message, and drafts with unsupported prices, dates or promises fall back to the rules draft. No model was run while building this repository.
 
 ## Screens
 
@@ -62,6 +64,10 @@ All screenshots were captured from the running app by `python scripts/capture_in
 - Model output is never trusted with permissions; no model is configured in this build.
 
 Details: `docs/INBOX_SECURITY.md`. Known limitations are listed there. The database file is not fully encrypted; only sensitive content fields are sealed.
+
+## Local mail mode
+
+No credentials needed, real delivery on this machine. **Connections → Local mail server → Create local mailbox → Deliver a message → Sync local mailbox**, then switch the Morning brief to **Local mail**. Command-line server and accounts: `python src/local_mail.py --help`. Details in `docs/INBOX_OPERATOR_SETUP.md`.
 
 ## Replay mode
 

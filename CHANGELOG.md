@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased — Inbox-to-Commitment Operator
+## Unreleased — 2026-10-31 sprint
+
+- LOCAL mode on a real local mail server (`src/local_mail.py`): SMTP + POP3 on loopback, Maildir storage, local-only delivery; same sync, broker and read-back verification as Gmail; Connections panel and Local mail mode in the UI.
+- Model-provider layer (`src/model_provider.py`): OpenAI-compatible endpoint, schema validation, quote verification, unsupported-claim guard for drafts, fallback to rules. Not run against a model here.
+- Gmail incremental sync via the History API with a checkpoint stored only after success; expired history falls back to a full sync; reads retried with backoff, sends never retried.
+- Fixes: transient provider ERROR no longer blocks later syncs; LOCAL data and credentials were not removed by workspace deletion; master-key rotation could not introduce a new key version; inbox routes fell back to the demo tenant for a missing or invalid token in development; clock times after a day word were ignored; "when possible" was not treated as vague; Mission control view had no navigation link.
+- Sessions stored as token hashes, sliding renewal with a 30-day cap, password change revoking every session.
+- Operations: atomic migrations with WAL, `scripts/resolve_admin.py` (migrations, backup, verify, restore), `/api/livez`, `/api/readyz`.
+
+## Earlier — Inbox-to-Commitment Operator
 
 - Semantic fixes: timezone-aware deadlines with clock times ("before 4 PM", "noon tomorrow"); owners and requesters resolved from the mailbox and real senders; changed deadlines revise the obligation and keep history; restated requests are one obligation; quoted text and instruction-like sentences do not create obligations; bare "well"/"ill" no longer match promises.
 - Send path: the visible operation marker is removed from outgoing content; correlation uses an RFC 822 Message-ID with read-back of the exact content; an approval is refused when the draft's content changed since approval; drafts are SENT_VERIFIED or SAVED_TO_GMAIL only after read-back.
