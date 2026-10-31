@@ -58,6 +58,27 @@ class Migrations(unittest.TestCase):
             self.assertNotIn(99, versions)
             InboxStore(db, sealer(tmp))            # and the store still opens normally afterwards
 
+    def test_upgrade_from_the_previous_schema_keeps_existing_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / 'inbox.sqlite3'
+            saved = list(istore.ALL_MIGRATIONS)
+            istore.ALL_MIGRATIONS[:] = [m for m in saved if m[0] <= 7]      # the schema shipped at the previous checkpoint
+            try:
+                old = InboxStore(db, sealer(tmp))
+                old.upsert_connection('u1', 'w1', 'gmail', 'CONNECTED', ['read'], 'existing user data')
+                conn_id = old.get_connection('u1', 'w1', 'gmail')['id']
+                run = old.start_sync_run('u1', 'w1', conn_id, 'LIVE')
+                old.finish_sync_run('u1', 'w1', run, 'SUCCEEDED', fetched=3)
+            finally:
+                istore.ALL_MIGRATIONS[:] = saved
+            new = InboxStore(db, sealer(tmp))
+            self.assertEqual(new.migration_status()['pending'], [])
+            self.assertEqual(new.get_connection('u1', 'w1', 'gmail')['detail'], 'existing user data')
+            runs = new.list_sync_runs('u1', 'w1')
+            self.assertEqual((runs[0]['fetched'], runs[0]['kind']), (3, 'FULL'), 'old runs get the default kind')
+            new.set_sync_cursor('u1', 'w1', 'gmail', '123')
+            self.assertEqual(new.get_sync_cursor('u1', 'w1', 'gmail'), '123')
+
     def test_admin_migrations_command(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / 'inbox.sqlite3'
