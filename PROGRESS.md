@@ -59,8 +59,44 @@ Evidence: `harness/evidence/G*.md`, `harness/evidence/screens/`.
 - **Mission Control UI Polish**: Added Cloud Computer live frame view, Connected Apps manager, Privacy & Data portal, workspace switcher, and push-to-talk voice button in `web/index.html` and `web/static/app.js`.
 - **Evidence Documentation & Screenshots**: Generated complete Gate evidence files `harness/evidence/G10.md` through `G16.md` and captured 10 full-resolution screenshots in `harness/evidence/screens/`.
 
+## Sprint 2026-10-30b (this session)
+- Baseline reproduced: 361 passed / 12 skipped / 0 failed (Linux, Chromium from /opt/pw-browsers).
+- Added browser.find/select/wait/extract/verify/close, per-session Playwright worker thread, three controlled apps, five computer tasks, `/api/computer/run`. New tests: 18 (real Chromium) + 3 (HTTP). Mutation checks recorded in docs/COMPUTER_TASKS.md.
+- Real STT: BLOCKED. vosk installs; model download hosts unreachable from this sandbox.
+- Not done this session (honest list): UI panel for computer tasks, live-microphone validation, public deployment, per-tenant VM isolation, benchmark of naive vs guarded vs IEEC on the new apps, visual regression screenshots of new panels.
+
 ## Blocked
 - None. Local test suites, Playwright headless browser tests, and live server integration pass 100%.
 
 ## Next executable command
 Run live web server: `python src/resolve_app.py` (visit http://127.0.0.1:8765 in any browser).
+
+## Operation Zero Hands sprint (2026-10-30)
+GATE: voice computer / brief mission | PASS (simulator + real Chromium; WINDOWS_NATIVE_TESTS_NOT_RUN)
+- Verified: reader ‖ analyzer ‖ real-Chromium diagnostics (genuine faults on bundled demo app) → planner → approval → report citing runtime frame hashes → independent verifier; revision-guarded mid-run revise, pause/resume, tenant evidence/skills/resume, digest-confirmed commands, typed tool registry (17 tools), Live computer UI.
+- Commands: `python -m pytest tests -q` → 361 passed, 12 skipped, 0 failed (full run 443 s). New: test_mission_sprint (14), test_zero_hands_api (5), test_zero_hands_e2e (2), test_diagnostics_agent (14), test_tool_registry + test_command_router (61).
+- Not verified / blocked: real STT, native Windows input, physical printing, public deployment, Wispr Flow usage (user-owned). Briefs' branch names not created; designated branch only.
+- Next command: `python src/resolve_app.py`, follow docs/JUDGE_DEMO.md.
+
+## Operation Open Computer — audit checkpoint (2026-10-30, Haiku 5.5 session)
+- Baseline: branch `claude/beautiful-bardeen-fw59qp` at `008b13d` (matches remote). Clean tree before this note.
+- G17 real speech: BLOCKED in this environment. `pip install vosk` works, but no Vosk model is available: `RESOLVE_VOSK_MODEL` unset, `alphacephei.com` model host unreachable (HTTP 000), and no PyPI model package exists. `VoiceEngine.health()` correctly reports `available: false`. No STT was run, so no real transcription is claimed.
+- Not started in this session: generalized browser executor, held-out task sites, planner interface, cream frontend changes, public deployment, Wispr evidence. These need multiple sessions and were not begun, to avoid unverified partial work.
+- Next command (once a model is supplied): `RESOLVE_VOSK_MODEL=/path/to/vosk-model-small-en-us-0.15 python src/resolve_app.py`
+
+## Operation Finish Line — integration checkpoint
+- Head verified: `f7db204` (generalized computer tasks, pushed by a parallel session on top of `b0bff5e`). Local and remote match; tree clean before this note.
+- Full regression on `f7db204`: 382 passed, 12 skipped (tkinter-only Windows/desktop tests, NOT_RUN on headless Linux), 0 failed. Previous baseline 361 passed.
+- R1 startup: covered by the regression suite (production server starts via ProdServer tests). PASS.
+- R3 real voice: BLOCKED (no STT model reachable; see the earlier audit note above).
+- R4 real computer use: generalized tasks exist (`src/computer_tasks.py`, `src/controlled_apps.py`) with real-Chromium tests; this session did not independently re-verify the three-app / held-out task requirements beyond the test suite passing.
+- R5–R11: covered by the existing suites that passed above; no new mutation tests were added in this session.
+- R12 deployment, R13 judge demo video, R14 Wispr evidence: NOT DONE in this session. The Wispr Insights screenshot and dictated evidence remain user-owned.
+- Not started in this session: cream frontend polish, skills A–I, print-status enum, deployment configuration. Not claimed complete.
+- Next command: `python -m pytest tests -q` (regression) and `RESOLVE_VOSK_MODEL=<model dir> python src/resolve_app.py` once a model is available.
+
+## IEEC enforcement checkpoint (2026-10-31)
+- Full regression on this change: 402 passed, 12 skipped, 0 failed for the run before the one dashboard test fix; after fixing `tests/test_dashboard_e2e.py` (its sidebar clicks now open the collapsed "More tools" group, same cause as the landing-page test), `test_dashboard_e2e.py` passes 2/2.
+- New: `src/operation_contract.py` (contract, state machine, guard, durable dispatch record), `tests/test_ieec_adversarial.py` (21 tests, stable over 6 repeats), `benchmarks/ieec_bench.py` (local simulation, results in `benchmarks/results/ieec_latest.json`), `docs/IEEC_ENFORCEMENT.md`.
+- NOT verified: real provider behavior, Mission Assurance UI/demo mode (not built), real email/calendar/delete adapters (not present in the codebase).
+- Next command: `python benchmarks/ieec_bench.py`

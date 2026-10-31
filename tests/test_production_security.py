@@ -18,12 +18,16 @@ from test_web_api_g1 import ROOT, free_port
 from server_security import ServerSecurity, ConfigError
 
 
+# TEST-ONLY master key for production-mode servers (production refuses the development key file). Never used outside tests.
+TEST_MASTER_KEY = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8='
+
+
 class ProdServer:
     def __init__(self, tmp, port, extra=None):
         self.tmp, self.port, self.extra = tmp, port, extra or {}
 
     def start(self):
-        env = dict(os.environ, RESOLVE_MODE='production', RESOLVE_ALLOWED_HOSTS=f'127.0.0.1:{self.port}',
+        env = dict(os.environ, RESOLVE_MODE='production', RESOLVE_MASTER_KEY=TEST_MASTER_KEY, RESOLVE_ALLOWED_HOSTS=f'127.0.0.1:{self.port}',
                    RESOLVE_DB=str(Path(self.tmp) / 'r.sqlite3'), RESOLVE_PORT=str(self.port),
                    RESOLVE_FIXTURE_DIR=str(Path(self.tmp) / 'fx'), RESOLVE_TENANTS_DB=str(Path(self.tmp) / 't.sqlite3'),
                    RESOLVE_SANDBOXES_DIR=str(Path(self.tmp) / 'sb'), RESOLVE_SANDBOXES_DB=str(Path(self.tmp) / 'sb.sqlite3'),

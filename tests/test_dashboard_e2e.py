@@ -99,6 +99,7 @@ class DashboardE2E(unittest.TestCase):
                     self.assertIn(kind, {'NEW_GOAL', 'REFINEMENT', 'CORRECTION', 'CANCEL', 'APPROVE', 'QUESTION'})
                     self.assertIn('Use the Jordan Lee in Operations.', json.dumps(srv.get(f'/api/web/missions/{mid}').get('utterances', [])))
                     # agents: supervisor timeline uses real timestamps from the server
+                    page.evaluate("document.querySelectorAll('.nav-more').forEach(d => d.open = true)")  # 'More tools' is collapsed by default
                     page.click('.sidebar a[data-view="agents"]')
                     page.wait_for_selector('#agentRoster li b')
                     page.click('#supervise')
@@ -107,6 +108,7 @@ class DashboardE2E(unittest.TestCase):
                     self.assertGreaterEqual(page.locator('#taskTimeline .tl-bar').count(), 1)
                     self.assertNotIn('NaN', page.locator('#taskTimeline').inner_text())
                     # skills: record -> approve exact version -> replay under a layout shift
+                    page.evaluate("document.querySelectorAll('.nav-more').forEach(d => d.open = true)")  # 'More tools' is collapsed by default
                     page.click('.sidebar a[data-view="skills"]')
                     page.click('#skillRecord')
                     page.wait_for_function("document.getElementById('webSkillLog').textContent.startsWith('Recorded')", timeout=90000)
@@ -124,6 +126,7 @@ class DashboardE2E(unittest.TestCase):
                     # files sandbox: seed -> plan -> apply moves the duplicate into quarantine -> undo restores it
                     sandbox = Path(tmp) / 'fx' / 'sandbox'
                     dup = sandbox / 'reports' / 'q3-ops-final (copy).txt'
+                    page.evaluate("document.querySelectorAll('.nav-more').forEach(d => d.open = true)")  # 'More tools' is collapsed by default
                     page.click('.sidebar a[data-view="files"]')
                     self.assertTrue(page.locator('#filesApply').is_disabled())
                     for bid, label in (('filesSeed', 'Seed demo files'), ('filesPlan', 'Plan')):

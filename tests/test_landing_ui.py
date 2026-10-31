@@ -36,7 +36,15 @@ class LandingAndAppUI(unittest.TestCase):
         page = ctx.new_page()
         errors = []
         page.on('pageerror', lambda e: errors.append(f'pageerror: {e}'))
-        page.on('console', lambda m: errors.append(f'console.{m.type}: {m.text} @ {m.location.get("url")}') if m.type == 'error' else None)
+        def note_console(m):
+            # A missing OPTIONAL partner logo (web/static/brand/, see its README) is an expected 404; the page shows the
+            # partner's name instead. Any other console error still fails the test.
+            url = m.location.get('url') or ''
+            if m.type == 'error' and '/static/brand/' in url and 'status of 404' in m.text:
+                return
+            if m.type == 'error':
+                errors.append(f'console.{m.type}: {m.text} @ {url}')
+        page.on('console', note_console)
         page.goto(f'http://127.0.0.1:{self.srv.port}{path}')
         if path == '/':
             page.wait_for_load_state('networkidle')
@@ -104,6 +112,7 @@ class LandingAndAppUI(unittest.TestCase):
                 self.assertTrue(page.evaluate(OVERFLOW_JS), page.evaluate('[document.scrollingElement.scrollWidth, innerWidth]'))
                 # every view fits the viewport too
                 for view in ('agents', 'skills', 'files', 'bench', 'sim', 'windows', 'ledger', 'mission'):
+                    page.evaluate("document.querySelectorAll('.nav-more').forEach(d => d.open = true)")  # 'More tools' is collapsed by default
                     page.locator(f'.sidebar a[data-view="{view}"]').click()
                     self.assertTrue(page.locator(f'#view-{view}').is_visible())
                     self.assertTrue(page.evaluate(OVERFLOW_JS), (view, page.evaluate('[document.scrollingElement.scrollWidth, innerWidth]')))

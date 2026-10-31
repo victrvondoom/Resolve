@@ -1,6 +1,131 @@
-# RESOLVE: Wisper and Solve
+<p align="center">
+  <img src="docs/readme/intro-04.png" alt="RESOLVE intro: two single-colour blocks meet and reveal the name" width="78%">
+</p>
 
-## College cloud sprint (document workflow)
+<h1 align="center">RESOLVE</h1>
+<p align="center"><b>Speak. Direct. Resolve.</b><br>Your personal AI cloud computer. You say what you want; it does the work and shows you proof.</p>
+
+---
+
+## Start here (60 seconds)
+
+1. **Say or type one goal.** For example: *"Read my project brief, check my web app for errors, and make a report."*
+2. **RESOLVE works in a private cloud browser.** Three helpers run at the same time: one reads your brief, one checks your code, one tests your web app.
+3. **You approve one plan.** You see exactly which file, which version and what it will produce. Nothing happens without your yes.
+4. **RESOLVE writes the PDF, then checks the PDF itself.** It confirms the file is the one you approved, built from the versions you picked.
+5. **You download, print or delete it.** Your files stay in your own private space.
+
+> RESOLVE is a working prototype. Some parts are real today and some are simulated. The section **"What is real and what is simulated"** says exactly which.
+
+```mermaid
+flowchart LR
+    You([You: say or type a goal]) --> Site[RESOLVE website]
+    Site --> Plan{{Plan to approve}}
+    subgraph Helpers [Helpers working at the same time]
+      Reader[Reads your brief]
+      Checker[Checks your code]
+      Tester[Tests your web app in a private browser]
+    end
+    Plan --> Helpers
+    Helpers --> Report[Writes the PDF report]
+    You -. approves the exact plan .-> Report
+    Report --> Verify[Checks the file itself]
+    Verify --> Done([Verified result: download, print or delete])
+    Verify --> Record[(Private record of every step)]
+```
+
+## What it does for you
+
+| You want to | RESOLVE does | You can see |
+|---|---|---|
+| Understand a project brief | Reads the document and lists its requirements | Each requirement, with its source |
+| Find problems in code | Scans the code and its web app | Each problem, with file and line |
+| Get a corrected design | Proposes a fixed architecture diagram | The diagram, before you approve it |
+| Get a report | Writes a PDF from your approved plan | The file's fingerprint and every check it passed |
+| Know it's right | Re-reads the saved file and checks it | A list of checks, and what was *not* checked |
+
+## Architecture, in plain words
+
+```mermaid
+flowchart TB
+    subgraph Browser [Your browser: the website]
+      UI[Mission Control and landing page]
+    end
+    subgraph Server [RESOLVE server]
+      API[Front door: checks who you are]
+      Missions[Mission engine: runs the helpers in order]
+      Studio[Document studio: stores and makes PDFs]
+      Audit[Activity log: every change, every attempt]
+    end
+    subgraph Cloud [Private cloud browser]
+      Chrome[Real Chromium browser]
+      App[Controlled demo web app]
+    end
+    UI -->|requests| API --> Missions
+    Missions --> Studio
+    Missions --> Chrome --> App
+    Studio --> Audit
+    Missions --> Audit
+```
+
+## Glossary (technical words, explained)
+
+| Word you may see | What it means |
+|---|---|
+| **Digest / fingerprint** | A short code made from a file or plan. Change one letter and the code changes, so you can prove two things are identical. |
+| **SHA-256** | The fingerprint method used for every file and plan. |
+| **Approval** | Your yes for one exact plan. If the plan changes, your yes no longer counts. |
+| **Revision** | A numbered version of your request. Changing your request makes a new revision. |
+| **Ledger / record** | The list of every step, in order, with the time and who did it. |
+| **Idempotent** | Safe to repeat: doing it twice still gives one result. |
+| **Verified** | RESOLVE re-read the result from storage and it matched what you approved. |
+| **Uncertain** | Something may have happened, but RESOLVE cannot prove it. It will not retry on its own. |
+| **Cloud browser** | A real web browser that runs on the server, not on your computer. |
+| **Sandbox** | A walled-off space for one user. |
+| **Connector** | A link to another service (for example Google Drive). Connectors are simulated in this build. |
+| **Tenant / workspace** | Your private area. Other people cannot see it. |
+
+## Evidence and numbers
+
+- **Tests:** the full suite passes on the current code: **442 passed, 12 skipped, 0 failed** (the 12 skipped are desktop-window tests that need a display). Run it yourself with the command below.
+- **Browser tests:** real Chromium tests check the landing page, the intro, the approval screen, the live viewer and the phone layout.
+- **Privacy tests:** users cannot read each other's documents, sandboxes, browser sessions, missions or evidence. These are checked against the running server.
+- **Controlled comparison** (a test we wrote, not real-world data): on 4 fault scenarios with 6 random seeds, a plain scripted agent made an unsafe or wrong outcome in **21 of 24** runs; RESOLVE's checks made **0 of 24**. Raw results: `data/benchmarks/`. This shows the checks work on the faults we built; it does not prove general reliability.
+
+## Try it
+
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements-dev.txt && python -m playwright install chromium
+python src/resolve_app.py            # then open http://127.0.0.1:8765
+```
+
+Regenerate the screenshots and intro frames from the running app:
+
+```bash
+python scripts/capture_readme_screens.py 8771
+python scripts/capture_intro_frames.py 8772
+```
+
+## What is real and what is simulated
+
+| Part | Status |
+|---|---|
+| Reading briefs, checking code, writing and re-checking PDFs | **Real** |
+| Browser tests against a controlled demo web app | **Real** (a real Chromium browser) |
+| Your files and records stored privately | **Real** (on the server's disk) |
+| Encryption of stored files | **Real, partial:** AES-256-GCM seals every stored PDF, project archive and evidence frame, with a separate key per user and workspace. Database rows and filenames are **not** encrypted. Production refuses to start without `RESOLVE_MASTER_KEY`. |
+| Sending email, calendar or cloud-drive changes | **Simulated** (no real accounts connected) |
+| Speech-to-text from a microphone | **Not verified here** (no speech model is installed) |
+| Browser sessions on a public server | **Blocked** until isolated infrastructure exists |
+
+The full audit, including what is weak and what we will fix next, is in [`docs/RESOLVE_UI_UX_AUDIT.md`](docs/RESOLVE_UI_UX_AUDIT.md).
+
+---
+
+<details>
+<summary><h2 style="display:inline">College cloud sprint (document workflow)</h2></summary>
+
 
 The browser app now has a Document studio: upload a PDF (up to 5 MiB), rotate pages, remove pages, merge PDFs, create a report from text, preview the generated PDF, download it, or open the browser print dialog. Each operation stores an actual PDF with a SHA-256 receipt. Transformations require the source hash; document reads and writes are scoped to the current account and workspace. Workspace and account deletion purge their stored PDFs. Install `requirements-dev.txt`, run `python src/resolve_app.py`, then open `/app` and choose **Documents & print**. The HTTP and PDF checks are in `tests/test_document_api.py` and `tests/test_document_studio.py`.
 
@@ -12,7 +137,10 @@ RESOLVE is a local, Windows-first, voice-operable agent system for computer work
 
 The working hypothesis is **Intent–Entity–Effect Continuity (IEEC)** plus a **Causal State Ledger (CSL)**: carry your intent revision, the stable identity of the target, the exact version of the content and the observed external effect through every step, and refuse or hold whenever they come apart. It is a hypothesis we measure (below), not a claim of novelty or of universal exactly-once delivery.
 
-## Architecture
+</details>
+<details>
+<summary><h2 style="display:inline">Architecture</h2></summary>
+
 
 RESOLVE is organized as four isolated layers. Each layer only talks to the layer below it, so a compromise of the browser or an agent run can never reach another user's data or bypass the permission core.
 
@@ -70,7 +198,10 @@ Equivalent plain-text view:
 3. **Per-user Sandboxes** — User A and User B get fully separate browsers, files, sessions and execution contexts. An agent operating for User A physically cannot read User B's tabs, cookies, or files; there is no shared state to leak.
 4. **Private Data & Permission Control** — the trust root. Data at rest is encrypted, connectors are scoped to the minimum access a mission needs, and you keep irreversible control: export your data, revoke a connector mid-mission, or delete everything. The orchestrator enforces these scopes on every tool call, not just at login.
 
-## What is verified, what is not
+</details>
+<details>
+<summary><h2 style="display:inline">What is verified, what is not</h2></summary>
+
 
 | Capability | Status | Evidence |
 |---|---|---|
@@ -87,7 +218,10 @@ Equivalent plain-text view:
 
 Earlier notes in this repository record controlled Win32 runs on a Windows 11 machine; they were not re-verified while building the current version.
 
-## Quick start
+</details>
+<details>
+<summary><h2 style="display:inline">Quick start</h2></summary>
+
 
 **Windows (PowerShell)**
 ```powershell
@@ -108,7 +242,10 @@ sh scripts/dev.sh serve
 
 No API keys, no cloud model: planning is deterministic templates. Data stays in `data/` (SQLite, WAL).
 
-## The signature mission (≈ 90 seconds, no mouse)
+</details>
+<details>
+<summary><h2 style="display:inline">The signature mission (≈ 90 seconds, no mouse)</h2></summary>
+
 
 1. *"Prepare a follow-up for Jordan Lee using the latest report, update the CRM and send it after I approve."*
 2. Agents fan out in parallel: the CRM, the report store and the files on disk. They find **two Jordan Lees**. The planner refuses to choose and lists the evidence (`C-104 Operations/Northwind`, `C-208 Sales/Contoso`).
@@ -119,7 +256,10 @@ No API keys, no cloud model: planning is deterministic templates. Data stays in 
 
 See [DEMO_SCRIPT.md](DEMO_SCRIPT.md) for the recording runbook.
 
-## Measured, not asserted
+</details>
+<details>
+<summary><h2 style="display:inline">Measured, not asserted</h2></summary>
+
 
 `python benchmarks/web_bench.py` — 4 fault scenarios × 6 seeds × 3 policies on the same fixtures. Verdicts come from each app's hidden `ground_truth` table, read by code shared with neither the agents nor the verifier.
 
@@ -131,7 +271,10 @@ See [DEMO_SCRIPT.md](DEMO_SCRIPT.md) for the recording runbook.
 
 `python benchmarks/ablations.py` removes one mechanism at a time against the fault it exists for (n = 4 per cell): without entity binding 2/4 runs wrote to the wrong person (depending on row order), and removing the temporal guard, the reconcile ledger, the independent verifier, the approval digest or executor fencing let the targeted failure through 4/4 times. With everything on: 0. These are **controlled baselines we wrote**, on scenarios built to exercise each mechanism; they show the mechanisms matter in these cases, not general reliability. Raw JSONL/CSV are in `data/benchmarks/`.
 
-## Architecture
+</details>
+<details>
+<summary><h2 style="display:inline">Architecture</h2></summary>
+
 
 ```mermaid
 flowchart LR
@@ -153,15 +296,24 @@ flowchart LR
 
 Action states: `PROPOSED → BOUND → NEEDS_APPROVAL → AUTHORIZED → READY → DISPATCHING → DISPATCHED → OBSERVING → CONFIRMED | FAILED | WRONG_TARGET`, with `UNCERTAIN` (unknown effect; reconcile, never blind retry), `SUPERSEDED` (intent changed) and `CANCELLED`. `DISPATCHING` is persisted before every side effect. More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Safety
+</details>
+<details>
+<summary><h2 style="display:inline">Safety</h2></summary>
+
 
 Loopback only, Host/Origin checks, per-process token for mutations (not a boundary against malware running as you). Webpages and documents are data, never instructions. No real email, purchases, money movement or credential access; the outbox is labelled **SIMULATED DELIVERY**. UAC and the secure desktop are never bypassed. Fault-injection endpoints exist only in test mode. Details: [docs/SECURITY.md](docs/SECURITY.md).
 
-## Wispr Flow
+</details>
+<details>
+<summary><h2 style="display:inline">Wispr Flow</h2></summary>
+
 
 Wispr Flow is used by the developer to dictate prompts and documentation. RESOLVE has **no Wispr SDK integration** and does not claim one. Submission evidence (Insights screenshot) must come from the developer's real account — see [docs/WISPR_CHECKLIST.md](docs/WISPR_CHECKLIST.md).
 
-## Project map
+</details>
+<details>
+<summary><h2 style="display:inline">Project map</h2></summary>
+
 
 `src/` kernel (ledger, web mission runner, supervisor, intent, skills, file worker, Windows adapters) · `apps/web_fixtures.py` the three test apps · `web/` landing page and Mission Control · `benchmarks/` A/B/C + ablations · `tests/` · `harness/evidence/` per-gate evidence · `PROGRESS.md` / `TASKS.md` current state. MIT licensed; no third-party hackathon code reused ([docs/RESEARCH.md](docs/RESEARCH.md)).
 
@@ -172,3 +324,5 @@ Wispr Flow is used by the developer to dictate prompts and documentation. RESOLV
 RESOLVE
 
 *README marker added by **Codex**.*
+
+</details>

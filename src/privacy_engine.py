@@ -48,11 +48,12 @@ class PrivacyEngine:
         self.data_dir = Path(data_dir) if data_dir else ROOT / 'data'
         self.project_store = None   # optional: uploaded source projects are tenant data and are purged with the tenant
         self.mission_store = None   # optional hooks wired by the app: purge missions first so in-flight workers' late results are rejected
+        self.audit_store = None     # write audit trail for direct document writes (tenant data)
         self.browser_pool = None    # optional: close live browser processes before sandbox storage is destroyed
         self.documents = DocumentStudio(Path(os.environ.get('RESOLVE_DOCUMENTS_DIR', self.data_dir / 'documents')))
 
     def get_summary(self, user_id: str, workspace_id: str) -> dict:
-        sandboxes = self.sandbox_mgr.list_sandboxes(user_id)
+        sandboxes = self.sandbox_mgr.list_sandboxes(user_id, workspace_id)
         connectors = self.connector_reg.list_connectors(user_id, workspace_id)
         connected_count = len([c for c in connectors if c["status"] == "CONNECTED"])
         
@@ -93,7 +94,7 @@ class PrivacyEngine:
         summary = self.get_summary(user_id, workspace_id)
         workspaces = self.auth_mgr.list_workspaces(user_id)
         connectors = self.connector_reg.list_connectors(user_id, workspace_id)
-        sandboxes = [s.to_dict() for s in self.sandbox_mgr.list_sandboxes(user_id)]
+        sandboxes = [s.to_dict() for s in self.sandbox_mgr.list_sandboxes(user_id, workspace_id)]
 
         export_bundle = {
             "version": "1.0",
@@ -109,13 +110,17 @@ class PrivacyEngine:
         export_bundle['documents'] = self.documents.list_documents(user_id, workspace_id)
         if self.project_store:
             export_bundle['projects'] = self.project_store.list(user_id, workspace_id)
+        if self.audit_store:
+            export_bundle['write_audit'] = self.audit_store.list(user_id, workspace_id)
         bundle_str = json.dumps(export_bundle, sort_keys=True)
         export_bundle["sha256_checksum"] = hashlib.sha256(bundle_str.encode()).hexdigest()
         return export_bundle
 
-    def delete_sandbox(self, user_id: str, sandbox_id: str) -> DeletionReceipt:
-        sbx = self.sandbox_mgr.get_sandbox(sandbox_id, caller_user_id=user_id)
-        self.sandbox_mgr.destroy_sandbox(sandbox_id, caller_user_id=user_id)
+    def delete_sandbox(self, user_id: str, workspace_id: str, sandbox_id: str) -> DeletionReceipt:
+        sbx = self.sandbox_mgr.get_sandbox(sandbox_id, caller_user_id=user_id, caller_workspace_id=workspace_id)
+        if self.browser_pool:
+            self.browser_pool.close_session(sandbox_id, user_id, workspace_id)
+        self.sandbox_mgr.destroy_sandbox(sandbox_id, caller_user_id=user_id, caller_workspace_id=workspace_id)
 
         now = time.time()
         receipt_id = f"del_{hashlib.sha256(f'{user_id}:{sandbox_id}:{now}'.encode()).hexdigest()[:12]}"
@@ -135,13 +140,13 @@ class PrivacyEngine:
 
     def delete_workspace(self, user_id: str, workspace_id: str) -> DeletionReceipt:
         # 1. Terminate & destroy all sandboxes in workspace
-        user_sandboxes = self.sandbox_mgr.list_sandboxes(user_id)
+        user_sandboxes = self.sandbox_mgr.list_sandboxes(user_id, workspace_id)
         destroyed_sbx = []
         for sbx in user_sandboxes:
             if sbx.workspace_id == workspace_id:
                 if self.browser_pool:
-                    self.browser_pool.close_session(sbx.id)
-                self.sandbox_mgr.destroy_sandbox(sbx.id, caller_user_id=user_id)
+                    self.browser_pool.close_session(sbx.id, user_id, workspace_id)
+                self.sandbox_mgr.destroy_sandbox(sbx.id, caller_user_id=user_id, caller_workspace_id=workspace_id)
                 destroyed_sbx.append(sbx.id)
 
         # 2. Disconnect connectors
@@ -152,6 +157,8 @@ class PrivacyEngine:
 
         # 3. Delete from tenant database (missions first: running workers then reject their late results)
         missions_removed = self.mission_store.purge(user_id, workspace_id) if self.mission_store else 0
+        if self.audit_store:
+            self.audit_store.purge(user_id, workspace_id)
         projects_removed = self.project_store.purge(user_id, workspace_id) if self.project_store else 0
         self.documents.delete_workspace(user_id, workspace_id)
         self.auth_mgr.delete_workspace(user_id, workspace_id)
@@ -175,12 +182,12 @@ class PrivacyEngine:
     def delete_account(self, user_id: str) -> DeletionReceipt:
         """Permanently delete user account and all associated resources across all workspaces."""
         # 1. Destroy all user sandboxes
-        user_sandboxes = self.sandbox_mgr.list_sandboxes(user_id)
+        user_sandboxes = self.sandbox_mgr.list_user_sandboxes(user_id)
         destroyed_sbx = []
         for sbx in user_sandboxes:
             if self.browser_pool:
-                self.browser_pool.close_session(sbx.id)
-            self.sandbox_mgr.destroy_sandbox(sbx.id, caller_user_id=user_id)
+                self.browser_pool.close_session(sbx.id, user_id, sbx.workspace_id)
+            self.sandbox_mgr.destroy_sandbox(sbx.id, caller_user_id=user_id, caller_workspace_id=sbx.workspace_id)
             destroyed_sbx.append(sbx.id)
 
         # 2. Purge all connector registrations
@@ -188,6 +195,8 @@ class PrivacyEngine:
 
         # 3. Delete user and sessions from tenant database
         missions_removed = self.mission_store.purge(user_id) if self.mission_store else 0
+        if self.audit_store:
+            self.audit_store.purge(user_id)
         projects_removed = self.project_store.purge(user_id) if self.project_store else 0
         self.documents.delete_user(user_id)
         self.auth_mgr.delete_user(user_id)

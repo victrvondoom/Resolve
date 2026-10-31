@@ -217,3 +217,155 @@ textarea.fm-log{width:100%;resize:vertical}
   .auth-form{padding:20px}
 }
 @media (prefers-reduced-motion:reduce){.card,.btn,.fm-steps li{transition:none}.btn:hover:not(:disabled){transform:none}}
+
+/* ---- live computer, commands, skills */
+.fm-check-opt{display:flex;gap:10px;align-items:flex-start;margin:10px 0 0;font-size:14px}
+.fm-check-opt input{margin-top:3px}
+.fm-computer{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
+.fm-screen{margin:0;border:1px solid var(--line);border-radius:12px;background:var(--inset);overflow:hidden;min-height:180px;display:grid;place-items:center;box-shadow:inset 0 1px 3px rgba(90,70,30,.06)}
+.fm-screen img{display:block;width:100%;height:auto}
+.fm-screen figcaption{padding:20px;text-align:center}
+.fm-steps-live{list-style:none;margin:8px 0;padding:0;display:grid;gap:4px;max-height:220px;overflow:auto;font-size:13px}
+.fm-steps-live li{display:flex;gap:8px;align-items:baseline;padding:4px 8px;border-radius:8px;background:var(--inset)}
+.fm-steps-live li.bad{background:var(--bad-bg,#F8E6E2)}
+.fm-steps-live code{font-size:12px}
+.fm-cmd-out{margin:12px 0;padding:12px 14px;border:1px solid var(--line-2);border-radius:12px;background:var(--panel)}
+.fm-cmd-summary{margin:0 0 4px;font-weight:600}
+#fmCmd{flex:1 1 260px;min-width:0}
+@media (max-width:760px){.fm-computer{grid-template-columns:minmax(0,1fr)}}
+.fm-steps-live li{flex-wrap:wrap}
+.fm-steps-live code{white-space:nowrap;background:transparent;padding:0}
+.fm-steps-live li span.small{flex:1 1 140px;min-width:0;overflow-wrap:anywhere}
+
+/* ---- spacious layout (desktop-first; phones keep a 16px gutter) ---- */
+body{font-size:16px;line-height:1.65}
+main{padding:44px 56px 72px;max-width:1320px}
+.view-head{margin-bottom:32px;gap:20px}
+.view-head p{font-size:16.5px}
+.grid{gap:28px}
+.card{padding:32px 34px}
+.card-head{margin-bottom:20px;gap:14px}
+.card-head h2{font-size:19px}
+.fm-steps{gap:16px;margin:10px 0 36px}
+.fm-steps li{padding:18px 20px;gap:14px}
+.fm-field{margin-top:26px}
+.fm-field legend{margin-bottom:8px}
+.fm-inline{gap:12px;margin:12px 0}
+.fm-actions{gap:12px;margin-top:26px}
+.fm-nodes{gap:14px}
+.fm-nodes li{padding:16px 18px 16px 46px}
+.fm-split{gap:36px}
+.fm-result{gap:36px}
+.fm-table th,.fm-table td{padding:14px 12px}
+.fm-approve{margin-top:26px;padding-top:24px;gap:16px 24px}
+.fm-prov{gap:10px 20px;font-size:14px}
+.fm-checks{gap:12px}
+.fm-check{padding:10px 12px}
+.fm-hist{gap:12px}
+.fm-hist button{padding:16px 18px}
+.fm-computer{gap:28px}
+.fm-steps-live{gap:8px}
+.fm-steps-live li{padding:8px 12px}
+.fm-cmd-out{padding:20px 22px;margin:20px 0}
+textarea,input,select{padding:12px 14px}
+.btn{padding:11px 18px}
+.btn-lg{padding:14px 28px}
+.sidebar{padding-top:12px}
+.sidebar a{padding:12px 16px}
+@media (max-width:900px){
+  main{padding:28px 24px 56px}
+  .card{padding:24px 22px}
+  .grid{gap:22px}
+}
+@media (max-width:720px){
+  main{padding:20px 16px 48px}
+  .card{padding:20px 18px}
+  .view-head{margin-bottom:22px}
+  .fm-table td{padding:0}
+}
+
+/* ---- editorial typography: serif headings, sans body. Local font stacks only (CSP blocks remote font files). */
+:root{
+  --font-display:"Iowan Old Style","Palatino Linotype",Palatino,Charter,"Book Antiqua",Georgia,serif;
+  --font-body:"Inter","Segoe UI",system-ui,-apple-system,sans-serif;
+}
+body{font-family:var(--font-body);color:#272722}
+h1,h2,h3,.card-head h2{font-family:var(--font-display);font-weight:500;letter-spacing:-.005em;color:#272722}
+h1{font-size:34px;line-height:1.2;margin:0 0 10px}
+h2{font-size:21px;line-height:1.3}
+.view-head p,.muted{color:#737168}
+.lead{font-size:16.5px;line-height:1.7}
+
+/* ---- compact, architectural layout: denser rhythm, layered 3D depth ---- */
+body{font-size:14.5px;line-height:1.5}
+main{padding:24px 28px 40px;max-width:1280px}
+.view-head{margin-bottom:16px;gap:12px}
+.view-head p{font-size:14px}
+h1{font-size:26px;margin:0 0 6px}
+h2{font-size:17px}
+.grid{gap:16px}
+.card{padding:18px 20px;border-radius:12px;
+  box-shadow:inset 0 1px 0 #fff,0 1px 0 rgba(255,255,255,.9),0 1px 2px rgba(90,70,30,.08),0 6px 14px -8px rgba(90,70,30,.22),0 18px 30px -22px rgba(90,70,30,.28)}
+.card-head{margin-bottom:12px;gap:8px}
+.fm-steps{gap:10px;margin:6px 0 16px}
+.fm-steps li{padding:10px 12px;gap:10px;border-radius:10px;
+  box-shadow:inset 0 1px 0 #fff,0 2px 4px -2px rgba(90,70,30,.18)}
+.fm-field{margin-top:14px}
+.fm-inline{gap:8px;margin:8px 0}
+.fm-actions{gap:8px;margin-top:14px}
+.fm-nodes{gap:8px}
+.fm-nodes li{padding:10px 12px 10px 38px;border-radius:10px;
+  box-shadow:inset 0 1px 0 #fff,0 2px 5px -3px rgba(90,70,30,.25)}
+.fm-split,.fm-result{gap:20px}
+.fm-table th,.fm-table td{padding:7px 8px}
+.fm-approve{margin-top:14px;padding-top:12px;gap:10px 16px}
+.fm-prov{gap:4px 12px;font-size:13px}
+.fm-checks{gap:6px}.fm-check{padding:6px 8px}
+.fm-hist{gap:6px}.fm-hist button{padding:10px 12px}
+.fm-computer{gap:16px}
+.fm-steps-live{gap:4px}.fm-steps-live li{padding:4px 8px}
+.fm-cmd-out{padding:12px 14px;margin:10px 0}
+textarea,input,select{padding:8px 10px}
+.btn{padding:7px 12px;border-radius:9px;
+  box-shadow:inset 0 1px 0 #fff,0 1px 2px rgba(90,70,30,.14),0 3px 6px -4px rgba(90,70,30,.3)}
+.btn:active:not(:disabled){box-shadow:inset 0 2px 3px rgba(90,70,30,.2)}
+.btn-lg{padding:9px 16px;font-size:14.5px}
+.sidebar{padding:14px 10px}
+.sidebar a{padding:7px 10px;border-radius:8px}
+.sidebar ul{gap:2px}
+.nav-main{display:grid;gap:2px}
+.nav-more{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+.nav-more summary{cursor:pointer;padding:7px 10px;font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;list-style:none;display:flex;justify-content:space-between;align-items:center}
+.nav-more summary::-webkit-details-marker{display:none}
+.nav-more summary::after{content:"+";font-size:15px;color:var(--faint)}
+.nav-more[open] summary::after{content:"–"}
+.nav-count{font-weight:600;color:var(--faint);margin-left:auto;margin-right:6px}
+.nav-sub{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:2px}
+.nav-sub a{display:flex;gap:8px;align-items:center;padding:6px 10px;border-radius:8px;color:var(--text);text-decoration:none;font-size:13.5px}
+.nav-sub a:hover{background:var(--inset)}
+.nav-sub a[aria-current="page"]{background:var(--panel);box-shadow:var(--lift),inset 3px 0 0 var(--sage)}
+@media (max-width:720px){
+  main{padding:14px 12px 32px}
+  .card{padding:14px 14px}
+  .fm-table td{padding:0}
+}
+
+/* ---- mission assurance */
+.fm-assure-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:12px}
+.fm-assure-box{padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--inset);line-height:1.6;min-height:64px;overflow-wrap:anywhere}
+.fm-timeline{list-style:none;margin:0;padding:0;display:grid;gap:4px;max-height:260px;overflow:auto;font-size:13px}
+.fm-timeline li{padding:6px 10px;border-left:3px solid var(--line-2);background:var(--inset);border-radius:0 8px 8px 0}
+.fm-timeline li[class*="uncertain"],.fm-timeline li[class*="rejected"],.fm-timeline li[class*="failed"]{border-left-color:var(--bad)}
+.fm-timeline li[class*="confirmed"],.fm-timeline li[class*="verified"],.fm-timeline li[class*="approved"]{border-left-color:var(--sage)}
+@media (max-width:720px){.fm-assure-grid{grid-template-columns:1fr}}
+
+/* ---- live viewer controls */
+.fm-viewer-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0 6px}
+.fm-viewer-bar input[type=range]{flex:1 1 160px;accent-color:var(--sage,#8A9C89)}
+.fm-filmstrip{list-style:none;margin:0 0 10px;padding:4px 2px 8px;display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x proximity}
+.fm-filmstrip li{flex:0 0 auto;scroll-snap-align:start}
+.fm-filmstrip button{display:flex;flex-direction:column;gap:2px;min-width:92px;max-width:120px;padding:6px 8px;border-radius:10px;border:1px solid var(--line);background:var(--inset);color:var(--text);font:inherit;font-size:11.5px;text-align:left;cursor:pointer;box-shadow:inset 0 1px 0 #fff,0 2px 4px -3px rgba(90,70,30,.35)}
+.fm-filmstrip button:hover{border-color:var(--line-2);transform:translateY(-1px)}
+.fm-filmstrip button[aria-current="true"]{border-color:var(--sage,#8A9C89);background:var(--panel);box-shadow:0 0 0 2px rgba(138,156,137,.25)}
+.fm-fs-n{font-weight:700;color:var(--muted)}
+.fm-fs-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

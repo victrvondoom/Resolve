@@ -129,10 +129,10 @@ class StateMachineRaces(unittest.TestCase):
         orig_alive = self.store._alive
         calls = {'n': 0}
 
-        def racing_alive(mid):
-            r = orig_alive(mid)
+        def racing_alive(mid, rev=None):
+            r = orig_alive(mid, rev)
             calls['n'] += 1
-            if calls['n'] == 4 and r is not None:      # run_analysis(1), reader(2), analyzer(3), planner post-check(4) = just before the plan commit
+            if calls['n'] == 7 and r is not None:      # run_analysis(1), reader gate+end(2,3), analyzer gate+end(4,5), planner gate(6), planner end-check(7) = just before the plan commit
                 self.store.cancel(mid, 'u', 'w')       # cancel lands inside the check-then-write window
             return r
         self.store._alive = racing_alive

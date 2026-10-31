@@ -64,7 +64,7 @@ class CloudBrowserTests(unittest.TestCase):
 
     def test_browser_session_lifecycle_and_actions(self):
         storage_path = Path(self.tmp.name) / "sbx_test"
-        session = self.pool.get_or_create("sbx_test", "usr_alice", str(storage_path))
+        session = self.pool.get_or_create("sbx_test", "usr_alice", str(storage_path), "ws_alice")
         
         # 1. Navigate to a test data URI
         res = session.navigate(self.base + "/")
@@ -93,20 +93,20 @@ class CloudBrowserTests(unittest.TestCase):
 
     def test_ssrf_metadata_blocked(self):
         storage_path = Path(self.tmp.name) / "sbx_ssrf"
-        session = self.pool.get_or_create("sbx_ssrf", "usr_alice", str(storage_path))
+        session = self.pool.get_or_create("sbx_ssrf", "usr_alice", str(storage_path), "ws_alice")
 
         with self.assertRaises(CloudBrowserError) as ctx:
             session.navigate("http://169.254.169.254/latest/meta-data/")
         self.assertEqual(ctx.exception.status_code, 403)
 
     def test_file_and_data_urls_rejected(self):
-        session = self.pool.get_or_create("sbx_scheme", "usr_alice", str(Path(self.tmp.name) / "sbx_scheme"))
+        session = self.pool.get_or_create("sbx_scheme", "usr_alice", str(Path(self.tmp.name) / "sbx_scheme"), "ws_alice")
         for url in ("file:///etc/passwd", "data:text/html,<h1>x</h1>"):
             with self.subTest(url=url), self.assertRaises(CloudBrowserError):
                 session.navigate(url)
 
     def test_redirect_to_metadata_blocked_at_request_level(self):
-        session = self.pool.get_or_create("sbx_redir", "usr_alice", str(Path(self.tmp.name) / "sbx_redir"))
+        session = self.pool.get_or_create("sbx_redir", "usr_alice", str(Path(self.tmp.name) / "sbx_redir"), "ws_alice")
         with self.assertRaises(Exception):
             session.navigate(self.base + "/redirect-meta")
         self.assertTrue(any("169.254.169.254" in b["reason"] for b in session.blocked_requests))
@@ -114,7 +114,7 @@ class CloudBrowserTests(unittest.TestCase):
     def test_default_policy_blocks_loopback_server(self):
         strict = CloudBrowserPool()
         try:
-            s = strict.get_or_create("sbx_strict", "usr_alice", str(Path(self.tmp.name) / "sbx_strict"))
+            s = strict.get_or_create("sbx_strict", "usr_alice", str(Path(self.tmp.name) / "sbx_strict"), "ws_alice")
             with self.assertRaises(CloudBrowserError) as ctx:
                 s.navigate(self.base + "/")
             self.assertEqual(ctx.exception.status_code, 403)
@@ -123,12 +123,12 @@ class CloudBrowserTests(unittest.TestCase):
 
     def test_pool_cross_tenant_isolation(self):
         storage_path = Path(self.tmp.name) / "sbx_cross"
-        self.pool.get_or_create("sbx_cross", "usr_alice", str(storage_path))
+        self.pool.get_or_create("sbx_cross", "usr_alice", str(storage_path), "ws_alice")
 
         # Bob attempts to get Alice's session
         with self.assertRaises(CloudBrowserError) as ctx:
-            self.pool.get_session("sbx_cross", caller_user_id="usr_bob")
-        self.assertEqual(ctx.exception.status_code, 403)
+            self.pool.get_session("sbx_cross", "usr_bob", "ws_bob")
+        self.assertEqual(ctx.exception.status_code, 404)
 
 
 if __name__ == '__main__':

@@ -52,14 +52,15 @@ class CloudApiIntegrationTests(unittest.TestCase):
         self.assertTrue(sbx_id.startswith('sbx_'))
         self.assertEqual(sbx_body['status'], 'READY')
 
-        # 4. Execute a command in sandbox
+        # 4. Command execution is refused: no isolated provider is configured, so nothing runs on the host
         exec_status, exec_body = self.srv.req(
             'POST', f'/api/sandboxes/{sbx_id}/action',
             {'command': ['python', '-c', 'import os; print("ISOLATED_OK")']},
             headers={'Authorization': f'Bearer {token}'}
         )
-        self.assertEqual(exec_status, 200)
-        self.assertIn('ISOLATED_OK', exec_body['stdout'])
+        self.assertEqual(exec_status, 503)
+        self.assertEqual(exec_body.get('status'), 'EXECUTION_BLOCKED')
+        self.assertNotIn('ISOLATED_OK', str(exec_body))
 
         # 5. Pause and resume sandbox
         p_status, p_body = self.srv.req('POST', f'/api/sandboxes/{sbx_id}/pause', {}, headers={'Authorization': f'Bearer {token}'})

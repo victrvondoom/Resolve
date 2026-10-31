@@ -10,6 +10,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 from tenant_auth import TenantAuthManager, TenantError
+from isolation_fixtures import TestOnlyNonIsolatedDouble
 from sandbox_manager import SandboxManager, SandboxSecurityError, SandboxError, SandboxState
 from cloud_browser import CloudBrowserPool, CloudBrowserError
 from effect_graph import EffectDependencyGraph, NodeType, EdgeType
@@ -22,7 +23,7 @@ class TenantSecurityAdversarialTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         base = Path(self.tmp.name)
         self.auth = TenantAuthManager(base / "tenants.sqlite3")
-        self.sandbox = SandboxManager(base_dir=base / "sbx", db_path=base / "sbx.sqlite3")
+        self.sandbox = SandboxManager(base_dir=base / "sbx", db_path=base / "sbx.sqlite3")   # default provider: execution refused
         self.connectors = ConnectorRegistry(base / "conn.sqlite3")
         self.browser_pool = CloudBrowserPool()
         self.privacy = PrivacyEngine(self.auth, self.sandbox, self.connectors, data_dir=base)
@@ -52,8 +53,9 @@ class TenantSecurityAdversarialTests(unittest.TestCase):
         sbx_alice = self.sandbox.create_sandbox(self.alice["user_id"], self.alice["workspace_id"])
         
         # Bob attempts to get sandbox details or files
-        with self.assertRaises(SandboxSecurityError):
-            self.sandbox.get_sandbox(sbx_alice.id, caller_user_id=self.bob["user_id"])
+        with self.assertRaises(SandboxError) as ctx:
+            self.sandbox.get_sandbox(sbx_alice.id, caller_user_id=self.bob["user_id"], caller_workspace_id=self.bob["workspace_id"])
+        self.assertEqual(ctx.exception.status_code, 404)
 
     def test_t03_oauth_token_used_outside_correct_tenant(self):
         # Alice connects GitHub
@@ -66,16 +68,18 @@ class TenantSecurityAdversarialTests(unittest.TestCase):
 
     def test_t04_sandbox_reports_wrong_owner(self):
         sbx_alice = self.sandbox.create_sandbox(self.alice["user_id"], self.alice["workspace_id"])
-        with self.assertRaises(SandboxSecurityError):
-            self.sandbox.pause_sandbox(sbx_alice.id, caller_user_id=self.bob["user_id"])
+        with self.assertRaises(SandboxError) as ctx:
+            self.sandbox.pause_sandbox(sbx_alice.id, caller_user_id=self.bob["user_id"], caller_workspace_id=self.bob["workspace_id"])
+        self.assertEqual(ctx.exception.status_code, 404)
 
     def test_t05_sandbox_terminates_mid_task(self):
+        self.sandbox = SandboxManager(base_dir=Path(self.tmp.name) / "sbx", db_path=Path(self.tmp.name) / "sbx.sqlite3", provider=TestOnlyNonIsolatedDouble())
         sbx = self.sandbox.create_sandbox(self.alice["user_id"], self.alice["workspace_id"])
-        self.sandbox.terminate_sandbox(sbx.id, caller_user_id=self.alice["user_id"])
+        self.sandbox.terminate_sandbox(sbx.id, caller_user_id=self.alice["user_id"], caller_workspace_id=self.alice["workspace_id"])
         
         # New execution must be rejected when sandbox is terminating
         with self.assertRaises(SandboxError):
-            self.sandbox.execute_in_sandbox(sbx.id, ["python", "-c", "print(1)"], caller_user_id=self.alice["user_id"])
+            self.sandbox.execute_in_sandbox(sbx.id, ["python", "-c", "print(1)"], caller_user_id=self.alice["user_id"], caller_workspace_id=self.alice["workspace_id"])
 
     def test_t06_browser_session_expires(self):
         # Create expired session token directly
@@ -109,17 +113,18 @@ class TenantSecurityAdversarialTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 401)
 
     def test_t09_concurrent_agent_write_collision_guarded(self):
-        # Paused sandbox blocks concurrent write operations
+        # Paused sandbox blocks concurrent write operations (double provider reaches the status check)
+        self.sandbox = SandboxManager(base_dir=Path(self.tmp.name) / "sbx", db_path=Path(self.tmp.name) / "sbx.sqlite3", provider=TestOnlyNonIsolatedDouble())
         sbx = self.sandbox.create_sandbox(self.alice["user_id"], self.alice["workspace_id"])
-        self.sandbox.pause_sandbox(sbx.id, caller_user_id=self.alice["user_id"])
+        self.sandbox.pause_sandbox(sbx.id, caller_user_id=self.alice["user_id"], caller_workspace_id=self.alice["workspace_id"])
 
         with self.assertRaises(SandboxError) as ctx:
-            self.sandbox.execute_in_sandbox(sbx.id, ["echo", "1"], caller_user_id=self.alice["user_id"])
+            self.sandbox.execute_in_sandbox(sbx.id, ["echo", "1"], caller_user_id=self.alice["user_id"], caller_workspace_id=self.alice["workspace_id"])
         self.assertIn("Cannot execute in sandbox with status PAUSED", ctx.exception.message)
 
     def test_t10_malicious_webpage_ssrf_exfiltration_blocked(self):
         storage_path = Path(self.tmp.name) / "sbx_cloud"
-        session = self.browser_pool.get_or_create("sbx_cloud", self.alice["user_id"], str(storage_path))
+        session = self.browser_pool.get_or_create("sbx_cloud", self.alice["user_id"], str(storage_path), self.alice["workspace_id"])
         
         # Page triggers SSRF to internal metadata
         with self.assertRaises(CloudBrowserError) as ctx:
@@ -144,12 +149,12 @@ class TenantSecurityAdversarialTests(unittest.TestCase):
 
     def test_t13_screenshot_stream_cross_tenant_isolation(self):
         storage_path = Path(self.tmp.name) / "sbx_alice_screen"
-        self.browser_pool.get_or_create("sbx_alice_screen", self.alice["user_id"], str(storage_path))
+        self.browser_pool.get_or_create("sbx_alice_screen", self.alice["user_id"], str(storage_path), self.alice["workspace_id"])
 
         # Bob attempts to get frame from Alice's browser session
         with self.assertRaises(CloudBrowserError) as ctx:
-            self.browser_pool.get_session("sbx_alice_screen", caller_user_id=self.bob["user_id"])
-        self.assertEqual(ctx.exception.status_code, 403)
+            self.browser_pool.get_session("sbx_alice_screen", self.bob["user_id"], self.bob["workspace_id"])
+        self.assertEqual(ctx.exception.status_code, 404)
 
     def test_t14_wrong_entity_approval_rejected(self):
         graph = EffectDependencyGraph("m_sec_14", self.alice["user_id"], self.alice["workspace_id"])
@@ -170,7 +175,7 @@ class TenantSecurityAdversarialTests(unittest.TestCase):
         shutil.rmtree(sbx.storage_path, ignore_errors=True)
 
         # Deletion must succeed idempotently without crashing
-        res = self.sandbox.destroy_sandbox(sbx.id, caller_user_id=self.alice["user_id"])
+        res = self.sandbox.destroy_sandbox(sbx.id, caller_user_id=self.alice["user_id"], caller_workspace_id=self.alice["workspace_id"])
         self.assertTrue(res)
 
     def test_t16_user_reconnects_after_workspace_deletion(self):

@@ -128,9 +128,15 @@ class UxE2E(unittest.TestCase):
         expect(page.locator('#fmPreviewFallback')).to_be_visible()
         expect(page.locator('#fmPreview')).to_be_hidden()
         self.assertIsNone(page.get_attribute('#fmPreview', 'src'))                   # no hidden iframe pointed at the PDF
-        with page.context.expect_page() as popup:
-            page.click('#fmOpenPdf')
-        self.assertTrue(popup.value.url.startswith('blob:'))
+        # Spy on window.open: what we own is the call (blob URL, noopener). Whether the new tab shows or downloads the PDF
+        # depends on the browser build (headless shells have no viewer), so the popup's own URL is not asserted.
+        # (wrapped in a function: Playwright would otherwise CALL a bare function-valued expression, recording a phantom open)
+        page.evaluate("() => { window.__opened = []; window.open = function () { window.__opened.push([...arguments].map(String)); return null; }; }")
+        page.click('#fmOpenPdf')
+        opened = page.evaluate('window.__opened')
+        self.assertEqual(len(opened), 1)
+        self.assertTrue(opened[0][0].startswith('blob:'), opened)
+        self.assertIn('noopener', opened[0][2])
         self.assertTrue(page.evaluate(OVERFLOW_JS))
         self.assertEqual(errors, [])
 

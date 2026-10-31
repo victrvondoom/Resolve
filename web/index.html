@@ -34,23 +34,28 @@
 
 <div class="shell" id="dashboard">
   <nav class="sidebar" aria-label="Mission Control sections">
-    <ul>
+    <ul class="nav-main">
       <li><a href="#view-flagship" data-view="flagship"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.8 5.5 21l2-7.5L2 9h7z"/></svg>Flagship mission</a></li>
-      <li><a href="#view-mission" data-view="mission"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l3-7 3 14 3-7h3"/></svg>Browser mission</a></li>
       <li><a href="#view-cloud" data-view="cloud"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Cloud computer</a></li>
+      <li><a href="#view-skills" data-view="skills"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/></svg>Skills</a></li>
+      <li><a href="#view-documents" data-view="documents"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l5 5v15H6zM14 2v5h5M9 12h7M9 16h7"/></svg>Documents &amp; print</a></li>
+      <li><a href="#view-evidence" data-view="evidence"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Evidence &amp; receipts</a></li>
+      <li><a href="#view-privacy" data-view="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Privacy &amp; data</a></li>
+    </ul>
+    <details class="nav-more">
+      <summary>More tools <span class="nav-count">9</span></summary>
+      <ul class="nav-sub">
+      <li><a href="#view-mission" data-view="mission"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l3-7 3 14 3-7h3"/></svg>Browser mission</a></li>
       <li><a href="#view-connectors" data-view="connectors"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M11 18H8a2 2 0 0 1-2-2V9"/></svg>Connected apps</a></li>
       <li><a href="#view-approvals" data-view="approvals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Approval inbox <span id="approvalBadge" class="chip chip-warn small" style="margin-left:auto;display:none;padding:1px 6px;">0</span></a></li>
       <li><a href="#view-agents" data-view="agents"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 8l3.5 8M16.5 8L13 16"/></svg>Agents</a></li>
-      <li><a href="#view-skills" data-view="skills"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/></svg>Skills</a></li>
       <li><a href="#view-files" data-view="files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11H3z"/></svg>Files sandbox</a></li>
-      <li><a href="#view-documents" data-view="documents"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l5 5v15H6zM14 2v5h5M9 12h7M9 16h7"/></svg>Documents &amp; print</a></li>
       <li><a href="#view-bench" data-view="bench"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Benchmarks</a></li>
       <li><a href="#view-sim" data-view="sim"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voice &amp; simulator</a></li>
       <li><a href="#view-windows" data-view="windows"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v12H3zM8 21h8M12 17v4"/></svg>Windows native</a></li>
-      <li><a href="#view-evidence" data-view="evidence"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Evidence &amp; receipts</a></li>
-      <li><a href="#view-privacy" data-view="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Privacy &amp; data</a></li>
       <li><a href="#view-ledger" data-view="ledger"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg>Ledger &amp; registry</a></li>
-    </ul>
+      </ul>
+    </details>
     <div class="sidebar-note" id="sidebarNote" aria-live="polite">Checking server mode…</div>
   </nav>
 
@@ -82,7 +87,8 @@
             <div class="fm-inline"><label class="sr-only" for="fmProject">Project</label><select id="fmProject" aria-describedby="fmProjectInfo"></select><label class="btn" for="fmProjectFile" id="fmProjectUploadLabel">Upload .zip</label><input type="file" id="fmProjectFile" accept=".zip,application/zip" class="sr-only"><button class="btn btn-danger" id="fmProjectDelete" disabled title="Select one of your uploaded projects to delete it">Delete</button></div>
             <small class="muted" id="fmProjectInfo">Loading projects…</small>
           </fieldset>
-          <div class="fm-actions"><button class="btn btn-primary btn-lg" id="fmStart" disabled title="Load the sample brief or choose a PDF first">Start mission</button><button class="btn" id="fmCancel" disabled title="No running mission">Cancel</button></div>
+          <label class="fm-check-opt" id="fmInspectWrap"><input type="checkbox" id="fmInspectWeb" disabled> <span>Also check my web application for errors <small class="muted" id="fmInspectNote">(checking availability…)</small></span></label>
+          <div class="fm-actions"><button class="btn btn-primary btn-lg" id="fmStart" disabled title="Load the sample brief or choose a PDF first">Start mission</button><button class="btn" id="fmPause" disabled title="No running mission">Pause</button><button class="btn" id="fmReviseNow" disabled title="No active mission">Revise now</button><button class="btn" id="fmCancel" disabled title="No running mission">Cancel</button></div>
           <p id="fmStatus" class="msg" role="status" aria-live="polite"></p>
         </section>
         <section class="card span6" aria-labelledby="h-fm-2">
@@ -91,6 +97,37 @@
           <ol id="fmNodes" class="fm-nodes" aria-label="Worker tasks"></ol>
           <p id="fmOverlap" class="small fm-overlap" hidden></p>
           <details class="fm-details"><summary class="small">Event log</summary><pre id="fmEvents" class="fm-log" tabindex="0">—</pre></details>
+        </section>
+        <section class="card span12" id="fmComputerCard" aria-labelledby="h-fm-pc">
+          <div class="card-head"><h2 id="h-fm-pc">Live computer</h2><span id="fmComputerChip" class="chip chip-muted" role="status">DISCONNECTED</span></div>
+          <div class="fm-computer">
+            <figure class="fm-screen"><img id="fmFrame" alt="Latest screenshot from the browser RESOLVE is operating" hidden><figcaption id="fmFrameEmpty" class="muted small">No browser is connected. Tick “Also check my web application for errors” and start a mission to watch RESOLVE operate a real browser.</figcaption></figure>
+            <div>
+              <div class="fm-viewer-bar" role="group" aria-label="Frame playback">
+                <button class="btn btn-small" id="fmPlay" disabled aria-pressed="false" title="Play the captured frames (needs at least two frames)">Play</button>
+                <input type="range" id="fmScrub" min="0" max="0" value="0" step="1" aria-label="Scrub through captured frames" disabled>
+                <span id="fmFrameTime" class="small muted" aria-live="off">no frames yet</span>
+              </div>
+              <ol id="fmFilmstrip" class="fm-filmstrip" aria-label="Captured frames (select one to view it)"></ol>
+              <dl class="fm-prov" id="fmComputerFacts"></dl>
+              <ol class="fm-steps-live" id="fmComputerSteps" aria-label="Browser actions taken"></ol>
+              <p class="small muted">A real Chromium driven through Playwright against the bundled demo web app. These are DOM-level actions, not Windows cursor control. Frames are stored as evidence in your workspace.</p>
+            </div>
+          </div>
+        </section>
+        <section class="card span12" aria-labelledby="h-fm-cmd">
+          <div class="card-head"><h2 id="h-fm-cmd">Voice &amp; text commands</h2><span id="fmCmdBadge" class="chip chip-muted" role="status">IDLE</span></div>
+          <p class="muted small fm-sub">Say or type a command. RESOLVE shows how it understood you, and anything risky waits for your confirmation. Try: <i>pause</i> · <i>stop, use the second report instead</i> · <i>save this process as a skill called weekly review</i> · <i>delete the generated report</i> · <i>resume my last project</i>.</p>
+          <div class="fm-inline"><label class="sr-only" for="fmCmd">Command</label><input id="fmCmd" type="text" maxlength="2000" autocomplete="off" placeholder="Type or speak a command"><button class="btn" id="fmCmdMic" disabled title="Checking microphone and speech engine…">Speak</button><button class="btn btn-primary" id="fmCmdGo">Interpret</button><span id="fmCmdMicBadge" class="chip chip-muted small" role="status">CHECKING MIC…</span></div>
+          <p id="fmCmdMicNote" class="msg" hidden aria-live="polite"></p>
+          <div id="fmCmdOut" class="fm-cmd-out" hidden>
+            <p id="fmCmdSummary" class="fm-cmd-summary"></p>
+            <p class="small muted" id="fmCmdMeta"></p>
+            <div class="fm-inline"><button class="btn btn-primary" id="fmCmdConfirm">Confirm</button><button class="btn" id="fmCmdDismiss">Dismiss</button></div>
+          </div>
+          <p id="fmCmdMsg" class="msg" role="status" aria-live="polite"></p>
+          <h3 class="fm-h">Saved skills</h3>
+          <ul id="fmSkills" class="fm-hist" aria-label="Saved skills"><li class="muted">No skills yet. Finish a mission, then say “save this process as a skill”.</li></ul>
         </section>
         <section class="card span12" id="fmPlanCard" aria-labelledby="h-fm-3" hidden>
           <div class="card-head"><h2 id="h-fm-3" tabindex="-1">Plan awaiting your approval</h2><span class="chip chip-warn">DRAFT · rule-based, not an LLM</span></div>
@@ -132,6 +169,21 @@
             <div id="fmPreviewFallback" class="fm-preview-fallback" hidden><p>This browser can't show PDFs inline.</p><button class="btn" id="fmOpenPdf">Open the PDF</button></div>
           </div>
           <p class="muted small" id="fmPrintNote">“Print…” opens your browser's print dialog. RESOLVE cannot confirm that a physical printer completed a job.</p>
+        </section>
+        <section class="card span12" id="fmAssurance" aria-labelledby="h-fm-assure">
+          <div class="card-head"><h2 id="h-fm-assure">Mission assurance</h2><span id="fmAssureChip" class="chip chip-muted" role="status">NO MISSION</span></div>
+          <p class="muted small fm-sub">Everything below is read from this mission's recorded events, evidence and verification. Nothing here is estimated.</p>
+          <dl class="fm-prov" id="fmAssureFacts"><dt>Status</dt><dd>Start a mission to see its assurance record.</dd></dl>
+          <div class="fm-assure-grid">
+            <div><h3 class="fm-h">Approval</h3><div id="fmAssureApproval" class="fm-assure-box muted small">Not yet approved.</div></div>
+            <div><h3 class="fm-h">Verification</h3><div id="fmAssureVerify" class="fm-assure-box muted small">Runs after approval, when the PDF is written.</div></div>
+          </div>
+          <div class="fm-assure-grid">
+            <div><h3 class="fm-h">Uncertainty and recovery</h3><div id="fmAssureUncertain" class="fm-assure-box muted small">No uncertain outcome recorded.</div></div>
+            <div><h3 class="fm-h">Evidence</h3><ul id="fmAssureEvidence" class="fm-hist" aria-label="Evidence items"><li class="muted">No evidence yet.</li></ul></div>
+          </div>
+          <h3 class="fm-h">Causal timeline (recorded order)</h3>
+          <ol id="fmAssureTimeline" class="fm-timeline" aria-label="Recorded events"><li class="muted">No events yet.</li></ol>
         </section>
         <section class="card span12" aria-labelledby="h-fm-hist">
           <div class="card-head"><h2 id="h-fm-hist">Your missions</h2><button class="btn btn-small" id="fmHistRefresh">Refresh</button></div>
@@ -568,6 +620,7 @@
     <div class="auth-actions"><button class="btn" id="authLogin" type="submit">Sign in</button><button class="btn" id="authRegister" type="button">Create account</button></div>
   </form>
 </dialog>
+<script src="/static/icon3d.js"></script>
 <script src="/static/flagship.js"></script>
 <script src="/static/app.js"></script>
 </body>
