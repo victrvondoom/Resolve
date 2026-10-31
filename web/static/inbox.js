@@ -666,7 +666,13 @@
         document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
         return;
       }
-      if (kind === 'delete-ws') { flash('Use Privacy & data (Advanced tools) to delete workspace data; it asks for confirmation.'); return; }
+      if (kind === 'delete-ws') {
+        if (!confirm('Delete this workspace? This removes live and replay inbox data, drafts, commitments, documents and sandboxes in this workspace. It cannot be undone.')) return;
+        if (!confirm('Second confirmation: delete everything in this workspace now?')) return;
+        const receipt = await call('POST', '/api/privacy/delete-workspace', {});
+        flash('Workspace data deleted. Receipt ' + (receipt.receipt_id || '') + '.');
+        return renderSettings();
+      }
       if (kind === 'anchor') { const t = document.getElementById('msg-' + el.dataset.id); if (t) { ev_scroll(t); } return; }
     } catch (e) {
       flash(e.message || 'Request failed', true);

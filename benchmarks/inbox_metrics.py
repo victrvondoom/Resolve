@@ -246,7 +246,7 @@ def write_report(m):
     for s in m['scored_fixtures']:
         if not s['category_ok'] or s['commit_tp'] != s['commit_expected'] or s['extra_commitments']:
             lines.append(f"- {s['id']} `{s['name']}`: expected {s['category_expected']}, got {s['category_got']}; commitments matched {s['commit_tp']} of {s['commit_expected']}, ledger {s['commit_ledger']}.")
-    lines += ['', 'V32 is a labelling error found during measurement: the earlier message in that thread is a genuine, unquoted request, so the single ledger item is correct. The label was kept as written and the case is counted as a miss.', '',
+    lines += ['', 'V32 is counted as a miss. On review its label looks wrong: the partner\'s earlier request is a genuine, unquoted request that is still unanswered, so a reply is still owed. The label was kept as written, not changed to match the output.', '',
               'Not measured: MODEL_ENABLED (no model provider configured), LIVE provider (no OAuth credentials or authorized test account).']
     (ROOT / 'docs' / 'INBOX_BENCHMARK_REPORT.md').write_text('\n'.join(lines) + '\n')
 

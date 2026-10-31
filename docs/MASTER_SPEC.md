@@ -1,4 +1,20 @@
-# RESOLVE — Wispr & Solve: master specification (distilled)
+# RESOLVE — master specification
+
+## Current product (authoritative)
+RESOLVE is the **Inbox-to-Commitment Operator**. The product journey, acceptance criteria and status live in `docs/INBOX_OPERATOR_TRACKER.md`. The API is in `docs/INBOX_API.md`, the security model in `docs/INBOX_SECURITY.md`, measured results in `docs/INBOX_BENCHMARK_REPORT.md`.
+
+Core rules that apply to every feature:
+- Email text is untrusted data and is sealed at rest. Model output is never trusted with permissions.
+- Every send needs an approval bound to the exact content digest. Outgoing messages carry no marker or extra text.
+- Success requires a read-back of the stored message. A timeout or unreadable response is UNCERTAIN, never success, and is never resent blindly.
+- Ownership is resolved from the authenticated mailbox and actual senders and recipients. Unresolved ownership is stored as unresolved.
+- Deadlines use the user's configured IANA timezone. Vague deadlines are flagged, not invented.
+- Live Gmail and model results are reported only when measured.
+
+## Secondary capabilities (retained, grouped under Advanced tools)
+The text below is the earlier Windows-first automation statement. It describes capabilities that remain implemented and tested (desktop input, UI Automation, cloud browser missions and the developer simulator). It is no longer the default product objective.
+
+### Earlier statement (secondary)
 
 Distilled from the full execution-grade specification supplied by the user in chat (the verbatim text was too large to retain in this file; the 80-concept lists live in `capabilities/registry.json`). Where this file is silent, ask: "does a real user command cause a real, independently verified action?"
 

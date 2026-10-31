@@ -1,5 +1,24 @@
 # Tasks
 
+## Inbox-to-Commitment Operator (ticked only when verified; see docs/INBOX_OPERATOR_TRACKER.md)
+- [x] Semantic fixes: timezone deadlines with clock times, owners from the mailbox, obligation revisions, duplicate control (`tests/test_inbox_intel.py`, `tests/test_inbox_service.py`, `tests/test_inbox_api.py`)
+- [x] Visible operation marker removed; Message-ID correlation; read-back of exact content (`tests/test_send_broker.py`)
+- [x] Approval bound to current content, single use, refused after change; mutation-tested duplicate protection (`tests/test_send_broker.py::MutationCheck`)
+- [x] HTTP API under /api/inbox/* with server-side identity and tenant scoping (`tests/test_inbox_api.py`, `docs/INBOX_API.md`, `tests/test_inbox_docs.py`)
+- [x] Gmail OAuth start, PKCE, single-use state, callback, sealed tokens, revocation and refresh states (recorded responses)
+- [x] Morning brief, inbox, thread detail, commitments, drafts, activity, voice rules, connections, settings, replay lab (`tests/test_inbox_ui.py`, `docs/screenshots/inbox/`)
+- [x] Replay provider on the same pipeline; simulated sends labelled SIMULATED; failure injection (`tests/test_inbox_api.py`)
+- [x] Email text sealed at rest; no plaintext in the database file after a full flow (`test_email_text_never_appears_in_plaintext_in_the_database_file`)
+- [x] Privacy export and deletion include inbox data (`test_export_includes_inbox_data_and_no_credentials`)
+- [x] 32 labelled scenarios written before scoring; generated benchmark report (`benchmarks/inbox_metrics.py`, `docs/INBOX_BENCHMARK_REPORT.md`)
+- [ ] Live Gmail round trip (BLOCKED: OAuth credentials and an authorized test account)
+- [ ] Model-assisted understanding and drafting with a structured provider path (NOT DONE: no provider; MODEL_ENABLED BLOCKED)
+- [ ] Wispr Flow recording as evidence (user-owned; see docs/WISPR_DEMO_SCRIPT.md)
+- [ ] Follow-up reminders delivered (NOT DONE: recorded only)
+- [ ] Persistence test for corrections and voice rules across restart (NOT DONE)
+- [ ] Unread filter (NOT DONE: label not stored)
+
+
 ## Final sprint 2026-10-29 (ticked only when verified by tests above)
 - [x] Full-suite regression diagnosed and repaired (231 passed / 12 skipped with reasons / 0 failed)
 - [x] Production mode: no shared token, no demo fallback, host allow-list, startup validation, headers, rate limits, cross-tenant negative tests

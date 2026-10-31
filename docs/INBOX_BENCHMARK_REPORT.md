@@ -76,6 +76,6 @@ False successes: 0 of 6. Duplicate sends: 0.
 - F12 `multiple_requests_in_one_thread`: expected DEADLINE_TIME_SENSITIVE, got DEADLINE_TIME_SENSITIVE; commitments matched 0 of 0, ledger 3.
 - V32 `quoted_repeat_with_new_thanks`: expected GENERAL_INFORMATION, got DEADLINE_TIME_SENSITIVE; commitments matched 0 of 0, ledger 1.
 
-V32 is a labelling error found during measurement: the earlier message in that thread is a genuine, unquoted request, so the single ledger item is correct. The label was kept as written and the case is counted as a miss.
+V32 is counted as a miss. On review its label looks wrong: the partner's earlier request is a genuine, unquoted request that is still unanswered, so a reply is still owed. The label was kept as written, not changed to match the output.
 
 Not measured: MODEL_ENABLED (no model provider configured), LIVE provider (no OAuth credentials or authorized test account).
