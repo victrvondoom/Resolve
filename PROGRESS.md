@@ -94,3 +94,9 @@ GATE: voice computer / brief mission | PASS (simulator + real Chromium; WINDOWS_
 - R12 deployment, R13 judge demo video, R14 Wispr evidence: NOT DONE in this session. The Wispr Insights screenshot and dictated evidence remain user-owned.
 - Not started in this session: cream frontend polish, skills A–I, print-status enum, deployment configuration. Not claimed complete.
 - Next command: `python -m pytest tests -q` (regression) and `RESOLVE_VOSK_MODEL=<model dir> python src/resolve_app.py` once a model is available.
+
+## IEEC enforcement checkpoint (2026-10-31)
+- Full regression on this change: 402 passed, 12 skipped, 0 failed for the run before the one dashboard test fix; after fixing `tests/test_dashboard_e2e.py` (its sidebar clicks now open the collapsed "More tools" group, same cause as the landing-page test), `test_dashboard_e2e.py` passes 2/2.
+- New: `src/operation_contract.py` (contract, state machine, guard, durable dispatch record), `tests/test_ieec_adversarial.py` (21 tests, stable over 6 repeats), `benchmarks/ieec_bench.py` (local simulation, results in `benchmarks/results/ieec_latest.json`), `docs/IEEC_ENFORCEMENT.md`.
+- NOT verified: real provider behavior, Mission Assurance UI/demo mode (not built), real email/calendar/delete adapters (not present in the codebase).
+- Next command: `python benchmarks/ieec_bench.py`
