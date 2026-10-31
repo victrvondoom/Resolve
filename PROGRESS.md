@@ -100,3 +100,7 @@ GATE: voice computer / brief mission | PASS (simulator + real Chromium; WINDOWS_
 - New: `src/operation_contract.py` (contract, state machine, guard, durable dispatch record), `tests/test_ieec_adversarial.py` (21 tests, stable over 6 repeats), `benchmarks/ieec_bench.py` (local simulation, results in `benchmarks/results/ieec_latest.json`), `docs/IEEC_ENFORCEMENT.md`.
 - NOT verified: real provider behavior, Mission Assurance UI/demo mode (not built), real email/calendar/delete adapters (not present in the codebase).
 - Next command: `python benchmarks/ieec_bench.py`
+
+## Checkpoint: creamy-bubble UI restyle (frontend only)
+GATE | PASS (visual/DOM only) | `python -m pytest tests/test_landing_ui.py tests/test_ux_e2e.py -q` (8 passed) | landing + Mission Control render without errors or horizontal overflow at 360/768/1440px; hero bubble scene runs (Canvas2D, not WebGL) | web/static/bubble.css, web/static/bubble.js, web/landing.html, web/index.html | existing Playwright UI tests | NEXT: native Windows smoke unchanged (WINDOWS_NATIVE_TESTS_NOT_RUN)
+Note: the repo has no Next.js app, so the design was applied to the existing vanilla web/ UI. Lighthouse and 3D-bundle-size targets were not measured.
