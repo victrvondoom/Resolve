@@ -4,7 +4,7 @@
 (function () {
   const IB = { mode: 'LIVE', tz: 'UTC', tzConfigured: false, filter: 'all', sort: 'date', q: '', page: 1, since: 0, cfilter: 'open',
                threadId: null, commitmentId: null, draftId: null, approval: null, replayTimer: null, lastBrief: null };
-  try { IB.mode = sessionStorage.getItem('resolve_inbox_mode') === 'REPLAY' ? 'REPLAY' : 'LIVE'; } catch (_) { /* storage blocked */ }
+  try { const m = sessionStorage.getItem('resolve_inbox_mode'); IB.mode = ['REPLAY', 'LOCAL'].includes(m) ? m : 'LIVE'; } catch (_) { /* storage blocked */ }
 
   const KIND_LABEL = { REQUEST_TO_USER: 'Request to you', PROMISE_BY_USER: 'Your promise', PROMISE_BY_OTHER: 'Promised to you',
                        DEPENDENCY: 'Dependency', FOLLOW_UP: 'Follow-up', UNRESOLVED_OBLIGATION: 'Unresolved obligation',
@@ -54,13 +54,16 @@
     return Math.round(s / 86400) + ' days ago';
   };
   const chip = (text, cls) => `<span class="ib-chip ${cls || ''}">${E(text)}</span>`;
-  const modeChip = () => IB.mode === 'REPLAY' ? chip('REPLAY · SYNTHETIC', 'sim') : chip('LIVE · GMAIL', 'ok');
+  const modeChip = () => IB.mode === 'REPLAY' ? chip('REPLAY · SYNTHETIC', 'sim') : IB.mode === 'LOCAL' ? chip('LOCAL · LOCAL MAIL SERVER', 'hi') : chip('LIVE · GMAIL', 'ok');
+  const engineChip = (inf) => chip(inf && inf.mode === 'MODEL_ENABLED' ? 'Model configured: ' + (inf.model || '') + ' (advisory analysis; triage uses rules)' : 'Engine: RULES_ONLY (no model inference)', '');
   const priorityChip = (p) => chip(p === 'HIGH' ? 'High priority' : p === 'LOW' ? 'Low priority' : 'Normal priority', p === 'HIGH' ? 'hi' : '');
   const timingChip = (t) => ({ OVERDUE: chip('Overdue', 'bad'), DUE_TODAY: chip('Due today', 'warn'), DUE_SOON: chip('Due soon', 'warn'),
                                FUTURE: chip('Future', ''), UNKNOWN: chip('Deadline unknown', '') })[t] || '';
   const banner = () => IB.mode === 'REPLAY'
     ? '<div class="ib-banner ib-replay" role="status"><strong>REPLAY · SYNTHETIC DATA.</strong> These messages are a labelled test dataset, not your mailbox. Sends are SIMULATED and never reach Gmail.</div>'
-    : '';
+    : IB.mode === 'LOCAL'
+      ? '<div class="ib-banner" role="status"><strong>LOCAL · LOCAL MAIL SERVER.</strong> Real SMTP delivery and POP3 read-back on this machine, to local addresses only. This is not Gmail and nothing leaves the computer.</div>'
+      : '';
   const loading = (what) => `<p class="ib-loading">Loading ${E(what)}…</p>`;
   const errorBox = (e) => `<div class="ib-error" role="alert"><strong>Could not load this.</strong> ${E(e.message || 'Unknown error')}${e.code ? ' <span class="ib-chip bad">' + E(e.code) + '</span>' : ''}</div>`;
   const empty = (title, text, extra) => `<div class="ib-empty"><strong>${E(title)}</strong>${E(text)}${extra || ''}</div>`;
@@ -68,6 +71,7 @@
   const tools = (html) => $$('[data-ib-tools]').forEach((el) => { el.innerHTML = html; });
   const modeTools = () => `<div class="ib-mode" role="group" aria-label="Data mode">
       <button type="button" data-ib="mode" data-value="LIVE" aria-pressed="${IB.mode === 'LIVE'}">Live</button>
+      <button type="button" data-ib="mode" data-value="LOCAL" aria-pressed="${IB.mode === 'LOCAL'}">Local mail</button>
       <button type="button" data-ib="mode" data-value="REPLAY" aria-pressed="${IB.mode === 'REPLAY'}">Replay (synthetic)</button></div>`;
 
   function go(route) { location.hash = route; }
@@ -93,15 +97,18 @@
       $('#morningEyebrow').textContent = 'Morning brief · ' + (brief.local_date || '');
       const tzNote = IB.tzConfigured ? '' : ' · timezone not set (UTC used)';
       $('#morningSub').textContent = `Timezone ${IB.tz}${tzNote}. Account: ${brief.account || (IB.mode === 'REPLAY' ? 'synthetic replay mailbox' : 'not connected')}.`;
-      const conn = brief.connected ? (IB.mode === 'REPLAY' ? 'REPLAY' : 'LIVE') : (brief.connection_status || 'NOT_CONNECTED');
-      const stateChip = { LIVE: chip('LIVE', 'ok'), REPLAY: chip('REPLAY', 'sim'), NOT_CONNECTED: chip('NOT CONNECTED', 'warn'),
+      const conn = brief.connected ? IB.mode : (brief.connection_status || 'NOT_CONNECTED');
+      const stateChip = { LIVE: chip('LIVE', 'ok'), REPLAY: chip('REPLAY', 'sim'), LOCAL: chip('LOCAL', 'hi'), NOT_CONNECTED: chip('NOT CONNECTED', 'warn'),
                           REVOKED: chip('REVOKED', 'bad'), EXPIRED: chip('TOKEN EXPIRED', 'bad'), RATE_LIMITED: chip('RATE-LIMITED', 'warn'),
                           ERROR: chip('ERROR', 'bad'), STALE: chip('STALE', 'warn') }[status.processing_state === 'STALE' ? 'STALE' : conn] || chip(conn);
-      const header = `<div class="ib-status">${modeChip()}${stateChip}${chip('Engine: ' + (brief.engine || 'RULES_ONLY') + ' (no model inference)', '')}
+      const header = `<div class="ib-status">${modeChip()}${stateChip}${engineChip(status.inference)}
         ${chip('Last sync ' + ago(status.last_successful_sync_at), status.stale ? 'warn' : '')}
         ${chip((status.messages || 0) + ' messages · ' + (status.threads || 0) + ' threads', '')}</div>`;
       if (!brief.connected) {
-        el.innerHTML = banner() + header + (IB.mode === 'LIVE'
+        el.innerHTML = banner() + header + (IB.mode === 'LOCAL'
+          ? empty('No local mailbox connected', 'Create a mailbox on the local mail server in Connections, deliver a test message to it, then sync.',
+                  `<p><a class="btn btn-primary" href="#connections" data-ib="nav" data-route="#connections">Open Connections</a></p>`)
+          : IB.mode === 'LIVE'
           ? empty('Your inbox is not connected yet', brief.connection_status === 'NOT_CONNECTED' ? 'Connect Gmail with read-only access to see what needs attention. Nothing is read until you connect.' : 'Your Gmail connection needs attention. Check Connections.',
                   `<p><a class="btn btn-primary" href="#connections" data-ib="nav" data-route="#connections">Open Connections</a> <a class="btn" href="#replay" data-ib="nav" data-route="#replay">Try the replay lab</a></p>`)
           : empty('No replay started', 'Open the replay lab to run the synthetic morning.', `<p><a class="btn btn-primary" href="#replay" data-ib="nav" data-route="#replay">Open the replay lab</a></p>`));
@@ -378,10 +385,10 @@
           <p class="ib-hint">The exact text that will be sent:</p><pre>${E(d.body)}</pre>
           <p class="ib-hint">Source conversation: <a href="#thread:${E(d.thread_id)}" data-ib="nav" data-route="#thread:${E(d.thread_id)}">open</a>.</p>
           <p class="ib-hint"><strong>Missing information:</strong> ${missing ? '<ul>' + missing + '</ul>' : 'none listed'}</p>
-          ${IB.mode === 'LIVE' ? '' : '<p class="ib-banner ib-replay">Simulated. This will not be delivered by Gmail.</p>'}
+          ${IB.mode === 'LIVE' ? '' : IB.mode === 'LOCAL' ? '<p class="ib-banner">Delivered by the local mail server to a local address, then read back from Sent. Not Gmail.</p>' : '<p class="ib-banner ib-replay">Simulated. This will not be delivered by Gmail.</p>'}
           <div class="ib-actions">
-            ${IB.mode === 'LIVE' ? `<button class="btn" type="button" data-ib="gmail-draft" data-approval="${E(approval.id)}" data-digest="${E(d.digest)}">Save as Gmail draft (verified by read-back)</button>` : ''}
-            <button class="btn btn-primary" type="button" data-ib="send" data-approval="${E(approval.id)}" data-digest="${E(d.digest)}">${IB.mode === 'LIVE' ? 'Send this exact message' : 'Send (simulated)'}</button>
+            ${IB.mode !== 'REPLAY' && approval.operation === 'CREATE_GMAIL_DRAFT' ? `<button class="btn" type="button" data-ib="gmail-draft" data-approval="${E(approval.id)}" data-digest="${E(d.digest)}">${IB.mode === 'LOCAL' ? 'Save as a local draft (verified by read-back)' : 'Save as Gmail draft (verified by read-back)'}</button>` : ''}
+            ${approval.operation === 'CREATE_GMAIL_DRAFT' ? '' : `<button class="btn btn-primary" type="button" data-ib="send" data-approval="${E(approval.id)}" data-digest="${E(d.digest)}">${IB.mode === 'LIVE' ? 'Send this exact message' : IB.mode === 'LOCAL' ? 'Send through the local mail server' : 'Send (simulated)'}</button>`}
             <button class="btn btn-ghost" type="button" data-ib="cancel-approval">Cancel approval</button></div>
           <div id="ibSendResult" aria-live="polite"></div></div>` : '';
       el.innerHTML = banner() + `<div class="ib-two"><section>
@@ -410,7 +417,7 @@
           <p class="ib-hint">Engine: ${E(meta.engine || 'RULES_ONLY')} — deterministic rules, no model inference.</p></div>
         <div class="ib-panel"><h3>Versions</h3><ul>${versions}</ul></div>
         <div class="ib-panel"><h3>Actions</h3>
-          ${editable ? `<div class="ib-field"><label for="ibApprovalOp">Operation</label><select id="ibApprovalOp"><option value="SEND_EMAIL">Send this message</option>${IB.mode === 'LIVE' ? '<option value="CREATE_GMAIL_DRAFT">Save as a Gmail draft</option>' : ''}</select></div>
+          ${editable ? `<div class="ib-field"><label for="ibApprovalOp">Operation</label><select id="ibApprovalOp"><option value="SEND_EMAIL">Send this message</option>${IB.mode === 'LIVE' ? '<option value="CREATE_GMAIL_DRAFT">Save as a Gmail draft</option>' : IB.mode === 'LOCAL' ? '<option value="CREATE_GMAIL_DRAFT">Save as a local draft</option>' : ''}</select></div>
             <div class="ib-actions"><button class="btn btn-primary" type="button" data-ib="approve-selected" data-id="${E(d.id)}" data-digest="${E(d.digest)}">Approve exact version</button></div>
             <p class="ib-hint">Approval expires after 15 minutes, is single-use, and is refused if the text changes.</p>` : ''}
           ${IB.mode === 'LIVE' ? '<p class="ib-hint">Gmail drafting and sending need extra permissions. Enable them in Connections if the buttons say so.</p>' : ''}
@@ -487,11 +494,36 @@
           </div>
           <p class="ib-hint">Permissions granted: ${scopes ? '<ul>' + scopes + '</ul>' : 'none yet'}</p></div>
       </section><aside>
+        ${localPanel(c.local || { status: 'NOT_CONFIGURED' })}
         <div class="ib-panel"><h3>Replay mode</h3><p>${E(c.replay.label)}. Replay uses synthetic messages only.</p><a class="btn" href="#replay" data-ib="nav" data-route="#replay">Open the replay lab</a></div>
         <div class="ib-panel"><h3>Sync</h3><p class="muted">Sync reads only the messages in the last 30 days and stores them encrypted. Each run is recorded, including failed ones.</p>
           <div class="ib-actions"><button class="btn btn-primary" type="button" data-ib="sync-live">Sync now</button></div><div id="ibSyncResult" aria-live="polite"></div></div>
       </aside></div>`;
     } catch (e) { el.innerHTML = errorBox(e); }
+  }
+
+  function localPanel(l) {
+    const cls = { CONNECTED: 'ok', NOT_CONFIGURED: 'warn', NOT_CONNECTED: 'warn', REVOKED: 'bad', ERROR: 'bad' }[l.status] || '';
+    if (l.status === 'NOT_CONFIGURED') {
+      return `<div class="ib-panel" id="ibLocalPanel"><h3>Local mail server</h3><div class="ib-status">${chip('LOCAL MAIL NOT RUNNING', 'warn')}</div><p class="muted">${E(l.detail || '')}</p></div>`;
+    }
+    const connected = l.status === 'CONNECTED';
+    return `<div class="ib-panel" id="ibLocalPanel"><h3>Local mail server</h3>
+      <div class="ib-status">${chip(l.status, cls)}${l.account ? chip(l.account, '') : ''}${chip('SMTP ' + l.smtp_port + ' · POP3 ' + l.pop3_port, '')}</div>
+      <p class="muted">${E(l.label || '')}</p>
+      ${connected ? `<div class="ib-actions"><button class="btn btn-primary" type="button" data-ib="local-sync">Sync local mailbox</button>
+          <button class="btn btn-danger" type="button" data-ib="local-disconnect">Disconnect</button></div>
+        <h4>Deliver a message into this mailbox</h4>
+        <form data-ib-form="local-deliver">
+          <div class="ib-field"><label for="ibLdFrom">From (local colleague name)</label><input id="ibLdFrom" name="from_name" required pattern="[a-z0-9][a-z0-9._\\-]{0,39}" placeholder="priya"></div>
+          <div class="ib-field"><label for="ibLdSubj">Subject</label><input id="ibLdSubj" name="subject" required maxlength="300"></div>
+          <div class="ib-field dictate"><label for="ibLdBody">Message (type, paste or dictate)</label><textarea id="ibLdBody" name="body" required rows="4"></textarea></div>
+          <button class="btn" type="submit">Deliver over SMTP</button><span id="ibLocalMsg" class="muted small" aria-live="polite"></span></form>`
+        : `<form data-ib-form="local-create">
+          <div class="ib-field"><label for="ibLcName">Mailbox name</label><input id="ibLcName" name="name" required pattern="[a-z0-9][a-z0-9._\\-]{0,39}" placeholder="founder"></div>
+          <p class="ib-hint">Creates <code>name@${E(l.domain || 'mail.resolve.test')}</code> on the local server. The password is generated and stored encrypted.</p>
+          <button class="btn btn-primary" type="submit">Create local mailbox</button><span id="ibLocalMsg" class="muted small" aria-live="polite"></span></form>`}
+    </div>`;
   }
 
   /* ------------------------------------------------------------ Settings */
@@ -561,8 +593,12 @@
       if (kind === 'filter') { IB.filter = el.dataset.value; IB.page = 1; return renderInbox(); }
       if (kind === 'cfilter') { IB.cfilter = el.dataset.value; return renderCommitments(); }
       if (kind === 'page') { IB.page = Math.max(1, IB.page + Number(el.dataset.delta)); return renderInbox(); }
-      if (kind === 'sync' || kind === 'sync-live') {
-        const mode = kind === 'sync' ? IB.mode : 'LIVE';
+      if (kind === 'local-disconnect') {
+        if (!confirm('Disconnect the local mailbox? Mail stays on the local server.')) return;
+        await call('DELETE', '/api/inbox/connections/local'); flash('Local mailbox disconnected.'); return renderConnections();
+      }
+      if (kind === 'sync' || kind === 'sync-live' || kind === 'local-sync') {
+        const mode = kind === 'sync' ? IB.mode : kind === 'local-sync' ? 'LOCAL' : 'LIVE';
         el.disabled = true; el.textContent = 'Syncing…';
         try {
           const r = await call('POST', '/api/inbox/sync', { mode });
@@ -610,7 +646,7 @@
       if (kind === 'gmail-draft' || kind === 'send') {
         const path = kind === 'send' ? 'send' : 'gmail-draft';
         const res = await call('POST', `/api/inbox/drafts/${encodeURIComponent(IB.draftId)}/${path}?` + q(), { approval_id: el.dataset.approval, digest: el.dataset.digest });
-        const label = res.label || (IB.mode === 'REPLAY' ? 'SIMULATED' : 'Gmail');
+        const label = res.label || (IB.mode === 'REPLAY' ? 'SIMULATED' : IB.mode === 'LOCAL' ? 'LOCAL mail server' : 'Gmail');
         const verdict = res.state === 'VERIFIED' ? `Verified (${label}): the stored message was read back and matches the approved text.`
           : res.state === 'UNCERTAIN' ? `UNCERTAIN (${res.reason || 'unknown'}). This is not a success. Reconcile it read-only from Activity; nothing has been resent.`
           : res.state === 'NEEDS_RECOVERY' ? 'Could not confirm the earlier attempt. Nothing was resent. Review the draft again to approve a new attempt.'
@@ -753,6 +789,20 @@
         if (msg) msg.textContent = 'Saved.';
       } catch (e) { if (msg) msg.textContent = e.message; }
       return;
+    }
+    if (kind === 'local-create' || kind === 'local-deliver') {
+      const msg = $('#ibLocalMsg');
+      try {
+        if (kind === 'local-create') {
+          await call('POST', '/api/inbox/connections/local/create', { name: (data.name || '').trim().toLowerCase() });
+          IB.mode = 'LOCAL'; try { sessionStorage.setItem('resolve_inbox_mode', 'LOCAL'); } catch (_) {}
+        } else {
+          const r = await call('POST', '/api/inbox/local/deliver', { from_name: (data.from_name || '').trim().toLowerCase(), subject: data.subject, body: data.body });
+          if (msg) msg.textContent = `Delivered from ${r.from} over SMTP. Sync to bring it in.`;
+          return;
+        }
+      } catch (e) { if (msg) msg.textContent = e.message; return; }
+      return renderConnections();
     }
     if (kind === 'rules-activate') return;
   }

@@ -18,6 +18,16 @@ PBKDF2_ITERATIONS = 600_000      # OWASP-recommended work factor for PBKDF2-HMAC
 LEGACY_ITERATIONS = 100_000      # hashes stored before the work factor was recorded alongside the digest
 
 
+SESSION_IDLE_SEC = 86400 * 7          # a session unused for 7 days expires
+SESSION_ABSOLUTE_SEC = 86400 * 30     # renewal never extends a session beyond 30 days from sign-in
+RENEW_WITHIN_SEC = 86400              # renew when less than a day of idle lifetime remains
+
+
+def token_key(token: str) -> str:
+    """Sessions are stored by SHA-256 of the bearer token, so a copy of the database cannot be replayed as a session."""
+    return "h:" + hashlib.sha256(token.encode()).hexdigest()
+
+
 def hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
     if salt is None:
         salt = secrets.token_bytes(16)
@@ -91,7 +101,10 @@ class TenantAuthManager:
 
             CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
             CREATE INDEX IF NOT EXISTS idx_workspaces_owner ON workspaces(owner_user_id);
-            """)
+            """
+            )
+            # sessions written before token hashing hold the raw bearer token: invalidate them (users sign in again)
+            conn.execute("DELETE FROM sessions WHERE token NOT LIKE 'h:%'")
 
     def register(self, email: str, password: str, display_name: str | None = None) -> dict:
         email = email.strip().lower()
@@ -156,7 +169,7 @@ class TenantAuthManager:
 
             conn.execute(
                 "INSERT INTO sessions (token, user_id, workspace_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-                (token, user_id, workspace_id, now, expires_at)
+                (token_key(token), user_id, workspace_id, now, expires_at)
             )
 
         return {
@@ -176,23 +189,27 @@ class TenantAuthManager:
         now = time.time()
         with self._get_conn() as conn:
             row = conn.execute("""
-                SELECT s.token, s.user_id, s.workspace_id, s.expires_at,
+                SELECT s.token, s.user_id, s.workspace_id, s.expires_at, s.created_at,
                        u.email, u.display_name, u.status as user_status,
                        w.name as workspace_name, w.storage_namespace
                 FROM sessions s
                 JOIN users u ON s.user_id = u.id
                 JOIN workspaces w ON s.workspace_id = w.id
                 WHERE s.token = ?
-            """, (token,)).fetchone()
+            """, (token_key(token),)).fetchone()
 
             if not row:
                 raise TenantError("Invalid or expired session token", status_code=401)
             if row['expires_at'] < now or row['user_status'] != 'ACTIVE':
-                conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+                conn.execute("DELETE FROM sessions WHERE token = ?", (token_key(token),))
                 raise TenantError("Session has expired", status_code=401)
+            if row['expires_at'] - now < RENEW_WITHIN_SEC:      # sliding renewal, capped by the absolute lifetime
+                renewed = min(now + SESSION_IDLE_SEC, (row['created_at'] or now) + SESSION_ABSOLUTE_SEC)
+                if renewed > row['expires_at']:
+                    conn.execute("UPDATE sessions SET expires_at = ? WHERE token = ?", (renewed, token_key(token)))
 
             return {
-                "token": row['token'],
+                "token": token,
                 "user_id": row['user_id'],
                 "email": row['email'],
                 "display_name": row['display_name'],
@@ -208,14 +225,33 @@ class TenantAuthManager:
             ws = conn.execute("SELECT id, name, storage_namespace FROM workspaces WHERE id = ? AND owner_user_id = ?", (new_workspace_id, user_id)).fetchone()
             if not ws:
                 raise TenantError("Workspace not accessible", status_code=403)
-            conn.execute("UPDATE sessions SET workspace_id = ? WHERE token = ?", (new_workspace_id, token))
+            conn.execute("UPDATE sessions SET workspace_id = ? WHERE token = ?", (new_workspace_id, token_key(token)))
 
         return self.validate_session(token)
 
     def logout(self, token: str) -> bool:
         with self._get_conn() as conn:
-            res = conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+            res = conn.execute("DELETE FROM sessions WHERE token = ?", (token_key(token),))
             return res.rowcount > 0
+
+    def revoke_all_sessions(self, user_id: str) -> int:
+        with self._get_conn() as conn:
+            return conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,)).rowcount
+
+    def change_password(self, token: str, current_password: str, new_password: str) -> dict:
+        """Verifies the current password, stores the new hash, revokes EVERY session of the user (including other
+        devices) and returns one fresh session for the caller."""
+        session = self.validate_session(token)
+        if len(new_password) < 10 or len(new_password) > 256:
+            raise TenantError("Password must be 10-256 characters", status_code=400)
+        with self._get_conn() as conn:
+            row = conn.execute("SELECT password_hash, salt FROM users WHERE id = ? AND status = 'ACTIVE'", (session['user_id'],)).fetchone()
+            if not row or not verify_password(current_password, row['password_hash'], row['salt']):
+                raise TenantError("Current password is incorrect", status_code=403)
+            pwd_hash, salt = hash_password(new_password)
+            conn.execute("UPDATE users SET password_hash = ?, salt = ? WHERE id = ?", (pwd_hash, salt, session['user_id']))
+            conn.execute("DELETE FROM sessions WHERE user_id = ?", (session['user_id'],))
+        return self.create_session(session['user_id'], session['workspace_id'])
 
     def list_workspaces(self, user_id: str) -> list[dict]:
         with self._get_conn() as conn:

@@ -220,8 +220,12 @@ class InboxApi:
         tok = self.store.load_oauth_token(uid, wid, "gmail") or {}
         return (tok.get("account") or "").lower()
 
+    def _settings(self, uid, wid, mode):
+        """The user's own settings (timezone, sign-off, tone) apply to LIVE and LOCAL; REPLAY keeps its own fixed clock."""
+        return self.store.get_settings(uid, scoped(wid, "REPLAY") if mode == "REPLAY" else wid)
+
     def _tz(self, uid, wid, mode):
-        s = self.store.get_settings(uid, scoped(wid, mode))
+        s = self._settings(uid, wid, mode)
         return s["timezone"], s["timezone_configured"]
 
     def _gmail_client(self, uid, wid, need: str | None = None):
@@ -790,7 +794,7 @@ class InboxApi:
     # ------------------------------------------------------------------ drafts
     def create_draft(self, uid, wid, mode, thread_id, body) -> dict:
         ws = scoped(wid, mode)
-        s = self.store.get_settings(uid, ws)
+        s = self._settings(uid, wid, mode)
         account = _address(self._account(uid, wid, mode)) or rp.REPLAY_ADDRESS
         thread = self._thread_row(uid, ws, thread_id)
         facts = body.get("facts") or {}
