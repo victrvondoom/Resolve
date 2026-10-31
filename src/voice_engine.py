@@ -228,19 +228,20 @@ def _lev(a: str, b: str, cap: int = 3) -> int:
 
 
 def correct_command_vocabulary(text: str, vocab=COMMAND_VOCABULARY) -> tuple[str, list]:
+    """Only bare lower-case alphabetic tokens are candidates; punctuation, case and anything else is kept as-is."""
     toks, out, changes, i = text.split(), [], [], 0
     long_vocab = [v for v in vocab if len(v) >= 6]
+    plain = lambda t: t.isalpha() and t.islower()
     while i < len(toks):
-        if i + 1 < len(toks):
-            joined = toks[i] + toks[i + 1]
-            # a split word: two adjacent tokens, neither a vocabulary word, merging to within 1 edit
-            # (2 for words of 7+ letters) of a vocabulary word
-            hit = next((v for v in long_vocab if _lev(joined, v) <= (2 if len(v) >= 7 else 1)), None)
-            if hit and toks[i] not in vocab and toks[i + 1] not in vocab:
-                out.append(hit); changes.append({"from": f"{toks[i]} {toks[i + 1]}", "to": hit}); i += 2
-                continue
         t = toks[i]
-        hit = next((v for v in long_vocab if t != v and len(t) >= 5 and t not in vocab and _lev(t, v) <= 1), None)
+        if i + 1 < len(toks) and plain(t) and plain(toks[i + 1]) and t not in vocab and toks[i + 1] not in vocab:
+            joined = t + toks[i + 1]
+            # a split word: two adjacent tokens merging to within 1 edit (2 for 7+ letters) of a vocabulary word
+            hit = next((v for v in long_vocab if _lev(joined, v) <= (2 if len(v) >= 7 else 1)), None)
+            if hit:
+                out.append(hit); changes.append({"from": f"{t} {toks[i + 1]}", "to": hit}); i += 2
+                continue
+        hit = next((v for v in long_vocab if plain(t) and t != v and len(t) >= 5 and t not in vocab and _lev(t, v) <= 1), None) if plain(t) else None
         if hit:
             out.append(hit); changes.append({"from": t, "to": hit})
         else:
