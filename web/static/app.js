@@ -958,7 +958,11 @@ api('/api/web/benchmark').then(b => {
           const wav = encodeWav(chunks, rate);
           const res = await api('/api/voice/transcribe-audio', { audio_base64: toB64(wav), consent: true, language: navigator.language || 'en-US' });
           if (target) { target.value = res.transcript; target.dispatchEvent(new Event('input', { bubbles: true })); }
-          micMsg('Transcript ready — review and edit it, then run the mission. (' + res.provider + ', ' + res.duration_s + 's, audio not stored)');
+          const fixes = (res.corrections || []).map(c => '"' + c.from + '" → "' + c.to + '"').join(', ');
+          const unsure = (res.low_confidence_words || []).join(', ');
+          micMsg('Transcript ready — review and edit it, then run the mission. (' + res.provider + ', ' + res.duration_s + 's, audio not stored)'
+            + (fixes ? ' Corrected: ' + fixes + '.' : '') + (unsure ? ' Low confidence: ' + unsure + '.' : '')
+            + (res.raw_transcript && res.raw_transcript !== res.transcript ? ' Heard: "' + res.raw_transcript + '".' : ''));
         } catch (e) { micMsg('Could not transcribe: ' + (e.message || e) + '. You can type the command instead.'); }
         btn.disabled = false; refreshVoiceHealth();
       };

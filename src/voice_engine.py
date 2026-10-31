@@ -3,8 +3,9 @@
 Pipeline: browser getUserMedia -> 16-bit PCM WAV -> POST -> validate -> STT provider -> editable transcript.
 Audio is held in memory only for the request and never written to disk (`retained: False`).
 
-Providers (none is bundled; nothing is claimed unless one is configured and importable):
-  * VoskProvider        - fully offline. Needs `pip install vosk` and RESOLVE_VOSK_MODEL=<model dir>.
+Providers (no model is committed; nothing is claimed unless one is configured and importable):
+  * VoskProvider        - fully offline. Needs `pip install vosk` and a model: RESOLVE_VOSK_MODEL=<model dir>, or
+                          `python scripts/fetch_stt_model.py` which places one under data/models/ (auto-discovered).
   * HttpSttProvider     - OpenAI-compatible /audio/transcriptions endpoint (RESOLVE_STT_URL, RESOLVE_STT_API_KEY).
                           Audio leaves this server, so explicit user consent is required per request.
   * UnavailableProvider - default; transcription requests fail with 503 and health says why.
@@ -84,6 +85,8 @@ class SttProvider:
     name = "none"
     offline = False
     off_device = False
+    languages: tuple = ()       # empty = provider decides (e.g. a hosted multilingual model)
+    last_detail: dict = {}
 
     def available(self) -> tuple[bool, str]:
         return False, "no speech-to-text provider configured"
@@ -99,6 +102,7 @@ class UnavailableProvider(SttProvider):
 class VoskProvider(SttProvider):
     name = "vosk"
     offline = True
+    languages = ("en",)   # the bundled-by-script model is English; other models declare their own language
 
     def __init__(self, model_dir: str):
         self.model_dir, self._model = model_dir, None
@@ -120,8 +124,23 @@ class VoskProvider(SttProvider):
         if self._model is None:
             self._model = vosk.Model(self.model_dir)
         rec = vosk.KaldiRecognizer(self._model, audio.rate)
-        rec.AcceptWaveform(audio.pcm)
-        return json.loads(rec.FinalResult()).get("text", "").strip()
+        rec.SetWords(True)
+        # Feed in 0.25 s chunks so partial hypotheses are real recognizer output, not a re-split of the final text.
+        step = max(2, int(audio.rate * 0.25) * 2)
+        partials, words, texts = [], [], []
+        for i in range(0, len(audio.pcm), step):
+            if rec.AcceptWaveform(audio.pcm[i:i + step]):
+                seg = json.loads(rec.Result())
+                texts.append(seg.get("text", "")); words += seg.get("result", [])
+            else:
+                part = json.loads(rec.PartialResult()).get("partial", "")
+                if part and (not partials or partials[-1] != part):
+                    partials.append(part)
+        seg = json.loads(rec.FinalResult())
+        texts.append(seg.get("text", "")); words += seg.get("result", [])
+        self.last_detail = {"partials": partials[-8:],
+                            "words": [{"word": w.get("word"), "conf": round(float(w.get("conf", 0)), 3)} for w in words]}
+        return " ".join(t for t in texts if t).strip()
 
 
 class HttpSttProvider(SttProvider):
@@ -160,12 +179,74 @@ class HttpSttProvider(SttProvider):
             raise VoiceError("PROVIDER_ERROR", "speech service returned an invalid response", 502)
 
 
+MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "models")
+
+
+def discover_vosk_model(models_dir: str = MODELS_DIR) -> str | None:
+    """A model fetched by scripts/fetch_stt_model.py (a directory containing am/ and conf/)."""
+    if not os.path.isdir(models_dir):
+        return None
+    for name in sorted(os.listdir(models_dir)):
+        d = os.path.join(models_dir, name)
+        if name.startswith("vosk-model") and os.path.isdir(os.path.join(d, "am")) and os.path.isdir(os.path.join(d, "conf")):
+            return d
+    return None
+
+
 def provider_from_env(env=os.environ) -> SttProvider:
     if env.get("RESOLVE_VOSK_MODEL"):
         return VoskProvider(env["RESOLVE_VOSK_MODEL"])
     if env.get("RESOLVE_STT_URL"):
         return HttpSttProvider(env["RESOLVE_STT_URL"], env.get("RESOLVE_STT_API_KEY", ""), env.get("RESOLVE_STT_MODEL", "whisper-1"))
+    if env.get("RESOLVE_STT_DISABLE_DISCOVERY") != "1":
+        found = discover_vosk_model()
+        if found:
+            return VoskProvider(found)
     return UnavailableProvider()
+
+
+
+# Words the supported commands depend on. Recognizers often split or mis-hear rare words
+# ("overdue" -> "over do"). Correction is limited to merging/replacing tokens that are within edit
+# distance 1 (2 for a merged split word of 7+ letters) of a vocabulary word of length >= 6; every change is returned so the user sees it in the
+# editable transcript before anything is submitted. The raw recognizer output is always kept.
+COMMAND_VOCABULARY = ("overdue", "atlas", "project", "report", "research", "portal", "finance", "sales",
+                      "architecture", "mermaid", "workspace", "document", "summarize", "approve", "inventory",
+                      "diagnostics", "specification", "contacts", "resolve")
+
+
+def _lev(a: str, b: str, cap: int = 3) -> int:
+    if abs(len(a) - len(b)) >= cap:
+        return cap
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return min(prev[-1], cap)
+
+
+def correct_command_vocabulary(text: str, vocab=COMMAND_VOCABULARY) -> tuple[str, list]:
+    toks, out, changes, i = text.split(), [], [], 0
+    long_vocab = [v for v in vocab if len(v) >= 6]
+    while i < len(toks):
+        if i + 1 < len(toks):
+            joined = toks[i] + toks[i + 1]
+            # a split word: two adjacent tokens, neither a vocabulary word, merging to within 1 edit
+            # (2 for words of 7+ letters) of a vocabulary word
+            hit = next((v for v in long_vocab if _lev(joined, v) <= (2 if len(v) >= 7 else 1)), None)
+            if hit and toks[i] not in vocab and toks[i + 1] not in vocab:
+                out.append(hit); changes.append({"from": f"{toks[i]} {toks[i + 1]}", "to": hit}); i += 2
+                continue
+        t = toks[i]
+        hit = next((v for v in long_vocab if t != v and len(t) >= 5 and t not in vocab and _lev(t, v) <= 1), None)
+        if hit:
+            out.append(hit); changes.append({"from": t, "to": hit})
+        else:
+            out.append(t)
+        i += 1
+    return " ".join(out), changes
 
 
 class VoiceEngine:
@@ -174,7 +255,7 @@ class VoiceEngine:
 
     def health(self) -> dict:
         ok, why = self.provider.available()
-        return {"available": ok, "provider": self.provider.name, "offline": self.provider.offline,
+        return {"available": ok, "provider": self.provider.name, "languages": list(self.provider.languages), "offline": self.provider.offline,
                 "audio_leaves_server": self.provider.off_device, "detail": why,
                 "audio_retention": "none (audio is processed in memory and discarded)",
                 "wispr_flow": "separate desktop dictation tool; works by typing into the text box, no integration"}
@@ -190,9 +271,20 @@ class VoiceEngine:
         ok, why = self.provider.available()
         if not ok:
             raise VoiceError("PROVIDER_UNAVAILABLE", why, 503)
-        text = self.provider.transcribe(audio, language)
-        if not text:
+        lang = (language or "en-US").split("-")[0].lower()
+        if self.provider.languages and lang not in self.provider.languages:
+            raise VoiceError("UNSUPPORTED_LANGUAGE", f"the configured {self.provider.name} model supports {', '.join(self.provider.languages)}; type the command or configure a model for '{lang}'", 422)
+        self.provider.last_detail = {}
+        raw_text = self.provider.transcribe(audio, language)
+        if not raw_text:
             raise VoiceError("NO_TRANSCRIPT", "speech was detected but nothing could be recognized; try again or type the command", 422)
-        return {"transcript": text, "provider": self.provider.name, "offline": self.provider.offline,
+        text, corrections = correct_command_vocabulary(raw_text)
+        detail = dict(self.provider.last_detail or {})
+        words = detail.get("words") or []
+        low = [w["word"] for w in words if w.get("conf", 1) < 0.6]
+        return {"transcript": text, "raw_transcript": raw_text, "corrections": corrections,
+                "partials": detail.get("partials", []), "words": words, "low_confidence_words": low,
+                "needs_review": bool(low or corrections),
+                "provider": self.provider.name, "offline": self.provider.offline, "language": lang,
                 "duration_s": round(audio.duration_s, 2), "audio_sha256": audio.sha256, "retained": False,
                 "editable": True, "submitted": False}

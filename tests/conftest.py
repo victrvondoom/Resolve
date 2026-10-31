@@ -1,10 +1,16 @@
 """Test grouping: select with `-m <group>` (unit, api, document, cloud, voice, security, browser_e2e, windows_native)."""
+import os
 import sys
+
+# A Vosk model fetched into data/models/ is auto-discovered by the server. Tests must not change behaviour
+# depending on whether a developer fetched one, so discovery is off for the suite; tests that use the real
+# model set RESOLVE_VOSK_MODEL explicitly (tests/test_voice_real_stt.py).
+os.environ.setdefault('RESOLVE_STT_DISABLE_DISCOVERY', '1')
 
 GROUPS = {
     'document': ('test_document_studio', 'test_document_api', 'test_brief_mission', 'test_dynamic_inputs', 'test_mission_sprint', 'test_tool_registry', 'test_command_router'),
     'cloud': ('test_diagnostics_agent', 'test_cloud_browser', 'test_cloud_api', 'test_sandbox_manager', 'test_connectors'),
-    'voice': ('test_voice_engine', 'test_w7_voice_correction'),
+    'voice': ('test_voice_engine', 'test_w7_voice_correction', 'test_voice_real_stt', 'test_voice_policy'),
     'security': ('test_production_security', 'test_hidden_failures', 'test_tenant_security', 'test_tenant_auth', 'test_privacy_engine'),
     'browser_e2e': ('test_flagship_e2e', 'test_ux_e2e', 'test_zero_hands_e2e', 'test_landing_ui', 'test_dashboard_e2e', 'test_supervisor_g5', 'test_ablations', 'test_web_g3'),
     'windows_native': ('test_windows_adapter', 'test_uia_adapter', 'test_w1_notepad', 'test_api_gui', 'test_demo_controller', 'test_demo_suite'),

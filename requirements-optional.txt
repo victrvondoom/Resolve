@@ -1,3 +1,4 @@
 # Optional Windows semantic observation. Default app uses Python standard library.
 uiautomation==2.0.29
 comtypes==1.4.17
+vosk>=0.3.45   # offline speech-to-text; model via scripts/fetch_stt_model.py
