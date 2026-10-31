@@ -36,6 +36,22 @@ EMAIL = re.compile(r"[^<>\s@,]+@[^<>\s@,]+\.[A-Za-z]{2,}")
 MAX_TEXT = 4000
 
 
+class _IncrementalView:
+    """Presents Gmail history-based incremental fetching through the provider's sync_all() interface."""
+
+    def __init__(self, client, cursor: str):
+        self.client, self.cursor, self.expired = client, cursor, False
+
+    def sync_all(self, query: str = "") -> list[dict]:
+        try:
+            return self.client.sync_since(self.cursor)
+        except GmailError as e:
+            if e.code != "NOT_FOUND":
+                raise
+            self.expired = True
+            return self.client.sync_all(query)
+
+
 class ApiError(Exception):
     def __init__(self, status: int, message: str, **extra):
         super().__init__(message)
@@ -59,12 +75,14 @@ def scoped(workspace_id: str, mode: str) -> str:
 
 class InboxApi:
     def __init__(self, store: InboxStore, gmail_config: GmailConfig | None, transport: Callable, oauth: OAuthStates | None = None,
-                 now: Callable[[], float] = time.time, public_base: str = "", local_mail=None, inference=None):
+                 now: Callable[[], float] = time.time, public_base: str = "", local_mail=None, inference=None,
+                 sleep: Callable[[float], None] = time.sleep):
         self.store = store
         self.config = gmail_config
         self.transport = transport
         self.oauth = oauth or OAuthStates(now=now)
         self.now = now
+        self.sleep = sleep                                    # provider backoff; tests inject a no-op
         self.public_base = public_base
         self.replay: dict[tuple[str, str], dict] = {}         # replay progress (in memory; replay data itself is stored)
         self.inference = inference or mp.InboxInference(None)   # RULES_ONLY unless a model endpoint is configured
@@ -236,7 +254,8 @@ class InboxApi:
             raise ApiError(409, "Gmail is not configured on this server", code="NOT_CONFIGURED", required_env=["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"])
         conn = self._gmail_conn(uid, wid)
         tok = self.store.load_oauth_token(uid, wid, "gmail")
-        if conn is None or tok is None or conn["status"] != "CONNECTED":
+        # ERROR and RATE_LIMITED are transient: the next sync may try again. REVOKED, EXPIRED and NOT_CONNECTED need the user.
+        if conn is None or tok is None or conn["status"] not in ("CONNECTED", "ERROR", "RATE_LIMITED"):
             raise ApiError(409, "Gmail is not connected", code=(conn or {}).get("status", "NOT_CONNECTED"))
         if need and need not in (conn["scopes"] or []):
             raise ApiError(409, "this permission was not granted; enable it in Connections first", code="SCOPE_NOT_GRANTED", scope=need)
@@ -249,7 +268,7 @@ class InboxApi:
             return fresh["access_token"]
         if tok.get("expires_at", 0) < self.now() + 60:
             access = refresh()
-        return GmailSendClient(self.transport, access, refresh)
+        return GmailSendClient(self.transport, access, refresh, sleep=self.sleep)
 
     def _provider(self, uid, wid, mode, visible=None, inject=None):
         if mode == "REPLAY":
@@ -270,7 +289,7 @@ class InboxApi:
         ws = scoped(wid, "LOCAL")
         creds = self.store.load_oauth_token(uid, ws, "local_mail")
         conn = self.store.get_connection(uid, ws, "local_mail")
-        if creds is None or conn is None or conn["status"] not in ("CONNECTED",):
+        if creds is None or conn is None or conn["status"] not in ("CONNECTED", "ERROR"):          # ERROR is transient: retry allowed
             raise ApiError(409, "the local mailbox is not connected", code=(conn or {}).get("status", "NOT_CONNECTED"))
         return lm.LocalMailProvider(creds["address"], creds["password"], srv.host, srv.smtp_port, srv.pop3_port)
 
@@ -475,15 +494,32 @@ class InboxApi:
         else:
             provider = self._gmail_client(uid, wid)             # a refused refresh is recorded by handle() as a REVOKED/EXPIRED state
             try:
-                acct = provider.profile()["email"]
+                prof = provider.profile()
+                acct = prof["email"]
             except GmailError as e:
                 st = {"REVOKED": "REVOKED", "TOKEN_EXPIRED": "EXPIRED", "RATE_LIMITED": "RATE_LIMITED"}.get(e.code, "ERROR")
                 self.store.upsert_connection(uid, wid, "gmail", st, (self._gmail_conn(uid, wid) or {}).get("scopes", []), e.message)
                 raise ApiError(409 if st != "ERROR" else 502, f"sync stopped: {e.message}", code=st)
+        kind, new_cursor = "FULL", None
+        if mode == "LIVE":
+            # Incremental: messages added since the stored history checkpoint. The new checkpoint is the history id read
+            # BEFORE fetching, and it is stored only after the run succeeds, so a crash re-fetches (idempotently) instead
+            # of skipping mail. An expired checkpoint falls back to a full sync and says so.
+            new_cursor = prof.get("history_id")
+            cursor = self.store.get_sync_cursor(uid, ws, "gmail") if not body.get("full") else None
+            if cursor:
+                provider = _IncrementalView(provider, cursor)
+                kind = "INCREMENTAL"
         try:
             out = svc.sync_connection(self.store, uid, ws, provider, acct, query=query, tz_name=tz, mode=mode)
         except TimeoutError as e:
             raise ApiError(504, "the provider did not respond in time; nothing was marked as synchronized")
+        if isinstance(provider, _IncrementalView) and provider.expired:
+            kind = "FULL_AFTER_EXPIRED_CURSOR"
+        self.store.set_sync_run_kind(uid, ws, out["run_id"], kind)
+        if mode == "LIVE" and new_cursor:
+            self.store.set_sync_cursor(uid, ws, "gmail", new_cursor)
+        out["kind"] = kind
         out["timezone"] = tz
         out["timezone_configured"] = configured
         return out

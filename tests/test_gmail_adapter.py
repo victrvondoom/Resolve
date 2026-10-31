@@ -137,10 +137,34 @@ class TokenFailures(unittest.TestCase):
         self.assertEqual((ctx.exception.code, ctx.exception.retry_after), ('RATE_LIMITED', 5.0))
 
     def test_provider_outage_is_typed(self):
-        t = Recorder([(503, {}, {})])
+        t = Recorder([(503, {}, {})] * 4)                           # persistent outage: 1 call + 3 bounded retries
+        slept = []
         with self.assertRaises(GmailError) as ctx:
-            GmailClient(t, TOKEN).list_page()
+            GmailClient(t, TOKEN, sleep=slept.append).list_page()
         self.assertEqual(ctx.exception.code, 'PROVIDER_ERROR')
+        self.assertEqual((len(t.calls), slept), (4, [2, 4, 8]))
+
+    def test_a_transient_read_error_recovers(self):
+        t = Recorder([(502, {}, {}), (200, {'messages': [{'id': 'a'}]}, {})])
+        page = GmailClient(t, TOKEN, sleep=lambda s: None).list_page()
+        self.assertEqual(page.message_ids, ['a'])
+
+    def test_a_send_is_never_retried_after_a_server_error(self):
+        t = Recorder([(503, {}, {}), (200, {'id': 'should-not-happen'}, {})])
+        from gmail_adapter import GmailSendClient
+        with self.assertRaises(GmailError):
+            GmailSendClient(t, TOKEN, sleep=lambda s: None).send_raw('cmF3')
+        self.assertEqual(len(t.calls), 1, 'a 5xx on send may have been processed: no blind retry')
+
+    def test_incremental_history_lists_added_messages_and_expired_history_is_not_found(self):
+        t = Recorder([(200, {'history': [{'messagesAdded': [{'message': {'id': 'm1'}}, {'message': {'id': 'm2'}}]}], 'nextPageToken': 'p2'}, {}),
+                      (200, {'history': [{'messagesAdded': [{'message': {'id': 'm2'}}, {'message': {'id': 'm3'}}]}]}, {})])
+        self.assertEqual(GmailClient(t, TOKEN).history_message_ids('100'), ['m1', 'm2', 'm3'])
+        self.assertIn('startHistoryId=100', t.calls[0][1])
+        t2 = Recorder([(404, {}, {})])
+        with self.assertRaises(GmailError) as ctx:
+            GmailClient(t2, TOKEN).history_message_ids('1')
+        self.assertEqual(ctx.exception.code, 'NOT_FOUND')
 
 
 if __name__ == '__main__':

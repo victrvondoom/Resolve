@@ -46,7 +46,7 @@ separate workspace scope `<workspace>.local`. Pass `mode=LOCAL` (query) or `{"mo
 |---|---|---|
 | GET | `/api/inbox/settings` | Timezone (`timezone_configured` says whether the user set it), sign-off, tone |
 | PUT | `/api/inbox/settings` | Set an IANA timezone (validated), sign-off, tone |
-| POST | `/api/inbox/sync` | Synchronize. Body `{"mode": "LIVE"\|"LOCAL"\|"REPLAY", "query": "newer_than:30d"}`. Each run is recorded, including failed runs |
+| POST | `/api/inbox/sync` | Synchronize. Body `{"mode": "LIVE"\|"LOCAL"\|"REPLAY", "query": "newer_than:30d", "full": false}`. LIVE uses the stored Gmail history checkpoint (`kind`: `FULL`, `INCREMENTAL` or `FULL_AFTER_EXPIRED_CURSOR`); `full: true` forces a full pass. One sync per mailbox at a time (409 `SYNC_IN_PROGRESS`). Each run is recorded, including failed runs |
 | GET | `/api/inbox/sync/status` | Connection state, recent runs, last successful sync, stale flag (over 24 h), message and thread counts, engine label |
 
 ## Morning brief and threads

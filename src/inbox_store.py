@@ -599,6 +599,27 @@ class InboxStore:
                           WHERE id=? AND user_id=? AND workspace_id=?""",
                        (state, time.time(), fetched, changed, new_commitments, error[:200], run_id, user_id, workspace_id))
 
+    def set_sync_run_kind(self, user_id: str, workspace_id: str, run_id: str, kind: str) -> None:
+        if kind not in ("FULL", "INCREMENTAL", "FULL_AFTER_EXPIRED_CURSOR"):
+            raise InboxError("unknown sync kind", 400)
+        with self._lock, self._db() as db:
+            db.execute("UPDATE sync_runs SET kind=? WHERE id=? AND user_id=? AND workspace_id=?", (kind, run_id, user_id, workspace_id))
+
+    def get_sync_cursor(self, user_id: str, workspace_id: str, provider: str) -> str | None:
+        with self._db() as db:
+            r = db.execute("SELECT cursor FROM sync_cursors WHERE user_id=? AND workspace_id=? AND provider=?", (user_id, workspace_id, provider)).fetchone()
+        return r["cursor"] if r else None
+
+    def set_sync_cursor(self, user_id: str, workspace_id: str, provider: str, cursor: str | None) -> None:
+        """The last safe point: written only after a sync run has stored every message it fetched."""
+        with self._lock, self._db() as db:
+            if cursor is None:
+                db.execute("DELETE FROM sync_cursors WHERE user_id=? AND workspace_id=? AND provider=?", (user_id, workspace_id, provider))
+            else:
+                db.execute("""INSERT INTO sync_cursors VALUES (?,?,?,?,?) ON CONFLICT(user_id, workspace_id, provider)
+                              DO UPDATE SET cursor=excluded.cursor, updated_at=excluded.updated_at""",
+                           (user_id, workspace_id, provider, str(cursor)[:64], time.time()))
+
     def list_sync_runs(self, user_id: str, workspace_id: str, limit: int = 20) -> list[dict]:
         with self._db() as db:
             rows = db.execute("SELECT * FROM sync_runs WHERE user_id=? AND workspace_id=? ORDER BY started_at DESC LIMIT ?",
@@ -887,7 +908,7 @@ class InboxStore:
         scope = ("user_id=?", (user_id,)) if workspace_id is None else ("user_id=? AND workspace_id=?", (user_id, workspace_id))
         n = 0
         with self._lock, self._db() as db:
-            for table in ("thread_states", "commitment_notes", "inbox_settings", "sim_outbox", "follow_ups", "sync_runs", "oauth_tokens", "commitment_status_history", "commitment_revisions",
+            for table in ("thread_states", "commitment_notes", "inbox_settings", "sim_outbox", "sync_cursors", "follow_ups", "sync_runs", "oauth_tokens", "commitment_status_history", "commitment_revisions",
                           "verification_records", "execution_records", "approvals", "draft_versions", "reply_drafts",
                           "corrections", "commitments", "email_messages", "email_threads", "voice_rules", "audit_events", "email_connections"):
                 try:
@@ -1021,4 +1042,12 @@ CREATE TABLE thread_states (
 """
 
 
-ALL_MIGRATIONS = [(1, MIGRATION_1), (2, MIGRATION_2), (3, MIGRATION_3), (4, MIGRATION_4), (5, MIGRATION_5), (6, MIGRATION_6), (7, MIGRATION_7)]
+MIGRATION_8 = """
+ALTER TABLE sync_runs ADD COLUMN kind TEXT NOT NULL DEFAULT 'FULL';
+CREATE TABLE sync_cursors (
+  user_id TEXT NOT NULL, workspace_id TEXT NOT NULL, provider TEXT NOT NULL, cursor TEXT NOT NULL, updated_at REAL NOT NULL,
+  PRIMARY KEY (user_id, workspace_id, provider));
+"""
+
+
+ALL_MIGRATIONS = [(1, MIGRATION_1), (2, MIGRATION_2), (3, MIGRATION_3), (4, MIGRATION_4), (5, MIGRATION_5), (6, MIGRATION_6), (7, MIGRATION_7), (8, MIGRATION_8)]

@@ -13,7 +13,10 @@ Every DONE item names its evidence. Test names refer to `tests/`.
 | Replies to send excludes replies already sent | DONE | `awaiting_user_reply` uses the last message's direction; `test_thread_detail_returns_the_conversation_with_direction_and_linked_evidence` covers direction |
 | Timing groups: overdue, today, soon, future, unknown kept separate | DONE | `_timing` in `src/inbox_service.py` |
 | Recently resolved shows verified and user-confirmed separately, 14-day window | DONE | `morning_brief`; labels in `web/static/inbox.js` |
-| Sync progress and failure states | PARTIAL | Each run records RUNNING/SUCCEEDED/FAILED with counts and error; one sync at a time per mailbox (`test_concurrent_sync_of_one_mailbox_is_refused_not_duplicated`). There is no percentage progress, no live stream and no history-id incremental sync for Gmail |
+| Sync progress and failure states | PARTIAL | Each run records RUNNING/SUCCEEDED/FAILED, kind (FULL, INCREMENTAL, FULL_AFTER_EXPIRED_CURSOR), counts and error; one sync at a time per mailbox. No percentage progress or live stream |
+| Gmail incremental sync with a persisted checkpoint | DONE (recorded responses) | History API `messageAdded`; checkpoint read before fetching and stored only after success; expired history falls back to a full sync; `test_incremental_sync_fetches_only_new_mail_and_falls_back_when_history_expired`, `test_failed_sync_keeps_the_last_safe_checkpoint_and_resumes_without_duplicates`. Not run against live Gmail |
+| Bounded retries: Retry-After on 429, backoff on 5xx for reads only; sends never retried | DONE | `tests/test_gmail_adapter.py` (`test_a_send_is_never_retried_after_a_server_error`) |
+| A transient provider error does not lock the mailbox | DONE | ERROR and RATE_LIMITED allow the next sync (previously only a reconnect cleared ERROR) |
 | LIVE and REPLAY visibly different | DONE | Banner and chips in `inbox.js`; separate workspaces (`test_replay_runs_the_same_pipeline_without_touching_gmail_and_stays_separate_from_live`) |
 | LIVE never shows a demo mailbox | DONE | Brief returns no sections without a connection (`test_brief_is_empty_and_honest_when_not_connected`) |
 | Empty, loading, error states on every section | DONE | `loading`, `empty`, `errorBox` helpers; empty states named per section |
