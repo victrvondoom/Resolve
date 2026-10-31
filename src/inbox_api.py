@@ -115,6 +115,8 @@ class InboxApi:
             return 200, self.reprocess(uid, wid, self._mode(query), mm.group(1))
         if (mm := m(r"/api/inbox/threads/([A-Za-z0-9_.\-]+)/corrections")) and method == "POST":
             return 200, self.correct(uid, wid, self._mode(query), mm.group(1), body)
+        if (mm := m(r"/api/inbox/threads/([A-Za-z0-9_.\-]+)/state")) and method == "POST":
+            return 200, self.thread_state(uid, wid, self._mode(query), mm.group(1), body)
         if (mm := m(r"/api/inbox/threads/([A-Za-z0-9_.\-]+)/drafts")) and method == "POST":
             return 201, self.create_draft(uid, wid, self._mode(query), mm.group(1), body)
         if path == "/api/inbox/commitments" and method == "GET":
@@ -359,7 +361,9 @@ class InboxApi:
         count = len(self.store.list_threads(uid, ws))
         processing = "STALE" if (last_ok and stale) else ("NOT_CONNECTED" if conn is None else (conn["status"] if conn["status"] != "CONNECTED" else "LIVE" if mode == "LIVE" else "REPLAY"))
         return {"mode": mode, "label": self._label(mode), "connection": conn, "runs": runs, "last_successful_sync_at": last_ok,
-                "stale": bool(stale and last_ok is not None), "threads": count, "processing_state": processing}
+                "stale": bool(stale and last_ok is not None), "threads": count, "messages": self.store.count_messages(uid, ws),
+                "processing_state": processing, "engine": "REPLAY_RULES" if mode == "REPLAY" else "RULES_ONLY",
+                "engine_label": "Rules engine (deterministic). No model is configured; RULES_ONLY is shown honestly."}
 
     def brief(self, uid, wid, mode) -> dict:
         ws = scoped(wid, mode)
@@ -372,6 +376,7 @@ class InboxApi:
                     "my_commitments": [], "waiting_on_others": [], "requests_to_me": [], "timing": {}, "drafts": [], "recently_resolved": []}
         b = svc.morning_brief(self.store, uid, ws, user_address=account or rp.REPLAY_ADDRESS, tz_name=tz)
         b.update({"mode": mode, "label": self._label(mode), "connected": True, "account": account, "timezone_configured": configured,
+                  "engine": "REPLAY_RULES" if mode == "REPLAY" else "RULES_ONLY",
                   "last_successful_sync_at": next((r["finished_at"] for r in self.store.list_sync_runs(uid, ws, 20) if r["state"] == "SUCCEEDED"), None)})
         return b
 
@@ -381,6 +386,9 @@ class InboxApi:
         tz, _ = self._tz(uid, wid, mode)
         account = _address(self._account(uid, wid, mode)) or rp.REPLAY_ADDRESS
         flt = (query.get("filter") or ["all"])[0]
+        since_days = int((query.get("since_days") or ["0"])[0] or 0)
+        cutoff = self.now() - since_days * 86400 if since_days > 0 else 0
+        states = self.store.thread_states(uid, ws)
         q = ((query.get("q") or [""])[0]).lower()[:200]
         sort = (query.get("sort") or ["date"])[0]
         page = max(1, int((query.get("page") or ["1"])[0] or 1))
@@ -393,6 +401,11 @@ class InboxApi:
             if not msgs:
                 continue
             last = max(msgs, key=lambda x: x["sent_at"])
+            if last["sent_at"] < cutoff:
+                continue
+            st = states.get(tid)
+            if st and st["state"] == "DISMISSED":
+                continue
             eff = self._effective(uid, ws, tid, t)
             mine = [c for c in commitments if c["thread_id"] == tid]
             open_mine = [c for c in mine if c["kind"] == "PROMISE_BY_USER" and c["status"] in svc.OPEN_STATUSES]
@@ -439,7 +452,7 @@ class InboxApi:
         if t is None:
             raise ApiError(404, "thread has not been analysed yet; run sync or reprocess")
         eff = self._effective(uid, ws, thread_id, t)
-        messages = [{"id": m["id"], "sender": m["sender"], "recipients": m["recipients"], "subject": m["subject"], "sent_at": m["sent_at"],
+        messages = [{"id": m["id"], "sender": m["sender"], "recipients": m.get("to", ""), "subject": m["subject"], "sent_at": m["sent_at"],
                      "body": m["body"], "direction": "OUTBOUND" if _address(m["sender"]) == account else "INBOUND"} for m in msgs]
         commitments = [c for c in self.store.list_commitments(uid, ws) if c["thread_id"] == thread_id]
         for c in commitments:
@@ -456,6 +469,20 @@ class InboxApi:
                              "uncertainty": [c["review_reason"] for c in commitments if c["review_reason"]] +
                                             (["classification needs human review"] if eff["category"] == "UNCERTAIN_HUMAN_REVIEW" else [])},
                 "corrections": corrections, "drafts": drafts}
+
+    def thread_state(self, uid, wid, mode, thread_id, body) -> dict:
+        ws = scoped(wid, mode)
+        state = _text(body, "state", 20)
+        until = None
+        if state == "DEFERRED":
+            raw = _text(body, "until_local", 40, required=False)
+            if raw:
+                tz = self.store.get_settings(uid, ws)["timezone"]
+                try:
+                    until = datetime.fromisoformat(raw).replace(tzinfo=ZoneInfo(tz)).timestamp()
+                except ValueError:
+                    raise ApiError(400, "until_local must be a local date and time such as 2026-11-06T09:00")
+        return self.store.set_thread_state(uid, ws, thread_id, state, _text(body, "reason", 200, required=False) or "", until)
 
     def reprocess(self, uid, wid, mode, thread_id) -> dict:
         ws = scoped(wid, mode)
@@ -644,7 +671,10 @@ class InboxApi:
         recipient = _address(last["sender"]) if _address(last["sender"]) != account else _address(last.get("recipients", ""))
         if not recipient:
             raise ApiError(409, "the recipient address could not be determined from the thread; edit the recipient before approving")
-        stored = self.store.create_draft(uid, ws, thread_id, recipient, draft["subject"], draft["body"], origin="RULES_ENGINE" if mode == "LIVE" else "REPLAY_RULES")
+        meta = {"sources": draft["sources"], "missing_information": draft["missing_information"], "assumptions": draft["assumptions"],
+                "potential_commitments": draft["potential_commitments"], "engine": "REPLAY_RULES" if mode == "REPLAY" else "RULES_ONLY",
+                "generated_at": self.now()}
+        stored = self.store.create_draft(uid, ws, thread_id, recipient, draft["subject"], draft["body"], origin="RULES_ENGINE" if mode == "LIVE" else "REPLAY_RULES", meta=meta)
         return {**self.store.get_draft(uid, ws, stored["id"]), "engine": "REPLAY_RULES" if mode == "REPLAY" else "RULES_ONLY",
                 "engine_label": "deterministic rules; no model inference",
                 "assumptions": draft["assumptions"], "missing_information": draft["missing_information"], "sources": draft["sources"],

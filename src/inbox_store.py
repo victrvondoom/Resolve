@@ -23,7 +23,7 @@ from pathlib import Path
 
 from at_rest import SealedStore
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 COMMITMENT_KINDS = ("REQUEST_TO_USER", "PROMISE_BY_USER", "PROMISE_BY_OTHER", "DEPENDENCY", "FOLLOW_UP", "UNRESOLVED_OBLIGATION", "SUGGESTION", "HISTORICAL")
 FOLLOW_UP_TRIGGERS = ("OUTSTANDING_OWN_COMMITMENT", "OTHER_PARTY_PROMISE", "UNANSWERED_THREAD", "DUE_DATE_APPROACHING")
 EMAIL_RE = re.compile(r"^[^@\s<>]{1,64}@[^@\s<>]{1,255}\.[A-Za-z]{2,24}$")
@@ -104,6 +104,9 @@ class InboxStore:
             if 6 not in done:
                 conn.executescript(MIGRATION_6)
                 conn.execute("INSERT INTO schema_migrations VALUES (6, ?)", (time.time(),))
+            if 7 not in done:
+                conn.executescript(MIGRATION_7)
+                conn.execute("INSERT INTO schema_migrations VALUES (7, ?)", (time.time(),))
         finally:
             conn.close()
 
@@ -450,8 +453,9 @@ class InboxStore:
 
     # ---------- drafts, approvals and execution records (send path)
     def create_draft(self, user_id: str, workspace_id: str, thread_id: str, recipient: str, subject: str, body: str,
-                     cc: str = "", origin: str = "USER") -> dict:
-        """A new draft at version 1. The digest is computed here from the content, never supplied by a caller."""
+                     cc: str = "", origin: str = "USER", meta: dict | None = None) -> dict:
+        """A new draft at version 1. The digest is computed here from the content, never supplied by a caller.
+        meta (sources, missing information, assumptions) is sealed with the draft because it quotes email text."""
         recipient, cc, subject = (recipient or "").strip(), (cc or "").strip(), (subject or "").strip()
         if not EMAIL_RE.match(recipient):
             raise InboxError("recipient must be a single email address", 400)
@@ -465,10 +469,11 @@ class InboxStore:
             did = self._id("drf")
             digest = content_digest(thread_id, recipient, cc, subject, body)
             now = time.time()
-            db.execute("""INSERT INTO reply_drafts(id,user_id,workspace_id,thread_id,recipient,digest,subject_sealed,body_sealed,status,created_at,updated_at,cc,version)
-                          VALUES (?,?,?,?,?,?,?,?,'DRAFT',?,?,?,1)""",
+            db.execute("""INSERT INTO reply_drafts(id,user_id,workspace_id,thread_id,recipient,digest,subject_sealed,body_sealed,status,created_at,updated_at,cc,version,meta_sealed)
+                          VALUES (?,?,?,?,?,?,?,?,'DRAFT',?,?,?,1,?)""",
                        (did, user_id, workspace_id, thread_id, recipient[:200], digest, self._seal(subject, user_id, workspace_id, did),
-                        self._seal(body, user_id, workspace_id, did), now, now, cc[:500]))
+                        self._seal(body, user_id, workspace_id, did), now, now, cc[:500],
+                        self._seal(json.dumps(meta or {}, sort_keys=True), user_id, workspace_id, did + ":meta")))
             self._version(db, user_id, workspace_id, did, 1, digest, recipient, cc, subject, body, origin)
             self._audit(db, user_id, workspace_id, "draft.created", did, {"origin": origin})
         return {"id": did, "digest": digest, "version": 1}
@@ -721,6 +726,31 @@ class InboxStore:
                 out.append(r["id"])
         return out
 
+    # ---------- thread states chosen by the user (deferred, dismissed); they change what the brief shows, never the messages
+    def set_thread_state(self, user_id: str, workspace_id: str, thread_id: str, state: str, reason: str, until: float | None = None) -> dict:
+        if state not in ("DEFERRED", "DISMISSED", "OPEN"):
+            raise InboxError("unknown thread state", 400)
+        if state in ("DEFERRED", "DISMISSED") and not reason.strip():
+            raise InboxError("a reason is required", 400)
+        with self._lock, self._db() as db:
+            if db.execute("SELECT 1 FROM email_threads WHERE id=? AND user_id=? AND workspace_id=?", (thread_id, user_id, workspace_id)).fetchone() is None:
+                raise InboxError("thread not found", 404)
+            db.execute("""INSERT INTO thread_states(thread_id,user_id,workspace_id,state,reason_sealed,until_at,updated_at) VALUES (?,?,?,?,?,?,?)
+                          ON CONFLICT(thread_id) DO UPDATE SET state=excluded.state, reason_sealed=excluded.reason_sealed, until_at=excluded.until_at,
+                          updated_at=excluded.updated_at""",
+                       (thread_id, user_id, workspace_id, state, self._seal(reason, user_id, workspace_id, thread_id + ":state"), until, time.time()))
+            self._audit(db, user_id, workspace_id, "thread.state", thread_id, {"state": state})
+        return {"thread_id": thread_id, "state": state, "until": until}
+
+    def thread_states(self, user_id: str, workspace_id: str) -> dict:
+        with self._db() as db:
+            rows = db.execute("SELECT thread_id, state, until_at FROM thread_states WHERE user_id=? AND workspace_id=?", (user_id, workspace_id)).fetchall()
+        return {r["thread_id"]: {"state": r["state"], "until": r["until_at"]} for r in rows}
+
+    def count_messages(self, user_id: str, workspace_id: str) -> int:
+        with self._db() as db:
+            return db.execute("SELECT COUNT(*) FROM email_messages WHERE user_id=? AND workspace_id=?", (user_id, workspace_id)).fetchone()[0]
+
     def thread_by_provider_id(self, user_id: str, workspace_id: str, provider_thread_id: str) -> str | None:
         with self._db() as db:
             r = db.execute("SELECT id FROM email_threads WHERE user_id=? AND workspace_id=? AND provider_thread_id=?",
@@ -738,9 +768,12 @@ class InboxStore:
             r = db.execute("SELECT * FROM reply_drafts WHERE id=? AND user_id=? AND workspace_id=?", (draft_id, user_id, workspace_id)).fetchone()
         if r is None:
             raise InboxError("draft not found", 404)
+        meta = {}
+        if r["meta_sealed"]:
+            meta = json.loads(self._open(r["meta_sealed"], user_id, workspace_id, r["id"] + ":meta") or "{}")
         return {"id": r["id"], "thread_id": r["thread_id"], "recipient": r["recipient"], "cc": r["cc"] or "", "digest": r["digest"],
                 "status": r["status"], "version": r["version"], "provider_draft_id": r["provider_draft_id"],
-                "created_at": r["created_at"], "updated_at": r["updated_at"],
+                "created_at": r["created_at"], "updated_at": r["updated_at"], "meta": meta,
                 "subject": self._open(r["subject_sealed"], user_id, workspace_id, r["id"]), "body": self._open(r["body_sealed"], user_id, workspace_id, r["id"])}
 
     def approve(self, user_id: str, workspace_id: str, draft_id: str, presented_digest: str, operation: str, now: float, ttl_seconds: float = 900) -> dict:
@@ -834,7 +867,7 @@ class InboxStore:
         scope = ("user_id=?", (user_id,)) if workspace_id is None else ("user_id=? AND workspace_id=?", (user_id, workspace_id))
         n = 0
         with self._lock, self._db() as db:
-            for table in ("commitment_notes", "inbox_settings", "sim_outbox", "follow_ups", "sync_runs", "oauth_tokens", "commitment_status_history", "commitment_revisions",
+            for table in ("thread_states", "commitment_notes", "inbox_settings", "sim_outbox", "follow_ups", "sync_runs", "oauth_tokens", "commitment_status_history", "commitment_revisions",
                           "verification_records", "execution_records", "approvals", "draft_versions", "reply_drafts",
                           "corrections", "commitments", "email_messages", "email_threads", "voice_rules", "audit_events", "email_connections"):
                 try:
@@ -958,4 +991,11 @@ CREATE TABLE inbox_settings (
 CREATE TABLE commitment_notes (
   id TEXT PRIMARY KEY, commitment_id TEXT NOT NULL REFERENCES commitments(id) ON DELETE CASCADE, user_id TEXT NOT NULL,
   workspace_id TEXT NOT NULL, note_sealed BLOB NOT NULL, created_at REAL NOT NULL);
+"""
+
+MIGRATION_7 = """
+ALTER TABLE reply_drafts ADD COLUMN meta_sealed BLOB;
+CREATE TABLE thread_states (
+  thread_id TEXT PRIMARY KEY REFERENCES email_threads(id) ON DELETE CASCADE, user_id TEXT NOT NULL, workspace_id TEXT NOT NULL,
+  state TEXT NOT NULL, reason_sealed BLOB, until_at REAL, updated_at REAL NOT NULL);
 """

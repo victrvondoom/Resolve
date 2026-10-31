@@ -384,6 +384,20 @@ class InboxApiTests(unittest.TestCase):
         self.assertEqual(ex['state'], 'VERIFIED')
         self.assertTrue(any(t['result'] == 'VERIFIED' for t in ex['timeline']))
 
+    def test_thread_detail_returns_the_conversation_with_direction_and_linked_evidence(self):
+        self.connect()
+        self.google.add_inbound('m1', 't1', 'Priya <priya@partner.example>', 'Checklist', 'Could you send the checklist by Friday?', self.clock[0] - 120)
+        self.google.add_inbound('m2', 't1', f'Me <{ME}>', 'Re: Checklist', "Thanks. I'll send it by Wednesday.", self.clock[0] - 60, to='Priya <priya@partner.example>')
+        self.live_sync()
+        tid = self.store.list_threads('usr_a', 'ws_a')[0]['id']
+        st, out = self.call('GET', f'/api/inbox/threads/{tid}', self.a, query={'mode': ['LIVE']})
+        self.assertEqual(st, 200, out)
+        self.assertEqual([m['direction'] for m in out['messages']], ['INBOUND', 'OUTBOUND'])
+        self.assertEqual(out['messages'][1]['recipients'], 'Priya <priya@partner.example>')
+        ev = out['analysis']['evidence']
+        self.assertTrue(ev and ev[0]['message_id'], 'every evidence sentence is linked to its message')
+        self.assertTrue(all(c['source_message_id'] for c in out['analysis']['commitments']))
+
     # ---- tenant isolation
     def test_another_user_cannot_read_or_change_my_threads_commitments_or_drafts(self):
         tid, d = self.approved_draft()

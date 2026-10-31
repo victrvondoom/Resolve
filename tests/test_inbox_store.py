@@ -163,7 +163,7 @@ class InboxStoreTests(unittest.TestCase):
         again = InboxStore(Path(self.tmp.name) / 'inbox.sqlite3', self.sealer)
         conn = sqlite3.connect(Path(self.tmp.name) / 'inbox.sqlite3')
         try:
-            self.assertEqual([r[0] for r in conn.execute('SELECT version FROM schema_migrations')], [1, 2, 3, 4, 5, 6])
+            self.assertEqual([r[0] for r in conn.execute('SELECT version FROM schema_migrations')], [1, 2, 3, 4, 5, 6, 7])
         finally:
             conn.close()
 

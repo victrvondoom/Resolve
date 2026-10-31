@@ -100,7 +100,11 @@ def morning_brief(store, user_id: str, workspace_id: str, *, user_address: str, 
         c["timing"] = _timing(c["deadline_at"], now, tz_name) if c["status"] in OPEN_STATUSES else None
     triage = store.list_triage(user_id, workspace_id)
     rows = []
+    states = store.thread_states(user_id, workspace_id)
     for t in triage:
+        st = states.get(t["thread_id"])
+        if st and (st["state"] == "DISMISSED" or (st["state"] == "DEFERRED" and st["until"] and st["until"] > now)):
+            continue                                       # the user dismissed it or deferred it; the messages are untouched
         msgs = _thread_messages(store, user_id, workspace_id, t["thread_id"])
         if not msgs:
             continue
