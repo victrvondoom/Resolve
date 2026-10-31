@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resolve.local/schemas/resolve-mcp/proofpack.schema.json",
+  "title": "RESOLVE ProofPack",
+  "description": "Evidence chain for one external-agent operation. Every value must come from a real RESOLVE observation, a real gateway decision, or a RESOLVE backend receipt. A ProofPack is never model-generated text.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "operation_id", "environment", "status", "request", "intent", "observation",
+    "target", "authorization", "execution", "verification", "evidence", "notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "resolve-proofpack/1"},
+    "operation_id": {"type": "string", "pattern": "^op_[a-f0-9]{24}$"},
+    "environment": {"enum": ["CLOUD_BROWSER", "LOCAL_DESKTOP", "UNSPECIFIED"]},
+    "status": {"enum": ["PROPOSED", "AWAITING_APPROVAL", "AUTHORIZED", "EXECUTING", "VERIFIED", "FAILED", "UNCERTAIN", "BLOCKED", "CANCELLED", "STALE"]},
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "task_digest", "task_length"],
+      "properties": {
+        "source": {"const": "external_mcp_client"},
+        "task_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "task_length": {"type": "integer", "minimum": 1, "maximum": 2000}
+      }
+    },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "source", "user_approved"],
+      "properties": {
+        "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "source": {"enum": ["external_agent_request", "authenticated_user"]},
+        "user_approved": {"type": "boolean"}
+      }
+    },
+    "observation": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["snapshot_id", "captured_at", "source", "frame_sha256", "uia_snapshot_sha256"],
+      "properties": {
+        "snapshot_id": {"type": "string", "pattern": "^(obs|uia)_[a-f0-9]{24}$"},
+        "captured_at": {"type": "string", "maxLength": 40},
+        "source": {"const": "RESOLVE_BACKEND"},
+        "frame_sha256": {"type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$"},
+        "uia_snapshot_sha256": {"type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "target": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["application", "identity", "fingerprint"],
+      "properties": {
+        "application": {"type": "string", "maxLength": 120},
+        "identity": {"type": "string", "pattern": "^tgt_[a-f0-9]{24}$"},
+        "fingerprint": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "approval_id", "checked_via"],
+      "properties": {
+        "decision": {"enum": ["NOT_EVALUATED", "PENDING", "ALLOWED", "DENIED"]},
+        "approval_id": {"type": ["string", "null"], "maxLength": 80},
+        "checked_via": {"enum": ["NONE", "RESOLVE_BACKEND"]}
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action_id", "method", "route", "started_at", "finished_at"],
+      "properties": {
+        "action_id": {"type": ["string", "null"], "maxLength": 80},
+        "method": {"enum": ["NONE", "UIA", "CLOUD_BROWSER"]},
+        "route": {"enum": ["NOT_REQUESTED", "UNAVAILABLE", "RESOLVE_BACKEND"]},
+        "started_at": {"type": ["string", "null"], "maxLength": 40},
+        "finished_at": {"type": ["string", "null"], "maxLength": 40}
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "method", "post_observation_id"],
+      "properties": {
+        "status": {"enum": ["NOT_RUN", "VERIFIED", "FAILED", "UNCERTAIN"]},
+        "method": {"enum": ["none", "independent_observation"]},
+        "post_observation_id": {"type": ["string", "null"], "maxLength": 80}
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {"type": "string", "maxLength": 120}
+    },
+    "generated_by": {"type": "string", "pattern": "^resolve-mcp/[0-9.]+$", "maxLength": 40},
+    "generated_at": {"type": "string", "maxLength": 40},
+    "notes": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {"enum": [
+        "NO_RESOLVE_APPROVAL_RECORD", "EXECUTION_ROUTE_UNAVAILABLE", "OBSERVATION_STALE", "TARGET_NOT_IN_OBSERVATION",
+        "INTENT_DIGEST_MISMATCH", "PROPOSAL_ONLY", "EXECUTION_NOT_REQUESTED", "BACKEND_RECEIPT_ATTACHED"
+      ]}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "VERIFIED"}}, "required": ["status"]},
+      "then": {
+        "properties": {
+          "verification": {"properties": {"status": {"const": "VERIFIED"}, "method": {"const": "independent_observation"}}, "required": ["status"]},
+          "execution": {"properties": {"route": {"const": "RESOLVE_BACKEND"}}},
+          "authorization": {"properties": {"decision": {"const": "ALLOWED"}, "checked_via": {"const": "RESOLVE_BACKEND"}}}
+        },
+        "required": ["observation", "target"]
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "AWAITING_APPROVAL"}}, "required": ["status"]},
+      "then": {"properties": {"authorization": {"properties": {"decision": {"enum": ["NOT_EVALUATED", "PENDING"]}}}}}
+    }
+  ]
+}

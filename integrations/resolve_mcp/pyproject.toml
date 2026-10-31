@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "resolve-mcp"
+version = "0.1.0"
+description = "Proof-carrying MCP gateway for the RESOLVE computer-action service (adapter only; RESOLVE keeps authority)."
+readme = "README.md"
+requires-python = ">=3.10"
+# Pinned to the v1 line of the official MCP Python SDK. The v2 line renamed FastMCP and changed
+# the server API, so this package does not accept it until it is ported and re-tested.
+dependencies = [
+    "mcp>=1.30.0,<2",
+    "jsonschema>=4.17,<5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+# Only needed for the optional real-Chromium observation test (see README). Pin to the
+# Playwright build that matches the browser installed on the host.
+browser = ["playwright==1.63.0"]
+
+[project.scripts]
+resolve-mcp = "resolve_mcp.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+resolve_mcp = ["schemas/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

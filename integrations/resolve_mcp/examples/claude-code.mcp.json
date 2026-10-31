@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "resolve": {
+      "type": "stdio",
+      "command": "resolve-mcp",
+      "args": ["serve"],
+      "env": {
+        "RESOLVE_MCP_BASE_URL": "http://127.0.0.1:8765",
+        "RESOLVE_MCP_TOKEN_FILE": "/absolute/path/to/private/resolve-token"
+      }
+    }
+  }
+}
