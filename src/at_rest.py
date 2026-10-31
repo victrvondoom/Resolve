@@ -104,6 +104,14 @@ class SealedStore:
         except InvalidTag as exc:
             raise SealError("decryption failed: wrong key, wrong workspace, wrong record, or tampered data") from exc
 
+    def blind_index(self, user_id: str, workspace_id: str, text: str) -> str:
+        """Keyed, tenant-scoped index for matching without storing plaintext: HMAC-SHA256 under a derived blind-index key.
+        Equal inputs in the same tenant give equal indexes; the database alone cannot be used to guess the input."""
+        import hmac
+        info = b"resolve-blind-index|" + user_id.encode() + b"|" + workspace_id.encode()
+        key = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=info).derive(self._keys[CURRENT_KEY_ID])
+        return hmac.new(key, text.encode("utf-8"), hashlib.sha256).hexdigest()
+
     @staticmethod
     def is_sealed(blob: bytes) -> bool:
         return blob.startswith(MAGIC)

@@ -1,12 +1,126 @@
 <p align="center">
+  <img src="docs/readme/no-hands-challenge.png" alt="No Hands: The Wispr Challenge. WeMakeDevs × Wispr Flow" width="62%">
+</p>
+
+<p align="center">
   <img src="docs/readme/intro.gif" alt="RESOLVE intro video: two sculpted blocks enter from opposite sides, assemble, and reveal RESOLVE, Wispr &amp; Solve, the Wispr Flow mark and the WeMakeDevs challenge" width="86%">
   <br>
   <a href="docs/readme/intro.mp4">
 
 <h1 align="center">RESOLVE</h1>
-<p align="center"><b>Speak. Direct. Resolve.</b><br>Your personal AI cloud computer. You say what you want; it does the work and shows you proof.</p>
+<p align="center"><b>RESOLVE — Inbox-to-Commitment Operator</b><br><i>FROM INBOX NOISE TO VERIFIED FOLLOW-THROUGH.</i></p>
 
 ---
+
+## Who it is for and what problem it solves
+
+**Who:** independent developers, indie founders and small technical teams who run their work through email.
+
+**Problem:** important email quietly creates obligations. Someone asks you for a deliverable by a time. You promise something in a reply and forget it. A colleague promises you a file and never sends it. Inbox tools show messages; they do not track who owes what, by when, and whether it actually happened.
+
+**Promise:** RESOLVE turns the conversation into an obligation, shows you what needs a decision, prepares a reply you can review, and sends only the exact text you approved. It reads the sent message back from Gmail and records only what it could verify.
+
+## What is built
+
+1. **Morning inbox.** The default screen. Summary cards and sections (needs attention, replies to send, what you promised, what you are waiting for, upcoming and overdue, drafts to review, recently resolved), all computed from stored records.
+2. **Inbox intelligence.** Complete-thread triage with the sentence that caused each decision, linked to its message. Vague deadlines are flagged, not invented. Automated notices create no commitments.
+3. **Commitment ledger.** Requests to you, your promises, and promises made to you are kept separate. Each has an owner, a requester, a deadline in your timezone, its exact source sentence, revisions, and a validated status. Verified completion and your own confirmation are recorded differently.
+4. **Wispr Flow-ready voice workflow.** A Voice Rules page with a large instruction field. Wispr Flow (or any dictation tool) types into ordinary text fields; RESOLVE receives the text, shows a rule preview, activates only what you approve, and applies corrections with before, after and impact. RESOLVE has no Wispr Flow integration and does not claim one.
+5. **Drafting and approval.** Replies are prepared from the thread and from facts you supply; anything missing is listed, not invented. Approval applies to the exact recipient, subject, body and digest, is single-use, and expires after 15 minutes. Any edit invalidates it.
+6. **Verified execution.** A send is confirmed only when the stored message is read back and matches the approved content. A timeout is UNCERTAIN, shown as not successful, and reconciled read-only; nothing is resent automatically.
+7. **Replay mode.** A labelled synthetic morning (12 threads, 16 messages) runs through the same code as the live mailbox. Sends are simulated and labelled as such.
+
+## Screens
+
+| | |
+|---|---|
+| ![Morning brief after replay](docs/screenshots/inbox/01_morning_brief_replay.png) | ![Inbox](docs/screenshots/inbox/02_inbox_replay.png) |
+| Morning brief (synthetic data) | Inbox with filters (synthetic data) |
+| ![Commitments](docs/screenshots/inbox/04_commitments_replay.png) | ![Voice rules preview](docs/screenshots/inbox/06_voice_rules_preview.png) |
+| Commitment ledger (synthetic data) | Voice rules: parsed preview (synthetic data) |
+| ![Draft editor](docs/screenshots/inbox/07_draft_editor_replay.png) | ![Exact approval](docs/screenshots/inbox/08_approval_exact_content_replay.png) |
+| Draft editor with grounding (synthetic data) | Exact-content approval (synthetic data) |
+| ![Replay lab](docs/screenshots/inbox/09_replay_lab.png) | ![Simulated send and timeline](docs/screenshots/inbox/10_simulated_send_and_timeline.png) |
+| Replay lab (synthetic data) | After a simulated send (synthetic data) |
+
+All screenshots were captured from the running app by `python scripts/capture_inbox_screens.py` using REPLAY data only. Each screen is labelled synthetic.
+
+## Gmail architecture
+
+- OAuth 2.0 authorization code flow with PKCE (S256). The verifier stays on the server. State is single-use, expires in 10 minutes, and is bound to the user who started it.
+- Read-only by default (`gmail.readonly`). `gmail.compose` (drafts) and `gmail.send` are requested only when you enable them.
+- Tokens are sealed at rest and never returned by any route. Revocation and rate limits are shown as states, never as success.
+- The Gmail adapter is the only code that performs provider HTTP. It is injected, so every test uses a recorded or scripted transport.
+
+## Security
+
+- Email text is untrusted data, sealed at rest with per-tenant keys. Instruction-like sentences are excluded from obligations and routed to human review.
+- Tenant isolation on every store call; cross-user and cross-workspace access returns 404.
+- Approval is bound to the exact digest, single-use, expiring, and refused after any change.
+- Outgoing messages contain only the approved text. Correlation uses an RFC 822 Message-ID header, never a marker in the body.
+- Duplicate-send protection is mutation-tested: removing both protections makes the same approved content send twice.
+- Model output is never trusted with permissions; no model is configured in this build.
+
+Details: `docs/INBOX_SECURITY.md`. Known limitations are listed there. The database file is not fully encrypted; only sensitive content fields are sealed.
+
+## Replay mode
+
+No credentials needed. **Replay lab → Start → Step**. Every synthetic message is labelled, uses the reserved test domain `replay.example.test`, and is stored only in a separate replay workspace. Reset removes replay data only.
+
+## Benchmarks
+
+Measured on labelled fixtures in this repository, not on real inboxes. See `docs/INBOX_BENCHMARK_REPORT.md` (generated by `python benchmarks/inbox_metrics.py`).
+
+- Classification: 9 of 12 earlier fixtures fully passing (the three failures are kept visible, not tuned away). 31 of 32 new scenarios classified correctly, written before scoring; the one miss (V32) is a label we consider wrong on review and kept as written; see the report.
+- Owners: 100% of matched commitments. Ambiguous deadlines flagged: 2 of 2. Re-processing the same thread creates no new commitments.
+- Send path (simulation with a scripted provider double): no false successes and no duplicate sends in six scenarios.
+- **Not measured:** live Gmail, and any model-assisted path (none configured).
+
+## Setup
+
+```bash
+python -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt
+python src/resolve_app.py        # open http://127.0.0.1:8765/app
+```
+
+Replay works immediately. For live Gmail, see `docs/INBOX_OPERATOR_SETUP.md` (three OAuth variables and an authorized test account).
+
+## Configuration
+
+| Variable | Purpose |
+|---|---|
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI` | Live Gmail. Without them the app shows GMAIL NOT CONFIGURED |
+| `RESOLVE_MASTER_KEY` | Encryption key. Required in production |
+| `RESOLVE_INBOX_DB` | Inbox database path (default `data/inbox.sqlite3`) |
+| `RESOLVE_PUBLIC_BASE` | Base URL for OAuth redirects |
+
+Set your timezone in Privacy & settings. Until you do, the app says UTC is in use.
+
+## Known limitations
+
+- **Live Gmail is not verified** in this repository. Google's handling of the Message-ID correlation and of `rfc822msgid:` search must be confirmed with a test account; if it differs, read-back fails closed.
+- **No model is configured.** The engine is RULES_ONLY and is labelled as such. Model-assisted understanding and drafting are not implemented.
+- **Wispr Flow was not run here.** The dictation workflow is designed for ordinary text fields; the demonstration recording is user-owned (`docs/WISPR_DEMO_SCRIPT.md`).
+- Follow-ups are recorded but not delivered. The unread filter is not offered. Pending OAuth state is in memory.
+- Instruction detection is a phrase list and is not a security boundary.
+- **Demo video:** there is no operator video yet. The intro video below was made for an earlier landing page and is kept for reference.
+
+## Demo video
+
+No operator demonstration video has been produced. The original intro (earlier landing page): [▶ Watch the intro video (MP4)](docs/readme/intro.mp4).
+
+## Documentation
+
+- `docs/INBOX_OPERATOR_DEMO.md` — walk-through
+- `docs/INBOX_API.md` — routes
+- `docs/INBOX_SECURITY.md` — security model and limitations
+- `docs/INBOX_OPERATOR_SETUP.md` — setup and Gmail configuration
+- `docs/WISPR_DEMO_SCRIPT.md` — dictation demonstration (user-owned recording)
+- `docs/INBOX_BENCHMARK_REPORT.md` — measured results
+- `docs/INBOX_OPERATOR_TRACKER.md` — what is done, partial, blocked
+
+<details>
+<summary>Earlier product description (secondary: the personal AI cloud computer and Windows-first automation)</summary>
 
 ## Start here (60 seconds)
 
@@ -325,5 +439,8 @@ Wispr Flow is used by the developer to dictate prompts and documentation. RESOLV
 RESOLVE
 
 *README marker added by **Codex**.*
+
+</details>
+
 
 </details>

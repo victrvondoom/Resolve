@@ -6,7 +6,7 @@
 <link rel="icon" href="/static/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/app.css">
 <link rel="stylesheet" href="/static/cream.css">
-<link rel="stylesheet" href="/static/bubble.css">
+
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -34,20 +34,31 @@
 <div id="statusStrip" class="status-strip" role="region" tabindex="0" aria-label="Runtime capabilities"><span class="chip chip-muted">Loading runtime status…</span></div>
 
 <div class="shell" id="dashboard">
-  <nav class="sidebar" aria-label="Mission Control sections">
-    <ul class="nav-main">
+  <nav class="sidebar" aria-label="RESOLVE sections">
+    <p class="nav-label" id="navInboxLabel">Inbox operator</p>
+    <ul class="nav-main" aria-labelledby="navInboxLabel">
+      <li><a href="#morning" data-view="morning"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 18 0M12 3v2M5.6 5.6l1.4 1.4M18.4 5.6l-1.4 1.4M2 17h20"/></svg>Morning brief</a></li>
+      <li><a href="#inbox" data-view="inbox"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 14h5l2 3h4l2-3h5"/></svg>Inbox</a></li>
+      <li><a href="#commitments" data-view="commitments"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Commitments</a></li>
+      <li><a href="#drafts" data-view="drafts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H7l-3 3z"/><path d="M8 9h8M8 12h5"/></svg>Drafts</a></li>
+      <li><a href="#activity" data-view="activity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l3-7 3 14 3-7h3"/></svg>Activity</a></li>
+      <li><a href="#rules" data-view="rules"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voice rules</a></li>
+    </ul>
+    <p class="nav-label" id="navAccountLabel">Account</p>
+    <ul class="nav-main" aria-labelledby="navAccountLabel">
+      <li><a href="#connections" data-view="connections"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M11 18H8a2 2 0 0 1-2-2V9"/></svg>Connections</a></li>
+      <li><a href="#settings" data-view="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Privacy &amp; settings</a></li>
+      <li><a href="#replay" data-view="replay"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>Replay lab</a></li>
+    </ul>
+    <details class="nav-more">
+      <summary>Advanced tools <span class="nav-count">15</span></summary>
+      <ul class="nav-sub">
       <li><a href="#view-flagship" data-view="flagship"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.8 5.5 21l2-7.5L2 9h7z"/></svg>Flagship mission</a></li>
       <li><a href="#view-cloud" data-view="cloud"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Cloud computer</a></li>
       <li><a href="#view-skills" data-view="skills"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/></svg>Skills</a></li>
       <li><a href="#view-documents" data-view="documents"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l5 5v15H6zM14 2v5h5M9 12h7M9 16h7"/></svg>Documents &amp; print</a></li>
       <li><a href="#view-evidence" data-view="evidence"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Evidence &amp; receipts</a></li>
-      <li><a href="#view-privacy" data-view="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Privacy &amp; data</a></li>
-    </ul>
-    <details class="nav-more">
-      <summary>More tools <span class="nav-count">9</span></summary>
-      <ul class="nav-sub">
-      <li><a href="#view-mission" data-view="mission"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l3-7 3 14 3-7h3"/></svg>Browser mission</a></li>
-      <li><a href="#view-connectors" data-view="connectors"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M11 18H8a2 2 0 0 1-2-2V9"/></svg>Connected apps</a></li>
+      <li><a href="#view-privacy" data-view="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Privacy &amp; data (developer)</a></li>
       <li><a href="#view-approvals" data-view="approvals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Approval inbox <span id="approvalBadge" class="chip chip-warn small" style="margin-left:auto;display:none;padding:1px 6px;">0</span></a></li>
       <li><a href="#view-agents" data-view="agents"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 8l3.5 8M16.5 8L13 16"/></svg>Agents</a></li>
       <li><a href="#view-files" data-view="files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11H3z"/></svg>Files sandbox</a></li>
@@ -61,6 +72,56 @@
   </nav>
 
   <main id="main" tabindex="-1">
+    <!-- ============ INBOX OPERATOR (primary product) ============ -->
+    <section class="view ib-view" id="view-morning" data-view="morning" aria-labelledby="h-morning" hidden>
+      <div class="view-head ib-head"><div><p class="eyebrow" id="morningEyebrow">Morning brief</p><h1 id="h-morning">Your morning inbox</h1><p class="muted" id="morningSub">Loading your inbox…</p></div><div class="ib-tools" data-ib-tools></div></div>
+      <div data-ib-body="morning" aria-live="polite"></div>
+    </section>
+    <section class="view ib-view" id="view-inbox" data-view="inbox" aria-labelledby="h-inbox2" hidden>
+      <div class="view-head ib-head"><div><p class="eyebrow">Inbox</p><h1 id="h-inbox2">Conversations</h1><p class="muted">Every thread with its classification, the reason, and any obligations found in it.</p></div><div class="ib-tools" data-ib-tools></div></div>
+      <div data-ib-body="inbox" aria-live="polite"></div>
+    </section>
+    <section class="view ib-view" id="view-thread" data-view="thread" aria-labelledby="h-thread" hidden>
+      <div class="view-head ib-head"><div><p class="eyebrow"><a href="#inbox" data-ib="nav" data-route="#inbox">← Back to inbox</a></p><h1 id="h-thread">Conversation</h1></div><div class="ib-tools" data-ib-tools></div></div>
+      <div data-ib-body="thread" aria-live="polite"></div>
+    </section>
+    <section class="view ib-view" id="view-commitments" data-view="commitments" aria-labelledby="h-commitments" hidden>
+      <div class="view-head ib-head"><div><p class="eyebrow">Follow-through ledger</p><h1 id="h-commitments">Commitments</h1><p class="muted">Requests to you, your promises, and promises others made to you. Each keeps its owner, source and deadline.</p></div><div class="ib-tools" data-ib-tools></div></div>
+      <div data-ib-body="commitments" aria-live="polite"></div>
+    </section>
+    <section class="view ib-view" id="view-commitment" data-view="commitment" aria-labelledby="h-commitment" hidden>
+      <div class="view-head ib-head"><div><p class="eyebrow"><a href="#commitments" data-ib="nav" data-route="#commitments">← Back to commitments</a></p><h1 id="h-commitment">Commitment</h1></div><div class="ib-tools" data-ib-tools></div></div>
+      <div data-ib-body="commitment" aria-live="polite"></div>
+    </section>
+    <section class="view ib-view" id="view-drafts" data-view="drafts" aria-labelledby="h-drafts" hidden>
+      <div class="view-head ib-head"><div><p class="eyebrow">Reply review</p><h1 id="h-drafts">Drafts</h1><p class="muted">Prepared replies. Nothing is sent until you approve the exact text shown.</p></div><div class="ib-tools" data-ib-tools></div></div>
+      <div data-ib-body="drafts" aria-live="polite"></div>
+    </section>
+    <section class="view ib-view" id="view-draft" data-view="draft" aria-labelledby="h-draft" hidden>
+      <div class="view-head ib-head"><div><p class="eyebrow"><a href="#drafts" data-ib="nav" data-route="#drafts">← Back to drafts</a></p><h1 id="h-draft">Draft</h1></div><div class="ib-tools" data-ib-tools></div></div>
+      <div data-ib-body="draft" aria-live="polite"></div>
+    </section>
+    <section class="view ib-view" id="view-activity" data-view="activity" aria-labelledby="h-activity" hidden>
+      <div class="view-head ib-head"><div><p class="eyebrow">Audit trail</p><h1 id="h-activity">Activity</h1><p class="muted">Identifiers and statuses only. Message bodies never appear here.</p></div><div class="ib-tools" data-ib-tools></div></div>
+      <div data-ib-body="activity" aria-live="polite"></div>
+    </section>
+    <section class="view ib-view" id="view-rules" data-view="rules" aria-labelledby="h-rules" hidden>
+      <div class="view-head ib-head"><div><p class="eyebrow">Voice rules</p><h1 id="h-rules">Tell RESOLVE how to handle your inbox</h1><p class="muted">Tell RESOLVE how you want your inbox handled. Use Wispr Flow to dictate naturally into the instruction field, review the parsed rules, and activate only what you approve.</p></div></div>
+      <div data-ib-body="rules" aria-live="polite"></div>
+    </section>
+    <section class="view ib-view" id="view-connections" data-view="connections" aria-labelledby="h-connections" hidden>
+      <div class="view-head ib-head"><div><p class="eyebrow">Connections</p><h1 id="h-connections">Gmail</h1><p class="muted">RESOLVE reads your mail with read-only access. Drafting and sending need separate permissions that you enable here.</p></div></div>
+      <div data-ib-body="connections" aria-live="polite"></div>
+    </section>
+    <section class="view ib-view" id="view-settings" data-view="settings" aria-labelledby="h-settings" hidden>
+      <div class="view-head ib-head"><div><p class="eyebrow">Privacy &amp; settings</p><h1 id="h-settings">Settings</h1><p class="muted">Your timezone decides when deadlines fall. Export or delete your data here.</p></div></div>
+      <div data-ib-body="settings" aria-live="polite"></div>
+    </section>
+    <section class="view ib-view" id="view-replay" data-view="replay" aria-labelledby="h-replay" hidden>
+      <div class="view-head ib-head"><div><p class="eyebrow">Replay lab · synthetic data</p><h1 id="h-replay">Replay a synthetic morning</h1><p class="muted">A labelled dataset runs through the same sync, triage, commitment and send code as your live mailbox. Sends are simulated and never reach Gmail.</p></div></div>
+      <div data-ib-body="replay" aria-live="polite"></div>
+    </section>
+
     <!-- ============ FLAGSHIP: BRIEF -> VERIFIED PDF ============ -->
     <section class="view" id="view-flagship" data-view="flagship" aria-labelledby="h-flagship" hidden>
       <div class="view-head"><div><h1 id="h-flagship">Flagship mission</h1>
@@ -624,5 +685,6 @@
 <script src="/static/icon3d.js"></script>
 <script src="/static/flagship.js"></script>
 <script src="/static/app.js"></script>
+<script src="/static/inbox.js"></script>
 </body>
 </html>

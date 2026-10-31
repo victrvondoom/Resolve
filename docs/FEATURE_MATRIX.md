@@ -24,3 +24,23 @@
 | External email/CRM | Not implemented | No external communication; simulator only |
 | Local semantic skill | Implemented for simulator | Confirmed action compiles to versioned skill; explicit digest activation; replay re-resolves entities and prepares a fresh approval-bound draft |
 | Broad workspace adapters | Not implemented | Registry metadata is a PLANNED capability catalog only |
+
+## Inbox-to-Commitment Operator (primary product)
+
+| Capability | Status | Evidence and boundary |
+|---|---|---|
+| Morning inbox computed from stored records | Implemented | `src/inbox_service.py`, `web/static/inbox.js`; browser tests in `tests/test_inbox_ui.py` |
+| Gmail read-only sync with recorded runs and failure states | Implemented (recorded responses only) | `src/gmail_adapter.py`, `src/inbox_api.py`; live account NOT VERIFIED (BLOCKED) |
+| Complete-thread triage with evidence sentences | Implemented, rules engine | `src/inbox_intel.py`; 12 v1 fixtures (9 fully passing) and 32 v2 scenarios; see `docs/INBOX_BENCHMARK_REPORT.md` |
+| Commitments with owners, requesters, deadlines, revisions, validated statuses | Implemented | `src/inbox_store.py`; `tests/test_inbox_api.py` |
+| Timezone-aware deadlines with clock times | Implemented | `resolve_deadline_detail`; timezone from user settings |
+| Corrections with before, after and impact; one-time and persistent scopes | Implemented | `POST /api/inbox/threads/{id}/corrections` |
+| Voice rules: parse preview, confirmation, conflicts, unknown rules inactive | Implemented | `src/voice_policy.py`, `/api/inbox/rules*`; Wispr Flow not integrated (text field only) |
+| Draft preparation from the thread, facts only | Implemented, rules engine | `draft_reply`; no model |
+| Exact-content approval, single use, digest-bound | Implemented | `src/inbox_store.py`, `src/send_broker.py`; mutation-tested duplicate protection |
+| Send verification by read-back, UNCERTAIN on timeout, read-only reconciliation | Implemented (scripted provider double) | `tests/test_send_broker.py`; live Gmail BLOCKED |
+| Replay lab with a synthetic 12-thread dataset through the same pipeline | Implemented | `src/inbox_replay.py`; sends SIMULATED |
+| Model-assisted understanding and drafting | NOT DONE | No provider interface; engine reported as RULES_ONLY. MODEL_ENABLED BLOCKED (no key) |
+| Wispr Flow integration | Not claimed | Dictation into ordinary text fields only; user recording required (`docs/WISPR_DEMO_SCRIPT.md`) |
+| Follow-up reminders delivered | NOT DONE | Follow-ups are recorded with a trigger and a target; nothing is delivered |
+

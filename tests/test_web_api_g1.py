@@ -39,7 +39,8 @@ class Server:
             RESOLVE_SANDBOXES_DIR=str(Path(self.tmp) / 'sandboxes'),
             RESOLVE_SANDBOXES_DB=str(Path(self.tmp) / 'sandboxes.sqlite3'),
             RESOLVE_CONNECTORS_DB=str(Path(self.tmp) / 'connectors.sqlite3'),
-            RESOLVE_DOCUMENTS_DIR=str(Path(self.tmp) / 'documents')
+            RESOLVE_DOCUMENTS_DIR=str(Path(self.tmp) / 'documents'),
+            RESOLVE_INBOX_DB=str(Path(self.tmp) / 'inbox.sqlite3')
         )
         self.proc = subprocess.Popen([sys.executable, str(ROOT / 'src' / 'resolve_app.py')], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         for _ in range(100):

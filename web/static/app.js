@@ -44,7 +44,8 @@ function setMsg(el, text, kind) { el.textContent = text; el.classList.toggle('er
 const views = [...document.querySelectorAll('section.view')];
 const navLinks = [...document.querySelectorAll('.sidebar a[data-view]')];
 function showView(name, focus) {
-  if (!views.some(v => v.dataset.view === name)) name = 'flagship';
+  name = String(name || '').split(':')[0];                 // deep links carry an id after a colon: #thread:<id>
+  if (!views.some(v => v.dataset.view === name)) name = 'morning';
   views.forEach(v => { v.hidden = v.dataset.view !== name; });
   navLinks.forEach(a => { if (a.dataset.view === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   if (focus) { const h = document.querySelector(`#view-${name} h1`); if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); } window.scrollTo(0, 0); }
@@ -52,7 +53,7 @@ function showView(name, focus) {
 }
 navLinks.forEach(a => a.addEventListener('click', ev => { ev.preventDefault(); history.replaceState(null, '', '#' + a.dataset.view); showView(a.dataset.view, true); }));
 window.addEventListener('hashchange', () => showView(location.hash.slice(1), true));
-showView(location.hash.slice(1) || 'flagship', false);
+showView(location.hash.slice(1) || 'morning', false);
 
 /* ---------------- desktop simulator (existing flow) ---------------- */
 function render() {
