@@ -1,33 +1,45 @@
-/* RESOLVE brand theme, taken from the No Hands challenge banner (web/static/brand/no-hands-challenge.png).
-   Loaded last, so it overrides the earlier cream/sage tokens. Typography: a heavy geometric sans for headings and a
-   serif italic for subtitles (as in the banner). Only locally installed fonts are named, because the content security
-   policy forbids loading font files from elsewhere. */
+/* RESOLVE frontend theme. Palette sampled from the reference screenshot (cream #FFFFEB, lavender #F0D7FF, ink #1A1A1A).
+   Display type: a regular-weight serif with italic emphasis. Body: a clean sans. Only installed local font stacks are
+   named (the content security policy forbids loading font files from elsewhere). RESOLVE's name and content are unchanged. */
 :root{
   color-scheme:light;
-  --bg:#F0D7FE;            /* banner background */
-  --bg-alt:#EAC9FB;
-  --surface:#FAF0FF;       /* lighter panels on the banner colour */
-  --surface-2:#F3E2FD;
-  --panel:#FAF0FF;--panel-2:#F7EAFE;--inset:#EFD9FB;--panel-solid:#FAF0FF;
-  --line:#D6B8EC;--line-2:#C3A0E0;
-  --text:#1A1B18;          /* banner ink */
-  --muted:#4F4358;--faint:#6B5F74;
-  --accent:#1A1B18;--accent-2:#7B3FBF;
-  --font-display:"Inter Display","Inter","Helvetica Neue",Arial,"Segoe UI",sans-serif;
+  --bg:#FFFFEB;             /* cream page */
+  --bg-alt:#FBFBE3;
+  --surface:#FFFFF6;        /* cards on cream */
+  --surface-2:#FAFAEA;
+  --panel:#FFFFF6;--panel-2:#FBFBEE;--inset:#F5F5E2;--panel-solid:#FFFFF6;
+  --line:#E4E2CF;--line-2:#D4D1B8;
+  --text:#1A1A1A;
+  --muted:#5C5B52;--faint:#7A786C;
+  --lav:#F0D7FF;            /* primary button / highlight */
+  --lav-2:#E3BDFA;
+  --accent:#1A1A1A;--accent-2:#8A4FC4;
+  --font-display:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,"Times New Roman",serif;
   --font-body:"Inter","Helvetica Neue",Arial,"Segoe UI",system-ui,sans-serif;
-  --font-serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+  --font-serif:var(--font-display);
 }
-body{background:radial-gradient(900px 480px at 85% -10%,#FBF3FF 0%,transparent 60%),var(--bg);color:var(--text);font-family:var(--font-body)}
-h1,h2,h3,.hero h1,.card-head h2{font-family:var(--font-display);font-weight:900;letter-spacing:-.035em;color:var(--text)}
-h1{font-size:clamp(40px,7vw,84px);line-height:.98}
-h2{font-size:clamp(24px,3vw,34px);line-height:1.08}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:15.5px;line-height:1.55}
+h1,h2,h3,.hero h1,.card-head h2{font-family:var(--font-display);font-weight:400;letter-spacing:-.02em;color:var(--text)}
+h1{font-size:clamp(44px,6.4vw,84px);line-height:1.02}
+h2{font-size:clamp(26px,3vw,38px);line-height:1.1}
+h3{font-size:20px;line-height:1.25}
+em,.serif-sub,.intro-brandline{font-family:var(--font-serif);font-style:italic;font-weight:400}
 .lede,.view-head p,.muted{color:var(--muted)}
-.serif-sub,.intro-brandline{font-family:var(--font-serif);font-style:italic;font-weight:400;letter-spacing:0;text-transform:none;color:var(--text)}
-.card,.hero-card,.fm-steps li,.fm-hist button,.fm-nodes li{background:var(--surface);border-color:var(--line)}
-.btn-primary,.btn-primary:hover{background:var(--text);color:#FAF0FF;border-color:var(--text)}
-.btn:hover:not(:disabled){border-color:var(--accent-2)}
-.chip{background:#EFD9FB;color:var(--text)}
-.brand-banner{display:block;width:100%;max-width:760px;height:auto;margin:0 auto;border-radius:18px;box-shadow:0 30px 60px -36px rgba(60,20,90,.45)}
+.card,.hero-card,.fm-steps li,.fm-hist button,.fm-nodes li,.fm-assure-box,.fm-timeline li{background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 0 rgba(255,255,255,.7) inset,0 10px 26px -22px rgba(60,50,20,.35)}
+.btn{background:var(--surface);color:var(--text);border:1.5px solid var(--text);border-radius:999px;padding:9px 18px;font-weight:500;box-shadow:none}
+.btn:hover:not(:disabled){background:var(--lav);border-color:var(--text)}
+.btn-primary,.btn-primary:hover{background:var(--lav);color:var(--text);border:1.5px solid var(--text)}
+.btn-primary:hover:not(:disabled){background:var(--lav-2)}
+.btn-ghost{background:transparent;border-color:var(--line-2)}
+.btn-danger{background:#FFEDEA;border-color:#8C2A16;color:#8C2A16}
+.chip{background:var(--lav);color:var(--text);border:1px solid var(--text)}
+.sidebar{background:var(--bg)}
+.sidebar a[aria-current="page"]{background:var(--lav)}
+.sidebar a:hover{background:var(--bg-alt)}
+textarea,input,select{background:#FFFFFF;border:1px solid var(--line-2);border-radius:12px}
+.brand-banner{display:block;width:100%;max-width:760px;height:auto;margin:0 auto;border-radius:18px;box-shadow:0 30px 60px -36px rgba(60,20,90,.35)}
 .challenge-band{padding:56px 0;text-align:center}
 .challenge-band p{margin:14px auto 0;max-width:60ch;color:var(--muted)}
 .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;margin:-1px;padding:0;border:0}
+/* the headline accent: italic ink, like the reference, instead of a coloured gradient */
+.grad{background:none!important;-webkit-background-clip:border-box!important;background-clip:border-box!important;color:var(--text)!important;-webkit-text-fill-color:var(--text);font-style:italic}

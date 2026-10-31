@@ -2,7 +2,7 @@
    "Wispr & Solve" -> the Wispr Flow logo -> the WeMakeDevs logo and the event title. One hue (sage), several lightnesses.
    Pure CSS 3D: no WebGL, no external files. Partner logos load from web/static/brand/ or fall back to plain text. */
 :root{--intro-h:#8A9C89;--intro-d:#4A5C49;--intro-m:#6F8169;--intro-l:#C9D4C6;--intro-x:#272722;--intro-cream:#F8F5EE;--intro-porc:#FFFCF7;--intro-line:#DED7CC;--intro-mute:#737168}
-.intro{position:fixed;inset:0;z-index:200;display:grid;place-items:center;overflow:hidden;background:radial-gradient(70% 60% at 50% 42%,#FAF0FF 0%,#F0D7FE 58%,#E4C2F7 100%);color:var(--intro-x);transition:opacity .6s ease,visibility .6s}
+.intro{position:fixed;inset:0;z-index:200;display:grid;place-items:center;overflow:hidden;background:radial-gradient(70% 60% at 50% 42%,#FFFFF6 0%,#FFFFEB 58%,#F7F5D6 100%);color:var(--intro-x);transition:opacity .6s ease,visibility .6s}
 .intro.is-done{opacity:0;visibility:hidden;pointer-events:none}
 .intro-stage{position:relative;width:min(92vw,980px);height:min(72vh,540px);perspective:1400px;transform-style:preserve-3d}
 .intro-grid{position:absolute;inset:-20% -20%;background:linear-gradient(transparent 49.7%,rgba(138,156,137,.16) 50%,transparent 50.3%),linear-gradient(90deg,transparent 49.7%,rgba(138,156,137,.16) 50%,transparent 50.3%);background-size:64px 64px;transform:rotateX(68deg) translateZ(-120px);opacity:0;animation:introGrid 3.8s ease-out .2s forwards}
