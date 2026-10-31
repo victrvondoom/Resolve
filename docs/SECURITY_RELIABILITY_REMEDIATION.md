@@ -60,3 +60,7 @@ Severity: P0 (unsafe to run in production), P1, P2, P3.
 
 ## Still open (not yet reproduced or fixed in this round)
 See `docs/PRODUCTION_READINESS_MATRIX.md` for the status of every workstream.
+
+## Full regression on commit 2ec9476
+- `python -m pytest tests -q`: **442 passed, 12 skipped, 0 failed** (386 s). The 12 skips are the tkinter desktop tests (headless Linux).
+- Previous full-suite baseline before this round: 407 passed, 12 skipped.
