@@ -152,6 +152,12 @@ class GmailClient:
             if status == 404:
                 raise GmailError("NOT_FOUND", "message is no longer accessible")
             if status >= 500:
+                # reads are idempotent: bounded retry with backoff. A write (send, draft) is NEVER retried here; its
+                # outcome is decided by the broker's correlation check and read-back.
+                attempt += 1
+                if method == "GET" and attempt <= self._max_retries:
+                    self._sleep(min(2 ** attempt, 30))
+                    continue
                 raise GmailError("PROVIDER_ERROR", f"Gmail returned an error ({status})")
             raise GmailError("PROVIDER_ERROR", f"unexpected response ({status})")
 
@@ -170,10 +176,40 @@ class GmailClient:
     def profile(self) -> dict:
         """The authenticated mailbox identity. Ownership of commitments is decided against this address."""
         data = self._call("GET", "/profile")
-        return {"email": (data.get("emailAddress") or "").lower(), "messages_total": data.get("messagesTotal")}
+        return {"email": (data.get("emailAddress") or "").lower(), "messages_total": data.get("messagesTotal"),
+                "history_id": str(data.get("historyId") or "") or None}
+
+    def history_message_ids(self, start_history_id: str, max_pages: int = 50) -> list[str]:
+        """Message ids added since a history checkpoint (users.history.list, historyTypes=messageAdded). Raises
+        GmailError(NOT_FOUND) when Google no longer has that history; the caller then runs a full sync."""
+        ids, token = [], None
+        for _ in range(max_pages):
+            params = {"startHistoryId": start_history_id, "historyTypes": "messageAdded", "maxResults": 500}
+            if token:
+                params["pageToken"] = token
+            data = self._call("GET", "/history", params=params)
+            for h in data.get("history", []):
+                for added in h.get("messagesAdded", []):
+                    mid = (added.get("message") or {}).get("id")
+                    if mid and mid not in ids:
+                        ids.append(mid)
+            token = data.get("nextPageToken")
+            if not token:
+                break
+        return ids
+
+    def sync_since(self, start_history_id: str) -> list[dict]:
+        out = []
+        for mid in self.history_message_ids(start_history_id):
+            try:
+                out.append(self.get_message(mid))
+            except GmailError as e:
+                if e.code != "NOT_FOUND":      # deleted after being added: skip it, keep the rest
+                    raise
+        return out
 
     def sync_all(self, query: str = "", max_pages: int = 50) -> list[dict]:
-        """Full pagination. Incremental sync is done by the caller with a stored history checkpoint (see inbox_sync)."""
+        """Full pagination. Incremental sync uses sync_since() with the stored history checkpoint (inbox_api._sync)."""
         out, token = [], None
         for _ in range(max_pages):
             page = self.list_page(query, token)

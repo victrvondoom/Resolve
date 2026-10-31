@@ -22,7 +22,7 @@ DEPENDENCY_RE = re.compile(r"\b(before|ahead of|prior to)\b.*\b(call|meeting|rev
 HYPOTHETICAL_RE = re.compile(r"\b(maybe|might|possibly|perhaps|if we|we could consider|someday|would be nice)\b", re.I)
 HISTORICAL_RE = re.compile(r"\b(i sent|we discussed|last week|yesterday i|already sent|you sent)\b", re.I)
 URGENT_WORDS = re.compile(r"\b(urgent|asap|important|immediately)\b", re.I)
-AMBIGUOUS_TIME = re.compile(r"\b(soon|later|next week|end of the month|at some point|when you can|shortly)\b", re.I)
+AMBIGUOUS_TIME = re.compile(r"\b(soon|later|next week|end of the month|at some point|when you can|shortly|when possible|whenever (?:you can|possible)|in due course|sometime)\b", re.I)
 INJECTION_RE = re.compile(r"ignore (all |any )?(previous|prior|above) instructions|disregard (the |your )?(system|previous) (prompt|instructions)|"
                           r"send (me )?(the )?(full |entire |whole )?inbox|forward (me )?every (message|email)|reveal (your|the) (system )?prompt", re.I)
 AUTOMATED_BODY = re.compile(r"(unsubscribe|this is an automated|do not reply|you are receiving this)", re.I)
@@ -35,7 +35,7 @@ def sentences(text: str) -> list[str]:
     return [p.strip() for p in parts if p and p.strip()]
 
 
-TIME_OF_DAY = re.compile(r"\b(?:by|before|at|until|no later than|around)\s+(noon|midnight|\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)|\d{1,2}:\d{2})\b", re.I)
+TIME_OF_DAY = re.compile(r"\b(?:by|before|at|until|no later than|around|today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(noon|midnight|\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)|\d{1,2}:\d{2})\b", re.I)
 
 
 def _zone(tz_name):
@@ -121,7 +121,10 @@ def resolve_deadline_detail(sentence: str, sent_at: float, tz_name: str = "UTC")
         if due is None:
             due, conf, phrase, explicit = base, "RESOLVED_RELATIVE", TIME_OF_DAY.search(sentence).group(0), True
         else:
-            phrase = f"{phrase} {TIME_OF_DAY.search(sentence).group(0)}".strip()
+            tod = TIME_OF_DAY.search(sentence).group(0)
+            head = phrase.split()[-1].lower() if phrase else ""
+            # 'by Monday' + 'Monday 9 am' -> 'by Monday 9 am' (the day word is shared, not repeated)
+            phrase = f"{phrase} {tod.split(' ', 1)[1]}" if head and tod.lower().startswith(head + " ") else f"{phrase} {tod}".strip()
         due = due.replace(hour=clock[0], minute=clock[1], second=0, microsecond=0)
         return {"deadline_at": due.timestamp(), "deadline_confidence": conf, "review_reason": None, "phrase": phrase, "timezone": zone_label, "explicit": explicit}
     end_of_day = due.replace(hour=23, minute=59, second=59, microsecond=0)

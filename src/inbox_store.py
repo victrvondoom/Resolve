@@ -80,35 +80,55 @@ class InboxStore:
         finally:
             db.close()
 
+    MIGRATIONS = None   # filled below the class: [(version, sql)]
+
     def _migrate(self) -> None:
-        # executescript commits on its own, so migrations run on a plain connection, not inside _db()
+        """Apply each pending migration atomically: the DDL and its schema_migrations row commit together, so a failure
+        leaves the database at the previous version (SQLite DDL is transactional). Re-running is a no-op."""
         conn = sqlite3.connect(self.db_path, timeout=30, isolation_level=None)
         try:
+            conn.execute("PRAGMA journal_mode=WAL")          # readers do not block the writer; survives crashes via the WAL
+            conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at REAL NOT NULL)")
             done = {r[0] for r in conn.execute("SELECT version FROM schema_migrations")}
-            if 1 not in done:
-                conn.executescript(MIGRATION_1)
-                conn.execute("INSERT INTO schema_migrations VALUES (1, ?)", (time.time(),))
-            if 2 not in done:
-                conn.executescript(MIGRATION_2)
-                conn.execute("INSERT INTO schema_migrations VALUES (2, ?)", (time.time(),))
-            if 3 not in done:
-                conn.executescript(MIGRATION_3)
-                conn.execute("INSERT INTO schema_migrations VALUES (3, ?)", (time.time(),))
-            if 4 not in done:
-                conn.executescript(MIGRATION_4)
-                conn.execute("INSERT INTO schema_migrations VALUES (4, ?)", (time.time(),))
-            if 5 not in done:
-                conn.executescript(MIGRATION_5)
-                conn.execute("INSERT INTO schema_migrations VALUES (5, ?)", (time.time(),))
-            if 6 not in done:
-                conn.executescript(MIGRATION_6)
-                conn.execute("INSERT INTO schema_migrations VALUES (6, ?)", (time.time(),))
-            if 7 not in done:
-                conn.executescript(MIGRATION_7)
-                conn.execute("INSERT INTO schema_migrations VALUES (7, ?)", (time.time(),))
+            for version, sql in ALL_MIGRATIONS:
+                if version in done:
+                    continue
+                conn.executescript(f"BEGIN IMMEDIATE;\n{sql}\nINSERT INTO schema_migrations VALUES ({int(version)}, {time.time()!r});\nCOMMIT;")
+        except BaseException:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
         finally:
             conn.close()
+
+    def migration_status(self) -> dict:
+        conn = sqlite3.connect(self.db_path, timeout=30)
+        try:
+            applied = {r[0]: r[1] for r in conn.execute("SELECT version, applied_at FROM schema_migrations")}
+            journal = conn.execute("PRAGMA journal_mode").fetchone()[0]
+            integrity = conn.execute("PRAGMA quick_check").fetchone()[0]
+        finally:
+            conn.close()
+        latest = max(v for v, _ in ALL_MIGRATIONS)
+        return {"database": str(self.db_path), "applied": sorted(applied), "latest": latest,
+                "pending": [v for v, _ in ALL_MIGRATIONS if v not in applied], "up_to_date": latest in applied and all(v in applied for v, _ in ALL_MIGRATIONS),
+                "journal_mode": journal, "integrity": integrity}
+
+    def backup_to(self, dest: str | Path) -> dict:
+        """Consistent online snapshot via SQLite's backup API. Sealed fields stay sealed; the key is NOT included."""
+        dest = Path(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        src = sqlite3.connect(self.db_path, timeout=30)
+        out = sqlite3.connect(dest)
+        try:
+            src.backup(out)
+            ok = out.execute("PRAGMA integrity_check").fetchone()[0]
+        finally:
+            out.close()
+            src.close()
+        return {"backup": str(dest), "integrity": ok, "bytes": dest.stat().st_size,
+                "sha256": hashlib.sha256(dest.read_bytes()).hexdigest()}
 
     # ---------- helpers
     @staticmethod
@@ -579,6 +599,27 @@ class InboxStore:
                           WHERE id=? AND user_id=? AND workspace_id=?""",
                        (state, time.time(), fetched, changed, new_commitments, error[:200], run_id, user_id, workspace_id))
 
+    def set_sync_run_kind(self, user_id: str, workspace_id: str, run_id: str, kind: str) -> None:
+        if kind not in ("FULL", "INCREMENTAL", "FULL_AFTER_EXPIRED_CURSOR"):
+            raise InboxError("unknown sync kind", 400)
+        with self._lock, self._db() as db:
+            db.execute("UPDATE sync_runs SET kind=? WHERE id=? AND user_id=? AND workspace_id=?", (kind, run_id, user_id, workspace_id))
+
+    def get_sync_cursor(self, user_id: str, workspace_id: str, provider: str) -> str | None:
+        with self._db() as db:
+            r = db.execute("SELECT cursor FROM sync_cursors WHERE user_id=? AND workspace_id=? AND provider=?", (user_id, workspace_id, provider)).fetchone()
+        return r["cursor"] if r else None
+
+    def set_sync_cursor(self, user_id: str, workspace_id: str, provider: str, cursor: str | None) -> None:
+        """The last safe point: written only after a sync run has stored every message it fetched."""
+        with self._lock, self._db() as db:
+            if cursor is None:
+                db.execute("DELETE FROM sync_cursors WHERE user_id=? AND workspace_id=? AND provider=?", (user_id, workspace_id, provider))
+            else:
+                db.execute("""INSERT INTO sync_cursors VALUES (?,?,?,?,?) ON CONFLICT(user_id, workspace_id, provider)
+                              DO UPDATE SET cursor=excluded.cursor, updated_at=excluded.updated_at""",
+                           (user_id, workspace_id, provider, str(cursor)[:64], time.time()))
+
     def list_sync_runs(self, user_id: str, workspace_id: str, limit: int = 20) -> list[dict]:
         with self._db() as db:
             rows = db.execute("SELECT * FROM sync_runs WHERE user_id=? AND workspace_id=? ORDER BY started_at DESC LIMIT ?",
@@ -856,7 +897,7 @@ class InboxStore:
     # ---------- export / deletion (tenant-scoped)
     def export_workspace(self, user_id: str, workspace_id: str) -> dict:
         """Everything this tenant stored, decrypted for the owner. Tokens are never exported."""
-        connections = [c for c in (self.get_connection(user_id, workspace_id, p) for p in ("gmail", "replay")) if c]
+        connections = [c for c in (self.get_connection(user_id, workspace_id, p) for p in ("gmail", "replay", "local_mail")) if c]
         return {"connections": connections, "commitments": self.list_commitments(user_id, workspace_id),
                 "drafts": [self.get_draft(user_id, workspace_id, d["id"]) for d in self.list_drafts(user_id, workspace_id)],
                 "voice_rules": self.list_voice_rules(user_id, workspace_id), "corrections": self.list_corrections(user_id, workspace_id),
@@ -867,7 +908,7 @@ class InboxStore:
         scope = ("user_id=?", (user_id,)) if workspace_id is None else ("user_id=? AND workspace_id=?", (user_id, workspace_id))
         n = 0
         with self._lock, self._db() as db:
-            for table in ("thread_states", "commitment_notes", "inbox_settings", "sim_outbox", "follow_ups", "sync_runs", "oauth_tokens", "commitment_status_history", "commitment_revisions",
+            for table in ("thread_states", "commitment_notes", "inbox_settings", "sim_outbox", "sync_cursors", "follow_ups", "sync_runs", "oauth_tokens", "commitment_status_history", "commitment_revisions",
                           "verification_records", "execution_records", "approvals", "draft_versions", "reply_drafts",
                           "corrections", "commitments", "email_messages", "email_threads", "voice_rules", "audit_events", "email_connections"):
                 try:
@@ -999,3 +1040,14 @@ CREATE TABLE thread_states (
   thread_id TEXT PRIMARY KEY REFERENCES email_threads(id) ON DELETE CASCADE, user_id TEXT NOT NULL, workspace_id TEXT NOT NULL,
   state TEXT NOT NULL, reason_sealed BLOB, until_at REAL, updated_at REAL NOT NULL);
 """
+
+
+MIGRATION_8 = """
+ALTER TABLE sync_runs ADD COLUMN kind TEXT NOT NULL DEFAULT 'FULL';
+CREATE TABLE sync_cursors (
+  user_id TEXT NOT NULL, workspace_id TEXT NOT NULL, provider TEXT NOT NULL, cursor TEXT NOT NULL, updated_at REAL NOT NULL,
+  PRIMARY KEY (user_id, workspace_id, provider));
+"""
+
+
+ALL_MIGRATIONS = [(1, MIGRATION_1), (2, MIGRATION_2), (3, MIGRATION_3), (4, MIGRATION_4), (5, MIGRATION_5), (6, MIGRATION_6), (7, MIGRATION_7), (8, MIGRATION_8)]

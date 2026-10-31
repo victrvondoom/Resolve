@@ -26,6 +26,13 @@ OVERFLOW_JS = 'document.scrollingElement.scrollWidth <= window.innerWidth + 1'
 
 
 @unittest.skipUnless(HAVE_PW, 'browser-e2e: playwright not installed')
+
+def open_view(page, view):
+    """Advanced tools is a collapsed <details> group; open it (as a user would) before clicking one of its links."""
+    page.evaluate("document.querySelectorAll('.nav-more').forEach(d => d.open = true)")
+    page.click(f'.sidebar a[data-view="{view}"]')
+
+
 class UxE2E(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -144,7 +151,7 @@ class UxE2E(unittest.TestCase):
         page, errors = self.page()
         self.demo_account(page)
         page.click('#fmSample'); expect(page.locator('#fmDoc')).not_to_have_value('')
-        page.click('.sidebar a[data-view="privacy"]')
+        open_view(page, 'privacy')
         expect(page.locator('#privDocs')).to_have_text('1')
         self.assertNotIn('30 days', page.locator('#view-privacy').inner_text())
         self.assertNotIn('Offsite', page.locator('#view-privacy').inner_text())
@@ -154,7 +161,7 @@ class UxE2E(unittest.TestCase):
         page.click('#userAccountPill'); page.click('#newWorkspaceBtn')
         page.wait_for_load_state('load')
         expect(page.locator('#workspaceSwitcher option:checked')).to_have_text('Client B', timeout=15000)
-        page.click('.sidebar a[data-view="privacy"]')
+        open_view(page, 'privacy')
         expect(page.locator('#privDeleteWorkspaceBtn')).to_be_enabled()
         page.click('#privDeleteWorkspaceBtn')
         expect(page.locator('#deletionReceiptLog')).to_contain_text('WORKSPACE deletion COMPLETED')
@@ -163,7 +170,7 @@ class UxE2E(unittest.TestCase):
         expect(page.locator('#workspaceSwitcher option:checked')).to_have_text("Demo's Workspace")
         self.assertFalse(page.locator('#authDialog').evaluate('d => d.open'))      # still signed in
         # per-document delete in Documents
-        page.click('.sidebar a[data-view="documents"]')
+        open_view(page, 'documents')
         expect(page.locator('#docList .doc-row')).to_have_count(1)
         page.locator('#docList .doc-row button', has_text='Delete').click()
         expect(page.locator('#docList')).to_contain_text('No PDFs')

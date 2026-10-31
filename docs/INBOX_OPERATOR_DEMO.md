@@ -23,6 +23,23 @@ Replay works with no credentials. Live Gmail needs the three OAuth variables in 
 8. **Connections.** Shows the honest Gmail state. Without OAuth variables it shows GMAIL NOT CONFIGURED and the names of the variables.
 9. **Privacy & settings.** Set your timezone (deadlines use it), export your data, or delete the workspace.
 
+## Walk-through (LOCAL, real local mail server)
+
+1. `python src/resolve_app.py` and open `http://127.0.0.1:8765/app`.
+2. **Connections → Local mail server**: name the mailbox (for example `founder`) and **Create local mailbox**. RESOLVE
+   creates `founder@mail.resolve.test` on the local server and proves it with a POP3 login.
+3. **Deliver a message into this mailbox**: from `priya`, subject `Deployment checklist`, body
+   `Hi, could you send the revised deployment checklist before 4 PM?` (type, paste, or dictate with Wispr Flow).
+4. **Sync local mailbox**, then **Morning brief → Local mail**: the request appears under what needs attention.
+5. Open the conversation, **Prepare reply**, give the fact you can confirm (`status: I will send it at 3 PM.`).
+6. **Approve** the exact content, then **Send through the local mail server**. The draft becomes **Sent · verified** only
+   after the Sent folder is read back over POP3 and recipient, subject, body and Message-ID match.
+7. Independent check outside RESOLVE: `python src/local_mail.py accounts` shows Priya's INBOX count, and the message is a
+   file under `data/localmail/mail/priya@mail.resolve.test/INBOX/new/`.
+
+Browser test that runs exactly this: `python -m pytest tests/test_inbox_ui.py -k local`. Screenshot:
+`docs/screenshots/inbox/13_local_send_verified.png`.
+
 ## Screenshots
 
 Captured from the running app by `python scripts/capture_inbox_screens.py` (REPLAY data only; every screen is labelled synthetic). They are in `docs/screenshots/inbox/`:

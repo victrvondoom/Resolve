@@ -1,5 +1,15 @@
 # Progress
 
+## Sprint 2026-10-31 — branch `claude/fervent-gates-tsa6vp` (base: `819193d` from `claude/beautiful-bardeen-fw59qp` + `master` merged as `fed4750`)
+GATE: inbox operator LOCAL mode + hardening | **PASS (portable/Linux)** · live Gmail **EXTERNAL_ACCOUNT_AUTHORIZATION_REQUIRED** · MODEL_ENABLED **not run** · `WINDOWS_NATIVE_TESTS_NOT_RUN`.
+- Baseline after the merge: 586 passed, 12 skipped, **4 failed** (browser tests; the same 4 fail on `819193d`: stale nav assumptions and an unreachable Mission control view). Fixed.
+- `python -m pytest tests -q -rs` on the final code: **644 passed, 12 skipped, 1 failed**; the failure was `test_inbox_store.py::test_migration_is_recorded_and_idempotent` hard-coding migrations 1–7 (migration 8 added). Fixed; `python -m pytest tests/test_inbox_store.py` → 13 passed. Skips: tkinter absent (3), Windows-native (9).
+- Verified behaviour: real local mail server (SMTP/POP3 loopback, Maildir) end to end from the browser to a VERIFIED read-back (`tests/test_local_mail.py`, `tests/test_operations.py::RealServer`, `tests/test_inbox_ui.py -k local`); Gmail incremental sync with a safe checkpoint (recorded responses); model-provider transport with schema/quote/claim checks (scripted endpoint, no model); hashed sessions and password change; atomic migrations, backup/verify/restore; readiness endpoints; DST deadline tests.
+- Bugs found and fixed: transient provider ERROR locked the mailbox; LOCAL data survived workspace deletion; key rotation could not introduce a new key; missing/invalid token fell back to the demo tenant on inbox routes in development; "by tomorrow 5 pm" ignored the time; "when possible" not vague; invalid HTML pattern under the `v` regex flag.
+- `python benchmarks/inbox_metrics.py` → report unchanged (`docs/INBOX_BENCHMARK_REPORT.md`).
+- Task accounting: 388 of 468 with evidence, 80 incomplete with reasons (`docs/RELEASE_REPORT_2026-10-31.md`). Subagents: none.
+- NEXT COMMAND: `export GOOGLE_OAUTH_CLIENT_ID=... GOOGLE_OAUTH_CLIENT_SECRET=... GOOGLE_OAUTH_REDIRECT_URI=...` then connect Gmail; or `RESOLVE_MODEL_BASE_URL=http://127.0.0.1:11434 RESOLVE_MODEL_NAME=llama3.1:8b python src/resolve_app.py`.
+
 ## Final sprint — 2026-10-29 (branch `claude/beautiful-bardeen-fw59qp`, base = master incl. merged cloud-sprint `8a5962d`)
 GATE: regression + hosted-security + flagship mission | **PASS (portable/Linux)** · voice STT end-to-end **BLOCKED** · deployment **BLOCKED (no credentials)**.
 - `python -m pytest tests -q` → **265 passed, 12 skipped, 0 failed** (was 47 failed / 11 errors). Root cause: pip Playwright vs installed Chromium revision mismatch. `harness/evidence/FINAL_REGRESSION.md`.

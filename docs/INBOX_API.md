@@ -6,7 +6,7 @@ All routes live under `/api/inbox/`, are served by `src/resolve_app.py` and impl
 
 - The caller is the authenticated session user (`Authorization: Bearer <token>` or `X-Resolve-Token`). No client-supplied user or workspace id is trusted.
 - Mutations require `Content-Type: application/json` (the server enforces this for every POST, PUT and PATCH).
-- Every query takes `mode=LIVE|REPLAY` (default `LIVE`). REPLAY uses the separate workspace `<workspace>.replay`, so live and synthetic data never mix.
+- Every query takes `mode=LIVE|LOCAL|REPLAY` (default `LIVE`). LOCAL uses `<workspace>.local` and REPLAY `<workspace>.replay`, so live, local-server and synthetic data never mix.
 - Errors are JSON `{"error": "..."}`. Unexpected server errors return a generic message; the server log records the route and exception type only, never email text.
 - Body size is capped at 32 KiB on ordinary routes. Text fields have per-field limits (for example, message bodies up to 20,000 characters).
 
@@ -20,13 +20,33 @@ All routes live under `/api/inbox/`, are served by `src/resolve_app.py` and impl
 | GET | `/api/inbox/connections/gmail/callback` | Public redirect target. Validates a single-use, expiring state bound to the user who started the flow, exchanges the code with PKCE, stores tokens sealed, then redirects to `/#inbox-connections?gmail=connected` (or `denied`, `state`, `revoked`, `failed`) |
 | DELETE | `/api/inbox/connections/gmail` | Revokes at Google (best effort, reported as `revoked_at_provider`), deletes the local token. Stored messages remain until deleted in Privacy & data |
 
+## Connections (LOCAL mail server)
+
+LOCAL mode uses the real local mail server in `src/local_mail.py` (SMTP submission and POP3 retrieval on 127.0.0.1, Maildir
+storage on disk). It is never Gmail and never delivers outside the local domain `mail.resolve.test`. Records live in the
+separate workspace scope `<workspace>.local`. Pass `mode=LOCAL` (query) or `{"mode": "LOCAL"}` (sync body).
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/inbox/connections/local/create` | Body `{"name": "founder"}`. Creates `founder@mail.resolve.test` on the local server with a random password, proves it with a real POP3 login, stores the credentials sealed. 409 `NOT_CONFIGURED` when the server is off |
+| POST | `/api/inbox/connections/local/connect` | Body `{"address", "password"}` for an account created with `python src/local_mail.py add-account`. Verified by POP3 login before anything is stored |
+| DELETE | `/api/inbox/connections/local` | Deletes the sealed credentials; mail stays on the local server |
+| POST | `/api/inbox/local/deliver` | Body `{"from_name", "subject", "body", "in_reply_to"?}`. Delivers an incoming message into the connected mailbox over SMTP from a local colleague account (created on first use, never a user mailbox) |
+
+## Inference engine
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/inbox/engine` | `RULES_ONLY` (default) or `MODEL_ENABLED` with the configured OpenAI-compatible endpoint and model name (never the key) |
+| POST | `/api/inbox/threads/{id}/analyze` | Advisory analysis of the stored thread: the rules baseline, and when a model is configured, its schema-validated answer with every evidence quote checked against the cited message. Rejected claims and fallback reasons (`TIMEOUT`, `UNREACHABLE`, `SCHEMA_INVALID`, `INVALID_JSON`) are returned. Writes nothing |
+
 ## Settings and sync
 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/inbox/settings` | Timezone (`timezone_configured` says whether the user set it), sign-off, tone |
 | PUT | `/api/inbox/settings` | Set an IANA timezone (validated), sign-off, tone |
-| POST | `/api/inbox/sync` | Synchronize. Body `{"mode": "LIVE"\|"REPLAY", "query": "newer_than:30d"}`. Each run is recorded, including failed runs |
+| POST | `/api/inbox/sync` | Synchronize. Body `{"mode": "LIVE"\|"LOCAL"\|"REPLAY", "query": "newer_than:30d", "full": false}`. LIVE uses the stored Gmail history checkpoint (`kind`: `FULL`, `INCREMENTAL` or `FULL_AFTER_EXPIRED_CURSOR`); `full: true` forces a full pass. One sync per mailbox at a time (409 `SYNC_IN_PROGRESS`). Each run is recorded, including failed runs |
 | GET | `/api/inbox/sync/status` | Connection state, recent runs, last successful sync, stale flag (over 24 h), message and thread counts, engine label |
 
 ## Morning brief and threads

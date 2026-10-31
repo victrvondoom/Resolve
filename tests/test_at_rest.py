@@ -58,8 +58,14 @@ class SealingPrimitives(unittest.TestCase):
         rotated = SealedStore(Path(self.tmp.name) / 'n.key', env={'RESOLVE_MASTER_KEY': new_key})
         with self.assertRaises(SealError):                     # new key alone does not read old data
             rotated.open(blob, 'usr_a', 'ws_a', 'doc_1')
-        still = SealedStore(Path(self.tmp.name) / 'n2.key', env={'RESOLVE_MASTER_KEY': new_key, 'RESOLVE_MASTER_KEYS_OLD': '1:' + old_key})
+        # the new key needs its own version; reusing version 1 used to let the old key silently replace the new one
+        still = SealedStore(Path(self.tmp.name) / 'n2.key', env={'RESOLVE_MASTER_KEY': new_key, 'RESOLVE_MASTER_KEY_ID': '2',
+                                                                 'RESOLVE_MASTER_KEYS_OLD': '1:' + old_key})
         self.assertEqual(still.open(blob, 'usr_a', 'ws_a', 'doc_1'), b'before rotation')
+        fresh = still.seal(b'after rotation', 'usr_a', 'ws_a', 'doc_2')
+        self.assertEqual(still.key_version(fresh), 2, 'new writes use the new key')
+        with self.assertRaises(SealError):                     # and the old key alone cannot read them
+            old.open(fresh, 'usr_a', 'ws_a', 'doc_2')
 
     def test_production_refuses_the_development_key_file(self):
         with self.assertRaises(SealError):

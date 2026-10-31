@@ -47,6 +47,7 @@ import gmail_adapter
 from gmail_adapter import GmailConfig
 from inbox_store import InboxError, InboxStore
 from inbox_api import InboxApi
+import model_provider
 from server_security import ServerSecurity, RateLimiter, SECURITY_HEADERS, ConfigError, client_ip
 
 DB = Path(os.environ.get('RESOLVE_DB', ROOT / 'data' / 'resolve.sqlite3'))
@@ -84,8 +85,53 @@ write_audit = WriteAudit(document_studio.base_dir / 'write_audit.sqlite3')
 privacy_engine.audit_store = write_audit
 # Inbox-to-Commitment Operator: tenant-scoped store (sealed with the same master key), Gmail adapter, HTTP surface
 inbox_store = InboxStore(Path(os.environ.get('RESOLVE_INBOX_DB', ROOT / 'data' / 'inbox.sqlite3')), document_studio.sealer)
+
+
+def start_local_mail():
+    """LOCAL mode: a real SMTP+POP3 server on loopback with Maildir storage (src/local_mail.py). On by default in development,
+    off in production unless RESOLVE_LOCAL_MAIL=1. Busy default ports fall back to free ports (shown on the Connections page)."""
+    flag = os.environ.get('RESOLVE_LOCAL_MAIL', '').strip()
+    if flag == '0' or (SECURITY.production and flag != '1'):
+        return None
+    import local_mail
+    root = os.environ.get('RESOLVE_LOCAL_MAIL_ROOT') or str(Path(os.environ.get('RESOLVE_INBOX_DB', ROOT / 'data' / 'inbox.sqlite3')).parent / 'localmail')
+    smtp, pop3 = int(os.environ.get('RESOLVE_LOCAL_SMTP_PORT', '2525')), int(os.environ.get('RESOLVE_LOCAL_POP3_PORT', '2110'))
+    try:
+        return local_mail.LocalMailServer(root, smtp, pop3).start()
+    except OSError:
+        return local_mail.LocalMailServer(root, 0, 0).start()
+
+
+local_mail_server = start_local_mail()
+SECURITY_INBOX_RATE = int(os.environ.get('RESOLVE_INBOX_RATE_PER_MIN', '60'))
+
+
+def readiness() -> dict:
+    """Required: inbox database migrated and passing quick_check, and the sealing key usable. Optional subsystems
+    (Gmail, local mail, model, browser) are reported but never make the server unready."""
+    checks = {}
+    try:
+        mig = inbox_store.migration_status()
+        checks['inbox_database'] = {'ok': mig['up_to_date'] and mig['integrity'] == 'ok', 'journal_mode': mig['journal_mode'],
+                                    'schema_version': max(mig['applied'] or [0]), 'pending': mig['pending']}
+    except Exception as exc:
+        checks['inbox_database'] = {'ok': False, 'error': type(exc).__name__}
+    try:
+        probe = document_studio.sealer.seal(b'readiness', 'probe', 'probe', 'probe')
+        checks['sealing_key'] = {'ok': document_studio.sealer.open(probe, 'probe', 'probe', 'probe') == b'readiness'}
+    except Exception as exc:
+        checks['sealing_key'] = {'ok': False, 'error': type(exc).__name__}
+    optional = {
+        'gmail': 'CONFIGURED' if inbox_api.config is not None else 'NOT_CONFIGURED',
+        'local_mail': 'RUNNING' if local_mail_server is not None else 'OFF',
+        'model': inbox_api.inference.mode,
+        'cloud_browser': 'ENABLED' if SECURITY.cloud_browser_enabled else 'DISABLED',
+        'speech_server': 'AVAILABLE' if voice_engine.health()['available'] else 'NOT_CONFIGURED',
+    }
+    return {'ready': all(c['ok'] for c in checks.values()), 'mode': SECURITY.mode, 'required': checks, 'optional': optional}
 inbox_api = InboxApi(inbox_store, GmailConfig.from_env(os.environ), gmail_adapter.http_transport,
-                     public_base=os.environ.get('RESOLVE_PUBLIC_BASE', '').rstrip('/'))
+                     public_base=os.environ.get('RESOLVE_PUBLIC_BASE', '').rstrip('/'), local_mail=local_mail_server,
+                     inference=model_provider.from_env(os.environ))
 privacy_engine.inbox_store = inbox_store
 tool_registry = default_registry()
 _diag_slots = threading.BoundedSemaphore(2)       # at most two real Chromium diagnostics runs at once
@@ -231,6 +277,20 @@ class Handler(BaseHTTPRequestHandler):
         if SECURITY.production:
             raise ApiError(401, 'authentication required')
         return default_demo
+
+    def strict_session(self) -> dict:
+        """Private inbox data needs an explicit, valid token in EVERY mode: no fallback to the demo tenant for a missing or
+        invalid token (the development UI sends the demo token explicitly)."""
+        auth_h = self.headers.get('Authorization', '')
+        token = auth_h[7:].strip() if auth_h.startswith('Bearer ') else self.headers.get('X-Resolve-Token', '').strip()
+        if not token:
+            raise ApiError(401, 'authentication required')
+        if not SECURITY.production and secrets.compare_digest(token, SESSION_TOKEN):
+            return default_demo
+        try:
+            return tenant_auth_mgr.validate_session(token)
+        except TenantError as exc:
+            raise ApiError(401, exc.message)
 
     def check_origin(self, mutation: bool = False, public_auth: bool = False) -> None:
         port = self.server.server_port
@@ -409,6 +469,11 @@ class Handler(BaseHTTPRequestHandler):
             if urlparse(self.path).path in {'/api/health', '/api/system/health'}:  # platform probes use arbitrary Host headers; nothing sensitive
                 return self.send_json(200, {'status': 'ok', 'name': 'RESOLVE', 'version': '0.2', 'database': 'sqlite-wal', 'mode': SECURITY.mode,
                                             'features': {'speech_server': voice_engine.health()['available'], 'cloud_browser': SECURITY.cloud_browser_enabled, 'diagnostics': brief_missions.diagnostics is not None}})
+            if urlparse(self.path).path == '/api/livez':          # liveness: the process serves HTTP; no dependency checks
+                return self.send_json(200, {'status': 'alive'})
+            if urlparse(self.path).path == '/api/readyz':         # readiness: each subsystem reported separately, no secrets
+                report = readiness()
+                return self.send_json(200 if report['ready'] else 503, report)
             if urlparse(self.path).path.startswith('/demo-app/'):
                 return self.serve_demo_app('GET')
             self.check_origin()
@@ -417,7 +482,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/inbox/connections/gmail/callback':          # browser redirect from Google: no session header, state is the proof
                 return self.send_inbox_redirect(*inbox_api.gmail_callback(parse_qs(parsed.query)))
             if path.startswith('/api/inbox/'):
-                return self.send_inbox('GET', path, parse_qs(parsed.query), None, self.get_session())
+                return self.send_inbox('GET', path, parse_qs(parsed.query), None, self.strict_session())
             if path == '/api/stream':
                 q = parse_qs(parsed.query)
                 after = q.get('after', [self.headers.get('Last-Event-ID', '0')])[0] or '0'
@@ -693,7 +758,7 @@ class Handler(BaseHTTPRequestHandler):
             require(path.startswith('/api/inbox/'), 404, 'not found')
             self.check_origin(mutation=method != 'DELETE')
             data = self.body() if method != 'DELETE' else {}
-            self.send_inbox(method, path, parse_qs(urlparse(self.path).query), data, self.get_session())
+            self.send_inbox(method, path, parse_qs(urlparse(self.path).query), data, self.strict_session())
         except ApiError as exc:
             self.send_json(exc.status, {'error': exc.message})
 
@@ -715,8 +780,10 @@ class Handler(BaseHTTPRequestHandler):
 
             self.check_origin(mutation=True)
             data = self.body(max_size=7 * 1024 * 1024 if path in ('/api/documents/upload', '/api/projects/upload') else 3 * 1024 * 1024 if path == '/api/voice/transcribe-audio' else 32768)
-            user = self.get_session()
+            user = self.strict_session() if path.startswith('/api/inbox/') else self.get_session()
             if path.startswith('/api/inbox/'):
+                if re.search(r'/(sync|send|deliver|analyze|start|gmail-draft)$', path):   # provider- or model-costly operations
+                    require(rate_limiter.allow('inbox_costly', user['user_id'], SECURITY_INBOX_RATE), 429, 'too many provider operations; retry shortly')
                 return self.send_inbox('POST', path, parse_qs(urlparse(self.path).query), data, user)
 
             if path == '/api/documents/upload':
@@ -806,6 +873,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/auth/logout':
                 tenant_auth_mgr.logout(user['token'])
                 return self.send_json(200, {'status': 'LOGGED_OUT'})
+            if path == '/api/auth/password':
+                require(rate_limiter.allow('auth', user['user_id'], SECURITY.auth_rate_per_min), 429, 'too many attempts; retry later')
+                fresh = tenant_auth_mgr.change_password(user['token'], str(data.get('current_password', '')), str(data.get('new_password', '')))
+                return self.send_json(200, {**fresh, 'other_sessions_revoked': True})
             if path == '/api/workspaces/switch':
                 switched = tenant_auth_mgr.switch_workspace(user['token'], data['workspace_id'])
                 return self.send_json(200, switched)

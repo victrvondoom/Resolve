@@ -13,7 +13,10 @@ Every DONE item names its evidence. Test names refer to `tests/`.
 | Replies to send excludes replies already sent | DONE | `awaiting_user_reply` uses the last message's direction; `test_thread_detail_returns_the_conversation_with_direction_and_linked_evidence` covers direction |
 | Timing groups: overdue, today, soon, future, unknown kept separate | DONE | `_timing` in `src/inbox_service.py` |
 | Recently resolved shows verified and user-confirmed separately, 14-day window | DONE | `morning_brief`; labels in `web/static/inbox.js` |
-| Sync progress and failure states | PARTIAL | Each run records RUNNING/SUCCEEDED/FAILED with counts and error; there is no percentage progress and no live stream. `test_rate_limit_is_a_visible_state_not_a_success` |
+| Sync progress and failure states | PARTIAL | Each run records RUNNING/SUCCEEDED/FAILED, kind (FULL, INCREMENTAL, FULL_AFTER_EXPIRED_CURSOR), counts and error; one sync at a time per mailbox. No percentage progress or live stream |
+| Gmail incremental sync with a persisted checkpoint | DONE (recorded responses) | History API `messageAdded`; checkpoint read before fetching and stored only after success; expired history falls back to a full sync; `test_incremental_sync_fetches_only_new_mail_and_falls_back_when_history_expired`, `test_failed_sync_keeps_the_last_safe_checkpoint_and_resumes_without_duplicates`. Not run against live Gmail |
+| Bounded retries: Retry-After on 429, backoff on 5xx for reads only; sends never retried | DONE | `tests/test_gmail_adapter.py` (`test_a_send_is_never_retried_after_a_server_error`) |
+| A transient provider error does not lock the mailbox | DONE | ERROR and RATE_LIMITED allow the next sync (previously only a reconnect cleared ERROR) |
 | LIVE and REPLAY visibly different | DONE | Banner and chips in `inbox.js`; separate workspaces (`test_replay_runs_the_same_pipeline_without_touching_gmail_and_stays_separate_from_live`) |
 | LIVE never shows a demo mailbox | DONE | Brief returns no sections without a connection (`test_brief_is_empty_and_honest_when_not_connected`) |
 | Empty, loading, error states on every section | DONE | `loading`, `empty`, `errorBox` helpers; empty states named per section |
@@ -60,7 +63,7 @@ Every DONE item names its evidence. Test names refer to `tests/`.
 | Conflicts reported, not silently overridden | DONE | `conflicts()`; `rules_add` refuses when `confirm` and conflicts |
 | Corrections dictated into normal fields, with before, correction, after, impact | DONE | `test_one_time_correction_changes_only_that_thread_and_shows_before_and_after`; `03_thread_detail_replay.png` |
 | One-time and persistent scopes separate; persistent needs confirmation | DONE | `test_workspace_preference_needs_explicit_confirmation` |
-| Persistent preferences survive restart | PARTIAL | Stored in SQLite. A restart test for rules and corrections has not been written |
+| Persistent preferences survive restart | DONE | `tests/test_local_mail.py::test_rules_and_corrections_persist_across_restart` |
 | No undocumented Wispr API claimed | DONE | `docs/WISPR_DEMO_SCRIPT.md`, `docs/INBOX_SECURITY.md` |
 | Demo script prepared; user recording left as user-owned evidence | DONE | `docs/WISPR_DEMO_SCRIPT.md` (no recording exists in the repository) |
 
@@ -69,7 +72,8 @@ Every DONE item names its evidence. Test names refer to `tests/`.
 | Item | Status | Evidence / gap |
 |---|---|---|
 | Context-aware draft from the thread, facts only, missing information listed | DONE | `draft_reply`; `test_draft_recipient_comes_from_the_thread_and_missing_facts_are_listed`; `07_draft_editor_replay.png`; benchmark unsupported-claim rate 0.0 |
-| Model-generated drafts through a structured provider path | NOT DONE | No provider interface exists in the code. The engine is RULES_ONLY, shown as such. MODEL_ENABLED is **BLOCKED** (no provider or key) |
+| Structured model provider path | DONE (transport) | `src/model_provider.py`: OpenAI-compatible endpoint, schema validation, quote verification, timeout/invalid fallback; `tests/test_model_provider.py` against a scripted HTTP server. **No model was run**: MODEL_ENABLED is BLOCKED here (no runtime) |
+| Model-generated drafts | NOT DONE | Drafts stay rules-only. Model output is advisory analysis (`POST /api/inbox/threads/{id}/analyze`) |
 | Drafts persist with versions, digest and source | DONE | `draft_versions`; `test_editing_after_approval_invalidates_the_approval` |
 | Approval bound to exact content and invalidated by any change | DONE | `tests/test_send_broker.py`; `test_a_changed_draft_cannot_be_sent_with_an_old_approval` |
 | Single-use, expiring approval | DONE | `test_send_is_read_back_verified_and_the_approval_is_single_use` |
@@ -80,6 +84,17 @@ Every DONE item names its evidence. Test names refer to `tests/`.
 | Duplicate-send protection mutation-tested | DONE | `tests/test_send_broker.py::MutationCheck` (sends twice when both protections are removed, once when present); benchmark send-path duplicate sends 0 |
 | Execution timeline from stored records | DONE | `GET /api/inbox/executions/{id}`; `10_simulated_send_and_timeline.png` |
 | Simulated sends labelled SIMULATED | DONE | `label` on send responses and in the UI |
+
+## LOCAL mode (real local mail server)
+
+| Item | Status | Evidence / gap |
+|---|---|---|
+| Real SMTP + POP3 server on loopback, Maildir on disk, survives restart | DONE | `src/local_mail.py`; `tests/test_local_mail.py::ServerProtocol` |
+| Local-only delivery, authenticated submission, no sender spoofing | DONE | `test_external_recipients_are_refused_so_nothing_leaves_the_machine`, `test_sender_cannot_be_spoofed` |
+| Provider adapter with the Gmail client contract (send, drafts, read-back, correlation) | DONE | `tests/test_local_mail.py::ProviderContract` |
+| Full pipeline: deliver → sync → brief → draft → exact approval → send → POP3 read-back VERIFIED; effect checked again in the recipient's Maildir file | DONE | `test_full_local_journey_is_verified_by_independent_read_back`; HTTP: `tests/test_operations.py::RealServer`; browser: `test_local_mail_journey_through_the_ui_ends_verified`; `docs/screenshots/inbox/13_local_send_verified.png` |
+| Lost acknowledgement → UNCERTAIN → read-only reconcile finds the delivered message, no resend | DONE | `test_timeout_is_uncertain_and_reconcile_is_read_only` |
+| LOCAL kept apart from LIVE and from other users | DONE | `test_local_records_are_separate_from_live_and_from_other_users` |
 
 ## Replay lab
 
@@ -117,4 +132,7 @@ Every DONE item names its evidence. Test names refer to `tests/`.
 | Live provider and model benchmarks | NOT MEASURED | Stated in the report |
 | API documentation checked against the code | DONE | `tests/test_inbox_docs.py` |
 | Screenshots captured from the running app | DONE | `scripts/capture_inbox_screens.py`; `docs/screenshots/inbox/` |
+| Inbox routes refuse missing or invalid tokens in every mode; hashed session tokens; password change revokes sessions | DONE | `tests/test_operations.py` |
+| Migrations atomic, WAL, status, backup/verify/restore | DONE | `tests/test_operations.py`; `scripts/resolve_admin.py` |
+| Liveness and readiness endpoints | DONE | `/api/livez`, `/api/readyz`; `tests/test_operations.py::RealServer::test_liveness_and_readiness` |
 | Frontend split into modules (`inbox-components.js`) | PARTIAL | One module, `web/static/inbox.js`, plus `inbox.css` |

@@ -42,12 +42,16 @@ class FakeGoogle:
         self.revoke_ok = True
         self.n = 0
         self.token_scopes = None
+        self.history = []                    # (history id, message id) for messageAdded events
+        self.history_floor = 0               # history ids below this are "expired" (404), as Google does after ~a week
+        self.fail_message_fetch = False
 
     def _id(self):
         self.n += 1
         return f'g{self.n}'
 
     def add_inbound(self, mid, thread, sender, subject, body, when, to=ME):
+        self.history.append((len(self.history) + 101, mid))
         self.inbox.append({'id': mid, 'threadId': thread, 'internalDate': str(int(when * 1000)),
                            'payload': {'headers': [{'name': 'From', 'value': sender}, {'name': 'To', 'value': to}, {'name': 'Subject', 'value': subject}],
                                        'mimeType': 'text/plain', 'body': {'data': b64(body)}}})
@@ -69,7 +73,14 @@ class FakeGoogle:
         if self.rate_limit and path.endswith('/messages') and method == 'GET':
             return 429, {}, {'Retry-After': '0'}
         if path.endswith('/profile'):
-            return 200, {'emailAddress': ME, 'messagesTotal': len(self.inbox)}, {}
+            return 200, {'emailAddress': ME, 'messagesTotal': len(self.inbox), 'historyId': str(len(self.history) + 100)}, {}
+        if path.endswith('/history') and method == 'GET':
+            start = int(qs['startHistoryId'][0])
+            if start < self.history_floor:
+                return 404, {'error': 'history expired'}, {}
+            return 200, {'history': [{'messagesAdded': [{'message': {'id': m}}]} for h, m in self.history if h > start]}, {}
+        if self.fail_message_fetch and '/messages/' in path and method == 'GET':
+            return 500, {}, {}
         if path.endswith('/messages') and method == 'GET':
             if 'q' in qs and 'rfc822msgid:' in qs['q'][0]:
                 mid = qs['q'][0].split('rfc822msgid:')[1]
@@ -115,7 +126,7 @@ class InboxApiTests(unittest.TestCase):
         self.clock = [1_800_000_000.0]
         self.google = FakeGoogle()
         self.store = InboxStore(self.db, self.sealer)
-        self.api = InboxApi(self.store, CFG, self.google, OAuthStates(now=lambda: self.clock[0]), now=lambda: self.clock[0])
+        self.api = InboxApi(self.store, CFG, self.google, OAuthStates(now=lambda: self.clock[0]), now=lambda: self.clock[0], sleep=lambda s: None)
         self.a = {'user_id': 'usr_a', 'workspace_id': 'ws_a'}
         self.b = {'user_id': 'usr_b', 'workspace_id': 'ws_b'}
         self.call = lambda method, path, user=None, body=None, query=None: self.api.handle(method, path, query or {}, body, user or self.a)
@@ -139,6 +150,42 @@ class InboxApiTests(unittest.TestCase):
 
     def live_sync(self, user=None):
         return self.call('POST', '/api/inbox/sync', user, {'mode': 'LIVE'})
+
+    # ---- incremental sync
+    def test_incremental_sync_fetches_only_new_mail_and_falls_back_when_history_expired(self):
+        self.connect()
+        self.google.add_inbound('m1', 't1', 'Priya <priya@partner.example>', 'A', 'Could you send the checklist?', self.clock[0] - 300)
+        self.google.add_inbound('m2', 't2', 'Kim <kim@partner.example>', 'B', 'FYI the notes are in the wiki.', self.clock[0] - 200)
+        first = self.live_sync()[1]
+        self.assertEqual((first['kind'], first['fetched']), ('FULL', 2))
+        self.google.add_inbound('m3', 't1', 'Priya <priya@partner.example>', 'Re: A', 'Any update?', self.clock[0] - 100)
+        second = self.live_sync()[1]
+        self.assertEqual((second['kind'], second['fetched']), ('INCREMENTAL', 1), second)
+        fetched_ids = [p for m, p in self.google.calls if '/messages/' in p][-1:]
+        self.assertTrue(fetched_ids[0].endswith('/messages/m3'))
+        self.assertEqual(self.store.count_messages('usr_a', 'ws_a'), 3)
+        self.google.history_floor = 10_000                        # Google no longer has our checkpoint
+        third = self.live_sync()[1]
+        self.assertEqual((third['kind'], third['fetched'], third['changed_messages']), ('FULL_AFTER_EXPIRED_CURSOR', 3, 0))
+        runs = self.call('GET', '/api/inbox/sync/status', self.a)[1]['runs']
+        self.assertEqual([r['kind'] for r in runs[:3]], ['FULL_AFTER_EXPIRED_CURSOR', 'INCREMENTAL', 'FULL'])
+
+    def test_failed_sync_keeps_the_last_safe_checkpoint_and_resumes_without_duplicates(self):
+        self.connect()
+        self.google.add_inbound('m1', 't1', 'Priya <priya@partner.example>', 'A', 'Could you send the checklist?', self.clock[0] - 300)
+        self.live_sync()
+        cursor = self.store.get_sync_cursor('usr_a', 'ws_a', 'gmail')
+        self.google.add_inbound('m2', 't2', 'Kim <kim@partner.example>', 'B', 'Could you review the doc?', self.clock[0] - 200)
+        self.google.fail_message_fetch = True                     # the process "dies" mid-sync: the provider keeps failing
+        st, out = self.live_sync()
+        self.assertNotEqual(st, 200)
+        self.assertEqual(self.store.get_sync_cursor('usr_a', 'ws_a', 'gmail'), cursor, 'the checkpoint did not move past unstored mail')
+        self.google.fail_message_fetch = False
+        out = self.live_sync()[1]
+        self.assertEqual((out['kind'], out['fetched']), ('INCREMENTAL', 1))
+        self.live_sync()
+        self.assertEqual(self.store.count_messages('usr_a', 'ws_a'), 2)
+        self.assertEqual(len(self.store.list_commitments('usr_a', 'ws_a')), len({(c['thread_id'], c['obligation_key']) for c in self.store.list_commitments('usr_a', 'ws_a')}))
 
     # ---- OAuth
     def test_start_without_credentials_says_not_configured_and_names_the_variables(self):

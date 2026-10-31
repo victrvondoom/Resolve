@@ -7,6 +7,7 @@ Every route validates its state transition and returns safe error messages. Toke
 from __future__ import annotations
 
 import re
+import threading
 import time
 from datetime import datetime
 from typing import Callable
@@ -16,6 +17,7 @@ from zoneinfo import ZoneInfo
 import gmail_adapter as ga
 import inbox_intel as ii
 import inbox_replay as rp
+import model_provider as mp
 import inbox_service as svc
 from gmail_adapter import GmailClient, GmailConfig, GmailError, GmailSendClient, OAuthStates
 from inbox_store import COMMITMENT_STATUSES, InboxError, InboxStore
@@ -23,12 +25,31 @@ from send_broker import SendBroker
 from voice_policy import HIGH_IMPACT, RULE_TYPES, conflicts, parse_instruction, requires_confirmation
 
 REPLAY_SUFFIX = ".replay"
+LOCAL_SUFFIX = ".local"
+MODES = ("LIVE", "LOCAL", "REPLAY")
+PROVIDER_FOR_MODE = {"LIVE": "gmail", "LOCAL": "local_mail", "REPLAY": "replay"}
 REPLAY_SCRIPT_EXTRA = ("draft_T1", "approve_send_T1", "draft_T7")
 CORRECTION_KINDS = ("WRONG_PRIORITY", "WRONG_CATEGORY", "NOT_ACTIONABLE", "NOT_COMMITMENT", "WRONG_OWNER", "WRONG_DEADLINE",
                     "ALREADY_COMPLETED", "AUTOMATED", "OTHER")
 CORRECTION_SCOPES = ("ONE_TIME", "PERSISTENT_THREAD", "PERSISTENT_WORKSPACE")
 EMAIL = re.compile(r"[^<>\s@,]+@[^<>\s@,]+\.[A-Za-z]{2,}")
 MAX_TEXT = 4000
+
+
+class _IncrementalView:
+    """Presents Gmail history-based incremental fetching through the provider's sync_all() interface."""
+
+    def __init__(self, client, cursor: str):
+        self.client, self.cursor, self.expired = client, cursor, False
+
+    def sync_all(self, query: str = "") -> list[dict]:
+        try:
+            return self.client.sync_since(self.cursor)
+        except GmailError as e:
+            if e.code != "NOT_FOUND":
+                raise
+            self.expired = True
+            return self.client.sync_all(query)
 
 
 class ApiError(Exception):
@@ -45,21 +66,29 @@ def _address(header: str) -> str:
 def scoped(workspace_id: str, mode: str) -> str:
     if mode == "REPLAY":
         return workspace_id + REPLAY_SUFFIX
+    if mode == "LOCAL":
+        return workspace_id + LOCAL_SUFFIX
     if mode == "LIVE":
         return workspace_id
-    raise ApiError(400, "mode must be LIVE or REPLAY")
+    raise ApiError(400, "mode must be LIVE, LOCAL or REPLAY")
 
 
 class InboxApi:
     def __init__(self, store: InboxStore, gmail_config: GmailConfig | None, transport: Callable, oauth: OAuthStates | None = None,
-                 now: Callable[[], float] = time.time, public_base: str = ""):
+                 now: Callable[[], float] = time.time, public_base: str = "", local_mail=None, inference=None,
+                 sleep: Callable[[float], None] = time.sleep):
         self.store = store
         self.config = gmail_config
         self.transport = transport
         self.oauth = oauth or OAuthStates(now=now)
         self.now = now
+        self.sleep = sleep                                    # provider backoff; tests inject a no-op
         self.public_base = public_base
         self.replay: dict[tuple[str, str], dict] = {}         # replay progress (in memory; replay data itself is stored)
+        self.inference = inference or mp.InboxInference(None)   # RULES_ONLY unless a model endpoint is configured
+        self._sync_guard = threading.Lock()
+        self._sync_locks: dict[tuple[str, str], threading.Lock] = {}
+        self.local_mail = local_mail                          # local_mail.LocalMailServer or None (LOCAL mode not configured)
 
     # ------------------------------------------------------------------ dispatch
     def handle(self, method: str, path: str, query: dict, body: dict | None, user: dict) -> tuple[int, dict]:
@@ -78,7 +107,7 @@ class InboxApi:
         """A provider error that means the mailbox is unusable is written to the connection, so the UI shows it honestly."""
         status = {"REVOKED": "REVOKED", "TOKEN_EXPIRED": "EXPIRED", "RATE_LIMITED": "RATE_LIMITED"}.get(e.code)
         conn = self._gmail_conn(uid, wid)
-        if status and conn is not None and conn["status"] != status:
+        if status and conn is not None and conn["status"] != status and getattr(e, "provider", "gmail") == "gmail":
             self.store.upsert_connection(uid, wid, "gmail", status, conn["scopes"], e.message)
 
     def _mode(self, query: dict) -> str:
@@ -96,6 +125,14 @@ class InboxApi:
             return 200, self.gmail_start(uid, wid, body)
         if path == "/api/inbox/connections/gmail" and method == "DELETE":
             return 200, self.gmail_disconnect(uid, wid)
+        if path == "/api/inbox/connections/local/create" and method == "POST":
+            return 201, self.local_create(uid, wid, body)
+        if path == "/api/inbox/connections/local/connect" and method == "POST":
+            return 200, self.local_connect(uid, wid, body)
+        if path == "/api/inbox/connections/local" and method == "DELETE":
+            return 200, self.local_disconnect(uid, wid)
+        if path == "/api/inbox/local/deliver" and method == "POST":
+            return 201, self.local_deliver(uid, wid, body)
         if path == "/api/inbox/settings" and method == "GET":
             return 200, self.store.get_settings(uid, wid)
         if path == "/api/inbox/settings" and method == "PUT":
@@ -111,6 +148,10 @@ class InboxApi:
             return 200, self.thread_list(uid, wid, self._mode(query), query)
         if (mm := m(r"/api/inbox/threads/([A-Za-z0-9_.\-]+)")) and method == "GET":
             return 200, self.thread_detail(uid, wid, self._mode(query), mm.group(1))
+        if (mm := m(r"/api/inbox/threads/([A-Za-z0-9_.\-]+)/analyze")) and method == "POST":
+            return 200, self.analyze(uid, wid, self._mode(query), mm.group(1))
+        if path == "/api/inbox/engine" and method == "GET":
+            return 200, self.inference.status()
         if (mm := m(r"/api/inbox/threads/([A-Za-z0-9_.\-]+)/reprocess")) and method == "POST":
             return 200, self.reprocess(uid, wid, self._mode(query), mm.group(1))
         if (mm := m(r"/api/inbox/threads/([A-Za-z0-9_.\-]+)/corrections")) and method == "POST":
@@ -187,7 +228,7 @@ class InboxApi:
     # ------------------------------------------------------------------ helpers
     @staticmethod
     def _label(mode: str) -> str:
-        return "REPLAY · SYNTHETIC DATA · SIMULATED SENDS" if mode == "REPLAY" else "LIVE · GMAIL"
+        return {"REPLAY": "REPLAY · SYNTHETIC DATA · SIMULATED SENDS", "LOCAL": "LOCAL · LOCAL MAIL SERVER (not Gmail)"}.get(mode, "LIVE · GMAIL")
 
     def _gmail_conn(self, uid, wid):
         return self.store.get_connection(uid, wid, "gmail")
@@ -195,11 +236,17 @@ class InboxApi:
     def _account(self, uid, wid, mode) -> str:
         if mode == "REPLAY":
             return rp.REPLAY_ADDRESS
+        if mode == "LOCAL":
+            return ((self.store.load_oauth_token(uid, scoped(wid, "LOCAL"), "local_mail") or {}).get("address") or "").lower()
         tok = self.store.load_oauth_token(uid, wid, "gmail") or {}
         return (tok.get("account") or "").lower()
 
+    def _settings(self, uid, wid, mode):
+        """The user's own settings (timezone, sign-off, tone) apply to LIVE and LOCAL; REPLAY keeps its own fixed clock."""
+        return self.store.get_settings(uid, scoped(wid, "REPLAY") if mode == "REPLAY" else wid)
+
     def _tz(self, uid, wid, mode):
-        s = self.store.get_settings(uid, scoped(wid, mode))
+        s = self._settings(uid, wid, mode)
         return s["timezone"], s["timezone_configured"]
 
     def _gmail_client(self, uid, wid, need: str | None = None):
@@ -207,7 +254,8 @@ class InboxApi:
             raise ApiError(409, "Gmail is not configured on this server", code="NOT_CONFIGURED", required_env=["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"])
         conn = self._gmail_conn(uid, wid)
         tok = self.store.load_oauth_token(uid, wid, "gmail")
-        if conn is None or tok is None or conn["status"] != "CONNECTED":
+        # ERROR and RATE_LIMITED are transient: the next sync may try again. REVOKED, EXPIRED and NOT_CONNECTED need the user.
+        if conn is None or tok is None or conn["status"] not in ("CONNECTED", "ERROR", "RATE_LIMITED"):
             raise ApiError(409, "Gmail is not connected", code=(conn or {}).get("status", "NOT_CONNECTED"))
         if need and need not in (conn["scopes"] or []):
             raise ApiError(409, "this permission was not granted; enable it in Connections first", code="SCOPE_NOT_GRANTED", scope=need)
@@ -220,12 +268,104 @@ class InboxApi:
             return fresh["access_token"]
         if tok.get("expires_at", 0) < self.now() + 60:
             access = refresh()
-        return GmailSendClient(self.transport, access, refresh)
+        return GmailSendClient(self.transport, access, refresh, sleep=self.sleep)
 
     def _provider(self, uid, wid, mode, visible=None, inject=None):
         if mode == "REPLAY":
             return rp.ReplayProvider(self.store, uid, scoped(wid, "REPLAY"), self._anchor(uid, wid), visible, inject)
+        if mode == "LOCAL":
+            return self._local_client(uid, wid)
         return self._gmail_client(uid, wid)
+
+    # ------------------------------------------------------------------ LOCAL mode (local mail server; never Gmail)
+    def _local_required(self):
+        if self.local_mail is None:
+            raise ApiError(409, "the local mail server is not running on this server (set RESOLVE_LOCAL_MAIL=1)", code="NOT_CONFIGURED")
+        return self.local_mail
+
+    def _local_client(self, uid, wid):
+        import local_mail as lm
+        srv = self._local_required()
+        ws = scoped(wid, "LOCAL")
+        creds = self.store.load_oauth_token(uid, ws, "local_mail")
+        conn = self.store.get_connection(uid, ws, "local_mail")
+        if creds is None or conn is None or conn["status"] not in ("CONNECTED", "ERROR"):          # ERROR is transient: retry allowed
+            raise ApiError(409, "the local mailbox is not connected", code=(conn or {}).get("status", "NOT_CONNECTED"))
+        return lm.LocalMailProvider(creds["address"], creds["password"], srv.host, srv.smtp_port, srv.pop3_port)
+
+    def local_status(self, uid, wid) -> dict:
+        ws = scoped(wid, "LOCAL")
+        conn = self.store.get_connection(uid, ws, "local_mail")
+        creds = self.store.load_oauth_token(uid, ws, "local_mail")
+        if self.local_mail is None:
+            return {"status": "NOT_CONFIGURED", "detail": "Start RESOLVE with RESOLVE_LOCAL_MAIL=1 to run the local mail server.", "account": ""}
+        info = self.local_mail.info()
+        return {"status": (conn or {}).get("status", "NOT_CONNECTED"), "detail": (conn or {}).get("detail", ""),
+                "account": (creds or {}).get("address", ""), "domain": info["domain"], "smtp_port": info["smtp_port"],
+                "pop3_port": info["pop3_port"], "updated_at": (conn or {}).get("updated_at"),
+                "label": "LOCAL mail server on this machine. Delivers to local accounts only; never Gmail, never the internet."}
+
+    def _local_save(self, uid, wid, address: str, password: str) -> dict:
+        import local_mail as lm
+        srv = self._local_required()
+        client = lm.LocalMailProvider(address, password, srv.host, srv.smtp_port, srv.pop3_port)
+        prof = client.profile()                      # real POP3 login: proves the credentials before anything is stored
+        ws = scoped(wid, "LOCAL")
+        self.store.save_oauth_token(uid, ws, "local_mail", {"address": address, "password": password})
+        self.store.upsert_connection(uid, ws, "local_mail", "CONNECTED", ["local:read", "local:send", "local:drafts"],
+                                     f"local mailbox {address}")
+        return {**self.local_status(uid, wid), "messages_in_inbox": prof["messages_total"]}
+
+    def local_create(self, uid, wid, body) -> dict:
+        import secrets as _s
+        srv = self._local_required()
+        name = (_text(body, "name", 40) or "").strip().lower()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._\-]{0,39}", name):
+            raise ApiError(400, "name may contain letters, digits, dot, dash and underscore")
+        address = f"{name}@{srv.store.domain}"
+        password = _s.token_urlsafe(18)
+        try:
+            srv.store.create_account(address, password)
+        except ValueError as e:
+            raise ApiError(409, str(e))
+        return self._local_save(uid, wid, address, password)
+
+    def local_connect(self, uid, wid, body) -> dict:
+        address = (_text(body, "address", 120) or "").strip().lower()
+        password = _text(body, "password", 200) or ""
+        try:
+            return self._local_save(uid, wid, address, password)
+        except GmailError as e:
+            raise ApiError(409, e.message, code=e.code)
+
+    def local_disconnect(self, uid, wid) -> dict:
+        ws = scoped(wid, "LOCAL")
+        self.store.delete_oauth_token(uid, ws, "local_mail")
+        if self.store.get_connection(uid, ws, "local_mail"):
+            self.store.upsert_connection(uid, ws, "local_mail", "NOT_CONNECTED", [], "disconnected by the user")
+        return {"status": "NOT_CONNECTED", "note": "Messages stay on the local mail server; stored records stay until you delete them."}
+
+    def local_deliver(self, uid, wid, body) -> dict:
+        """Deliver an incoming message into the connected local mailbox from a local colleague account, over SMTP.
+        Colleague accounts are local-only and marked as such; a user's own mailbox can never be used as the sender."""
+        import local_mail as lm
+        srv = self._local_required()
+        account = self._account(uid, wid, "LOCAL")
+        if not account:
+            raise ApiError(409, "connect a local mailbox first", code="NOT_CONNECTED")
+        name = (_text(body, "from_name", 40) or "").strip().lower()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._\-]{0,39}", name):
+            raise ApiError(400, "from_name may contain letters, digits, dot, dash and underscore")
+        subject = _text(body, "subject", 300)
+        text = _text(body, "body", MAX_TEXT)
+        in_reply_to = _text(body, "in_reply_to", 300, required=False)
+        try:
+            sender, password = srv.colleague(name)
+        except ValueError as e:
+            raise ApiError(409, str(e))
+        mid = lm.send_as(sender, password, account, subject, text, srv.host, srv.smtp_port, in_reply_to=in_reply_to)
+        return {"delivered": True, "from": sender, "to": account, "message_id": mid, "transport": "SMTP (local mail server)",
+                "next": "Run Sync in LOCAL mode to bring it into RESOLVE."}
 
     def _anchor(self, uid, wid) -> float:
         """The replay clock is fixed once per replay so deadlines and timestamps stay stable across steps."""
@@ -270,6 +410,7 @@ class InboxApi:
         return {"gmail": {**status, "configured": self.config is not None, "scopes": (gm or {}).get("scopes", []),
                           "account": (tok or {}).get("account", "") if tok else "", "updated_at": (gm or {}).get("updated_at")},
                 "replay": {"status": "REPLAY" if replay else "NOT_STARTED", "label": "synthetic data, simulated sends"},
+                "local": self.local_status(uid, wid),
                 "required_env": ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"] if self.config is None else []}
 
     def gmail_status(self, uid, wid) -> dict:
@@ -326,6 +467,18 @@ class InboxApi:
 
     # ------------------------------------------------------------------ sync and brief
     def sync(self, uid, wid, mode, body) -> dict:
+        """One sync at a time per mailbox (user, workspace scope): a second request while one runs is refused, not queued."""
+        ws = scoped(wid, mode)
+        with self._sync_guard:
+            lock = self._sync_locks.setdefault((uid, ws), threading.Lock())
+        if not lock.acquire(blocking=False):
+            raise ApiError(409, "a sync for this mailbox is already running", code="SYNC_IN_PROGRESS")
+        try:
+            return self._sync(uid, wid, mode, body)
+        finally:
+            lock.release()
+
+    def _sync(self, uid, wid, mode, body) -> dict:
         ws = scoped(wid, mode)
         tz, configured = self._tz(uid, wid, mode)
         query = _text(body, "query", 200, required=False) or "newer_than:30d"
@@ -335,18 +488,38 @@ class InboxApi:
             visible = prog.get("visible", len(rp.DATASET))
             provider = rp.ReplayProvider(self.store, uid, ws, self._anchor(uid, wid), visible)
             acct = rp.REPLAY_ADDRESS
+        elif mode == "LOCAL":
+            provider = self._local_client(uid, wid)
+            acct = self._account(uid, wid, "LOCAL")
         else:
             provider = self._gmail_client(uid, wid)             # a refused refresh is recorded by handle() as a REVOKED/EXPIRED state
             try:
-                acct = provider.profile()["email"]
+                prof = provider.profile()
+                acct = prof["email"]
             except GmailError as e:
                 st = {"REVOKED": "REVOKED", "TOKEN_EXPIRED": "EXPIRED", "RATE_LIMITED": "RATE_LIMITED"}.get(e.code, "ERROR")
                 self.store.upsert_connection(uid, wid, "gmail", st, (self._gmail_conn(uid, wid) or {}).get("scopes", []), e.message)
                 raise ApiError(409 if st != "ERROR" else 502, f"sync stopped: {e.message}", code=st)
+        kind, new_cursor = "FULL", None
+        if mode == "LIVE":
+            # Incremental: messages added since the stored history checkpoint. The new checkpoint is the history id read
+            # BEFORE fetching, and it is stored only after the run succeeds, so a crash re-fetches (idempotently) instead
+            # of skipping mail. An expired checkpoint falls back to a full sync and says so.
+            new_cursor = prof.get("history_id")
+            cursor = self.store.get_sync_cursor(uid, ws, "gmail") if not body.get("full") else None
+            if cursor:
+                provider = _IncrementalView(provider, cursor)
+                kind = "INCREMENTAL"
         try:
             out = svc.sync_connection(self.store, uid, ws, provider, acct, query=query, tz_name=tz, mode=mode)
         except TimeoutError as e:
             raise ApiError(504, "the provider did not respond in time; nothing was marked as synchronized")
+        if isinstance(provider, _IncrementalView) and provider.expired:
+            kind = "FULL_AFTER_EXPIRED_CURSOR"
+        self.store.set_sync_run_kind(uid, ws, out["run_id"], kind)
+        if mode == "LIVE" and new_cursor:
+            self.store.set_sync_cursor(uid, ws, "gmail", new_cursor)
+        out["kind"] = kind
         out["timezone"] = tz
         out["timezone_configured"] = configured
         return out
@@ -357,20 +530,21 @@ class InboxApi:
         ok = [r for r in runs if r["state"] == "SUCCEEDED"]
         last_ok = ok[0]["finished_at"] if ok else None
         stale = last_ok is None or (self.now() - last_ok) > 24 * 3600
-        conn = self.store.get_connection(uid, ws, "gmail" if mode == "LIVE" else "replay")
+        conn = self.store.get_connection(uid, ws, PROVIDER_FOR_MODE[mode])
         count = len(self.store.list_threads(uid, ws))
-        processing = "STALE" if (last_ok and stale) else ("NOT_CONNECTED" if conn is None else (conn["status"] if conn["status"] != "CONNECTED" else "LIVE" if mode == "LIVE" else "REPLAY"))
+        processing = "STALE" if (last_ok and stale) else ("NOT_CONNECTED" if conn is None else (conn["status"] if conn["status"] != "CONNECTED" else mode))
         return {"mode": mode, "label": self._label(mode), "connection": conn, "runs": runs, "last_successful_sync_at": last_ok,
                 "stale": bool(stale and last_ok is not None), "threads": count, "messages": self.store.count_messages(uid, ws),
                 "processing_state": processing, "engine": "REPLAY_RULES" if mode == "REPLAY" else "RULES_ONLY",
-                "engine_label": "Rules engine (deterministic). No model is configured; RULES_ONLY is shown honestly."}
+                "engine_label": "Sync triage uses the deterministic rules engine (RULES_ONLY).",
+                "inference": self.inference.status()}
 
     def brief(self, uid, wid, mode) -> dict:
         ws = scoped(wid, mode)
         tz, configured = self._tz(uid, wid, mode)
         account = self._account(uid, wid, mode)
-        conn = self._gmail_conn(uid, wid) if mode == "LIVE" else self.store.get_connection(uid, ws, "replay")
-        if mode == "LIVE" and (conn is None or conn["status"] != "CONNECTED"):
+        conn = self._gmail_conn(uid, wid) if mode == "LIVE" else self.store.get_connection(uid, ws, PROVIDER_FOR_MODE[mode])
+        if mode in ("LIVE", "LOCAL") and (conn is None or conn["status"] != "CONNECTED"):
             return {"mode": mode, "label": self._label(mode), "connected": False, "connection_status": (conn or {}).get("status", "NOT_CONNECTED"),
                     "account": account, "timezone": tz, "timezone_configured": configured, "summary": {}, "needs_attention": [], "replies_to_send": [],
                     "my_commitments": [], "waiting_on_others": [], "requests_to_me": [], "timing": {}, "drafts": [], "recently_resolved": []}
@@ -483,6 +657,18 @@ class InboxApi:
                 except ValueError:
                     raise ApiError(400, "until_local must be a local date and time such as 2026-11-06T09:00")
         return self.store.set_thread_state(uid, ws, thread_id, state, _text(body, "reason", 200, required=False) or "", until)
+
+    def analyze(self, uid, wid, mode, thread_id) -> dict:
+        """Advisory analysis of the persisted thread: rules baseline plus, when configured, a schema-validated and
+        quote-verified model answer. Nothing is written; decisions change only through corrections or reprocessing."""
+        ws = scoped(wid, mode)
+        msgs = self._thread_row(uid, ws, thread_id)
+        tz, _ = self._tz(uid, wid, mode)
+        account = _address(self._account(uid, wid, mode)) or rp.REPLAY_ADDRESS
+        engine = mp.InboxInference(None, replay=True) if mode == "REPLAY" else self.inference
+        out = engine.analyze(msgs, account, tz)
+        return {**out, "thread_id": thread_id, "mode": mode, "advisory": True,
+                "note": "Analysis only. It cannot approve, send or change rules; apply a change through a correction."}
 
     def reprocess(self, uid, wid, mode, thread_id) -> dict:
         ws = scoped(wid, mode)
@@ -659,7 +845,7 @@ class InboxApi:
     # ------------------------------------------------------------------ drafts
     def create_draft(self, uid, wid, mode, thread_id, body) -> dict:
         ws = scoped(wid, mode)
-        s = self.store.get_settings(uid, ws)
+        s = self._settings(uid, wid, mode)
         account = _address(self._account(uid, wid, mode)) or rp.REPLAY_ADDRESS
         thread = self._thread_row(uid, ws, thread_id)
         facts = body.get("facts") or {}
@@ -667,16 +853,24 @@ class InboxApi:
             raise ApiError(400, "facts must be a small object of short strings")
         draft = svc.draft_reply(thread, account, _text(body, "signoff", 60, required=False) or s["signoff"],
                                        _text(body, "tone", 40, required=False) or s["tone"], facts, s["timezone"])
+        engine_used, model_note = ("REPLAY_RULES" if mode == "REPLAY" else "RULES_ONLY"), None
+        if body.get("engine") == "model" and mode != "REPLAY":
+            md = mp.model_draft(self.inference, thread, account, facts, s["signoff"], s["tone"])
+            model_note = {k: v for k, v in md.items() if k != "body"}
+            if md["engine"] == "MODEL_ENABLED":
+                draft = {**draft, "body": md["body"], "missing_information": md["missing_information"],
+                         "assumptions": draft["assumptions"] + ["text written by the configured model; checked for unsupported claims"]}
+                engine_used = "MODEL_ENABLED"
         last = max(thread, key=lambda x: x["sent_at"])
         recipient = _address(last["sender"]) if _address(last["sender"]) != account else _address(last.get("recipients", ""))
         if not recipient:
             raise ApiError(409, "the recipient address could not be determined from the thread; edit the recipient before approving")
         meta = {"sources": draft["sources"], "missing_information": draft["missing_information"], "assumptions": draft["assumptions"],
-                "potential_commitments": draft["potential_commitments"], "engine": "REPLAY_RULES" if mode == "REPLAY" else "RULES_ONLY",
+                "potential_commitments": draft["potential_commitments"], "engine": engine_used, "model_note": model_note,
                 "generated_at": self.now()}
-        stored = self.store.create_draft(uid, ws, thread_id, recipient, draft["subject"], draft["body"], origin="RULES_ENGINE" if mode == "LIVE" else "REPLAY_RULES", meta=meta)
-        return {**self.store.get_draft(uid, ws, stored["id"]), "engine": "REPLAY_RULES" if mode == "REPLAY" else "RULES_ONLY",
-                "engine_label": "deterministic rules; no model inference",
+        stored = self.store.create_draft(uid, ws, thread_id, recipient, draft["subject"], draft["body"], origin="REPLAY_RULES" if mode == "REPLAY" else ("MODEL" if engine_used == "MODEL_ENABLED" else "RULES_ENGINE"), meta=meta)
+        return {**self.store.get_draft(uid, ws, stored["id"]), "engine": engine_used, "model_note": model_note,
+                "engine_label": "written by the configured model, checked for unsupported claims" if engine_used == "MODEL_ENABLED" else "deterministic rules; no model inference",
                 "assumptions": draft["assumptions"], "missing_information": draft["missing_information"], "sources": draft["sources"],
                 "potential_commitments": draft["potential_commitments"], "recipient": recipient}
 
@@ -721,12 +915,14 @@ class InboxApi:
         ws = scoped(wid, mode)
         if mode == "LIVE":
             client = self._gmail_client(uid, wid, need=ga.SEND_SCOPE)
+        elif mode == "LOCAL":
+            client = self._local_client(uid, wid)
         else:
             client = self._provider(uid, wid, mode, inject=self.replay.get((uid, wid), {}).get("inject"))
             self.replay.get((uid, wid), {}).pop("inject", None)      # a failure injection applies to one send only
         broker = SendBroker(self.store, client, self.now)
         out = broker.send_email(uid, ws, _text(body, "approval_id", 80), did, _text(body, "digest", 80))
-        out["label"] = "SIMULATED (replay outbox, not Gmail)" if mode == "REPLAY" else "Gmail"
+        out["label"] = {"REPLAY": "SIMULATED (replay outbox, not Gmail)", "LOCAL": "LOCAL mail server (real SMTP delivery on this machine, not Gmail)"}.get(mode, "Gmail")
         return out
 
     # ------------------------------------------------------------------ executions
@@ -734,7 +930,7 @@ class InboxApi:
         ws = scoped(wid, mode)
         rows = self.store.list_executions(uid, ws)
         for r in rows:
-            r["label"] = "SIMULATED" if mode == "REPLAY" else "Gmail"
+            r["label"] = {"REPLAY": "SIMULATED", "LOCAL": "LOCAL MAIL"}.get(mode, "Gmail")
         return {"mode": mode, "label": self._label(mode), "executions": rows}
 
     def reconcile(self, uid, wid, mode, eid) -> dict:

@@ -89,6 +89,49 @@ class InboxUI(unittest.TestCase):
         finally:
             ctx.close()
 
+    def test_local_mail_journey_through_the_ui_ends_verified(self):
+        """Connections -> create a mailbox on the local mail server -> deliver over SMTP -> sync -> Morning brief ->
+        thread -> draft -> exact approval -> send -> VERIFIED by POP3 read-back. DOM-level browser actions only."""
+        from playwright.sync_api import expect
+        ctx, pg = self.page()
+        try:
+            pg.on('dialog', lambda d: d.accept('status: I will send the checklist at 3 PM.') if d.type == 'prompt' else d.accept())
+            pg.click('a[data-view="connections"]')
+            pg.wait_for_selector('#ibLocalPanel', timeout=8000)
+            pg.fill('#ibLcName', 'uifounder')
+            pg.click('#ibLocalPanel form[data-ib-form="local-create"] button[type="submit"]')
+            pg.wait_for_selector('#ibLocalPanel form[data-ib-form="local-deliver"]', timeout=8000)
+            self.assertIn('uifounder@mail.resolve.test', pg.inner_text('#ibLocalPanel'))
+            pg.fill('#ibLdFrom', 'priya')
+            pg.fill('#ibLdSubj', 'Deployment checklist')
+            pg.fill('#ibLdBody', 'Hi, could you send the revised deployment checklist before 4 PM?')
+            pg.click('#ibLocalPanel form[data-ib-form="local-deliver"] button[type="submit"]')
+            expect(pg.locator('#ibLocalMsg')).to_contain_text('Delivered', timeout=8000)
+            pg.click('#ibLocalPanel button[data-ib="local-sync"]')
+            pg.wait_for_selector('#ibLocalPanel', timeout=8000)
+            pg.click('a[data-view="morning"]')
+            pg.click('#view-morning button[data-value="LOCAL"]')
+            pg.wait_for_selector('#view-morning .ib-kpi', timeout=8000)
+            text = pg.inner_text('#view-morning')
+            self.assertIn('LOCAL MAIL SERVER', text)
+            self.assertIn('not Gmail', text)
+            pg.click('a[data-view="inbox"]')
+            pg.wait_for_selector('#view-inbox a.ib-item-title', timeout=8000)
+            pg.locator('#view-inbox a.ib-item-title').first.click()
+            pg.wait_for_selector('#view-thread .ib-msg', timeout=8000)
+            pg.locator('#view-thread [data-ib="new-draft"]').first.click()
+            pg.wait_for_selector('#view-draft [data-ib="approve-selected"], #view-draft [data-ib="approve"]', timeout=8000)
+            self.assertIn('priya@mail.resolve.test', pg.inner_html('#view-draft'))
+            pg.locator('#view-draft [data-ib="approve-selected"], #view-draft [data-ib="approve"]').first.click()
+            pg.wait_for_selector('#view-draft [data-ib="send"]', timeout=8000)
+            self.assertIn('Send through the local mail server', pg.inner_text('#view-draft'))
+            pg.click('#view-draft [data-ib="send"]')
+            expect(pg.locator('#view-draft')).to_contain_text('Sent · verified', timeout=10000)   # persisted draft state after read-back
+            pg.screenshot(path=str(Path(__file__).resolve().parents[1] / 'docs' / 'screenshots' / 'inbox' / '13_local_send_verified.png'), full_page=False)
+            self.assertEqual(pg.errors, [], pg.errors)
+        finally:
+            ctx.close()
+
     def test_no_horizontal_overflow_at_phone_width(self):
         ctx, pg = self.page()
         try:
