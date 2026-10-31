@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 
 from gmail_adapter import GmailError, build_raw_message, correlation_id, normalize_body
+from inbox_store import InboxError  # noqa: F401  (re-exported for callers that handle both)
 
 
 class BrokerRefused(Exception):
@@ -83,6 +84,7 @@ class SendBroker:
             return {"execution_id": rec["id"], "state": "UNCERTAIN", "reason": why}
         self.store.finish_execution(user_id, workspace_id, rec["id"], "VERIFIED", provider_id, "DRAFT_READ_BACK_MATCHED",
                                     f"draft {provider_id} read back: correlation, recipient, cc, subject and body match")
+        self.store.set_draft_provider_id(user_id, workspace_id, draft["id"], provider_id, "SAVED_TO_GMAIL")
         return {"execution_id": rec["id"], "state": "VERIFIED", "provider_id": provider_id}
 
     # ---------- sending
@@ -128,6 +130,7 @@ class SendBroker:
             return {"execution_id": rec["id"], "state": "UNCERTAIN", "reason": why}
         self.store.finish_execution(user_id, workspace_id, rec["id"], "VERIFIED", provider_id, "SENT_READ_BACK_MATCHED",
                                     f"message {provider_id} ({via}) read back: correlation, recipient, cc, subject and body match")
+        self.store.set_draft_provider_id(user_id, workspace_id, draft["id"], provider_id, "SENT_VERIFIED")
         return {"execution_id": rec["id"], "state": "VERIFIED", "provider_id": provider_id}
 
     # ---------- replay of an existing key: never a second dispatch
@@ -150,3 +153,12 @@ class SendBroker:
                 return out
             return {"execution_id": rec["id"], "state": "NEEDS_RECOVERY", "reason": "NOT_FOUND_BY_CORRELATION", "replayed": True}
         return {"execution_id": rec["id"], "state": rec["state"], "replayed": True}
+
+    def reconcile(self, user_id: str, workspace_id: str, execution_id: str) -> dict:
+        """Read-only reconciliation of an uncertain or interrupted operation. Never dispatches; never resends."""
+        rec = self.store.get_execution(user_id, workspace_id, execution_id)
+        if rec["state"] == "VERIFIED":
+            return {"execution_id": rec["id"], "state": "VERIFIED", "replayed": True}
+        if rec["state"] not in ("UNCERTAIN", "NEEDS_RECOVERY", "EXECUTING"):
+            raise BrokerRefused("this operation is not in a state that needs reconciliation")
+        return self._replay(user_id, workspace_id, rec, rec["operation_key"])

@@ -48,6 +48,7 @@ class PrivacyEngine:
         self.mission_store = None   # optional hooks wired by the app: purge missions first so in-flight workers' late results are rejected
         self.audit_store = None     # write audit trail for direct document writes (tenant data)
         self.browser_pool = None    # optional: close live browser processes before sandbox storage is destroyed
+        self.inbox_store = None     # inbox threads, commitments, drafts and sync history are tenant data (LIVE and REPLAY workspaces)
         self.documents = DocumentStudio(Path(os.environ.get('RESOLVE_DOCUMENTS_DIR', self.data_dir / 'documents')))
 
     def get_summary(self, user_id: str, workspace_id: str) -> dict:
@@ -110,6 +111,9 @@ class PrivacyEngine:
             export_bundle['projects'] = self.project_store.list(user_id, workspace_id)
         if self.audit_store:
             export_bundle['write_audit'] = self.audit_store.list(user_id, workspace_id)
+        if self.inbox_store:
+            export_bundle['inbox'] = self.inbox_store.export_workspace(user_id, workspace_id)
+            export_bundle['inbox_replay'] = self.inbox_store.export_workspace(user_id, workspace_id + '.replay')
         bundle_str = json.dumps(export_bundle, sort_keys=True)
         export_bundle["sha256_checksum"] = hashlib.sha256(bundle_str.encode()).hexdigest()
         return export_bundle
@@ -158,6 +162,9 @@ class PrivacyEngine:
         if self.audit_store:
             self.audit_store.purge(user_id, workspace_id)
         projects_removed = self.project_store.purge(user_id, workspace_id) if self.project_store else 0
+        inbox_removed = 0
+        if self.inbox_store:
+            inbox_removed = self.inbox_store.purge(user_id, workspace_id) + self.inbox_store.purge(user_id, workspace_id + '.replay')
         self.documents.delete_workspace(user_id, workspace_id)
         self.auth_mgr.delete_workspace(user_id, workspace_id)
 
@@ -171,7 +178,7 @@ class PrivacyEngine:
             target_id=workspace_id,
             user_id=user_id,
             status="COMPLETED",
-            purged_items={"workspace_id": workspace_id, "destroyed_sandboxes": destroyed_sbx, "documents_removed": True, "missions_removed": missions_removed, "projects_removed": projects_removed},
+            purged_items={"workspace_id": workspace_id, "destroyed_sandboxes": destroyed_sbx, "documents_removed": True, "missions_removed": missions_removed, "projects_removed": projects_removed, "inbox_rows_removed": inbox_removed},
             timestamp=now,
             retention_notice="The workspace and its documents, missions, uploaded projects and sandboxes were deleted from active storage.",
             sha256_proof=proof
@@ -196,6 +203,7 @@ class PrivacyEngine:
         if self.audit_store:
             self.audit_store.purge(user_id)
         projects_removed = self.project_store.purge(user_id) if self.project_store else 0
+        inbox_removed = self.inbox_store.purge(user_id) if self.inbox_store else 0
         self.documents.delete_user(user_id)
         self.auth_mgr.delete_user(user_id)
 

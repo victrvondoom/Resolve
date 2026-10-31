@@ -43,6 +43,10 @@ from net_policy import NetPolicy, origin_of
 from tool_registry import ToolContext, default_registry
 from project_store import ProjectStore, ProjectError, fingerprint
 from voice_engine import VoiceEngine, VoiceError
+import gmail_adapter
+from gmail_adapter import GmailConfig
+from inbox_store import InboxError, InboxStore
+from inbox_api import InboxApi
 from server_security import ServerSecurity, RateLimiter, SECURITY_HEADERS, ConfigError, client_ip
 
 DB = Path(os.environ.get('RESOLVE_DB', ROOT / 'data' / 'resolve.sqlite3'))
@@ -78,6 +82,11 @@ voice_engine = VoiceEngine()
 demo_webapp = DemoWebApp()
 write_audit = WriteAudit(document_studio.base_dir / 'write_audit.sqlite3')
 privacy_engine.audit_store = write_audit
+# Inbox-to-Commitment Operator: tenant-scoped store (sealed with the same master key), Gmail adapter, HTTP surface
+inbox_store = InboxStore(Path(os.environ.get('RESOLVE_INBOX_DB', ROOT / 'data' / 'inbox.sqlite3')), document_studio.sealer)
+inbox_api = InboxApi(inbox_store, GmailConfig.from_env(os.environ), gmail_adapter.http_transport,
+                     public_base=os.environ.get('RESOLVE_PUBLIC_BASE', '').rstrip('/'))
+privacy_engine.inbox_store = inbox_store
 tool_registry = default_registry()
 _diag_slots = threading.BoundedSemaphore(2)       # at most two real Chromium diagnostics runs at once
 
@@ -405,6 +414,10 @@ class Handler(BaseHTTPRequestHandler):
             self.check_origin()
             parsed = urlparse(self.path)
             path = parsed.path
+            if path == '/api/inbox/connections/gmail/callback':          # browser redirect from Google: no session header, state is the proof
+                return self.send_inbox_redirect(*inbox_api.gmail_callback(parse_qs(parsed.query)))
+            if path.startswith('/api/inbox/'):
+                return self.send_inbox('GET', path, parse_qs(parsed.query), None, self.get_session())
             if path == '/api/stream':
                 q = parse_qs(parsed.query)
                 after = q.get('after', [self.headers.get('Last-Event-ID', '0')])[0] or '0'
@@ -648,6 +661,42 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             self.send_json(503, {'error': str(exc)})
 
+    def send_inbox_redirect(self, status: int, payload: dict) -> None:
+        self.send_response(status)
+        self.send_header('Location', payload.get('location', '/'))
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
+    def send_inbox(self, method: str, path: str, query: dict, data, user: dict) -> None:
+        """Every inbox route goes through the tenant-scoped service. Unexpected failures return a generic message only."""
+        try:
+            status, payload = inbox_api.handle(method, path, query, data, user)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            status, payload = 500, {'error': 'inbox request failed; the server log has the details'}
+        self.send_json(status, payload)
+
+    def do_PUT(self):
+        self._inbox_mutation('PUT')
+
+    def do_PATCH(self):
+        self._inbox_mutation('PATCH')
+
+    def do_DELETE(self):
+        self._inbox_mutation('DELETE')
+
+    def _inbox_mutation(self, method: str) -> None:
+        try:
+            path = urlparse(self.path).path
+            require(path.startswith('/api/inbox/'), 404, 'not found')
+            self.check_origin(mutation=method != 'DELETE')
+            data = self.body() if method != 'DELETE' else {}
+            self.send_inbox(method, path, parse_qs(urlparse(self.path).query), data, self.get_session())
+        except ApiError as exc:
+            self.send_json(exc.status, {'error': exc.message})
+
     def do_POST(self):
         try:
             path = urlparse(self.path).path
@@ -667,6 +716,8 @@ class Handler(BaseHTTPRequestHandler):
             self.check_origin(mutation=True)
             data = self.body(max_size=7 * 1024 * 1024 if path in ('/api/documents/upload', '/api/projects/upload') else 3 * 1024 * 1024 if path == '/api/voice/transcribe-audio' else 32768)
             user = self.get_session()
+            if path.startswith('/api/inbox/'):
+                return self.send_inbox('POST', path, parse_qs(urlparse(self.path).query), data, user)
 
             if path == '/api/documents/upload':
                 try:

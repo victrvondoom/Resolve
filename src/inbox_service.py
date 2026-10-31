@@ -149,9 +149,10 @@ def draft_reply(thread_messages: list[dict], user_address: str, signoff: str, to
     sender = last.get("sender", "")
     name_match = _GREETING_NAME.match(sender.split("<")[0].strip().strip('"')) if sender else None
     first = name_match.group(1) if name_match else "there"
-    questions = [s for s in ii.sentences(last.get("body", "")) if s.endswith("?")]
     requests = [c for c in ii.extract_commitments(thread_messages, user_address, tz_name) if c["kind"] == "REQUEST_TO_USER"
                 and c["source_message_id"] == last["id"]]
+    request_texts = {c["evidence_text"] for c in requests}
+    questions = [s for s in ii.sentences(last.get("body", "")) if s.endswith("?") and s not in request_texts]
     lines = [f"Hi {first},", ""]
     assumptions, missing, sources = [], [], []
     if requests:
@@ -190,6 +191,7 @@ def draft_reply(thread_messages: list[dict], user_address: str, signoff: str, to
                 lines.append(known_facts["answer"])
             else:
                 missing.append(f"an answer to: {q}")
+    missing = list(dict.fromkeys(missing))                  # each gap listed once, in order
     lines += ["", signoff or "Best"]
     body = "\n".join(lines)
     introduces = [c["required_action"] for c in ii.extract_commitments(

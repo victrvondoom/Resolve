@@ -255,3 +255,109 @@ class GmailSendClient(GmailClient):
     def find_draft_by_correlation(self, operation_key: str) -> list[str]:
         data = self._call("GET", "/messages", params={"q": f"in:drafts rfc822msgid:{correlation_id(operation_key)}", "maxResults": 5})
         return [m["id"] for m in data.get("messages", [])]
+
+
+# ---------- OAuth exchange, refresh, revocation and state (transport injected; tests use recorded responses)
+
+OAUTH_STATE_TTL = 600.0
+REVOKE_URL = "https://oauth2.googleapis.com/revoke"
+
+
+def exchange_code(config: GmailConfig, code: str, verifier: str, transport: Callable) -> dict:
+    """Authorization code -> tokens. Tokens are returned to the caller only for sealed storage; they are never logged."""
+    status, data, _ = transport("POST", TOKEN_URL, {"Content-Type": "application/x-www-form-urlencoded"}, {
+        "code": code, "client_id": config.client_id, "client_secret": config.client_secret, "redirect_uri": config.redirect_uri,
+        "grant_type": "authorization_code", "code_verifier": verifier})
+    if status != 200 or not (data or {}).get("access_token"):
+        err = (data or {}).get("error", "")
+        if err == "invalid_grant":
+            raise GmailError("REVOKED", "the authorization code was rejected or has expired; start the connection again")
+        raise GmailError("PROVIDER_ERROR", "Google did not issue tokens for this authorization")
+    granted = set((data.get("scope") or "").split())
+    if READONLY_SCOPE not in granted:
+        raise GmailError("PROVIDER_ERROR", "the read-only Gmail permission was not granted")
+    return {"access_token": data["access_token"], "refresh_token": data.get("refresh_token"),
+            "expires_at": time.time() + float(data.get("expires_in", 3600)), "scopes": sorted(granted)}
+
+
+def refresh_access_token(config: GmailConfig, refresh_token: str, transport: Callable) -> dict:
+    status, data, _ = transport("POST", TOKEN_URL, {"Content-Type": "application/x-www-form-urlencoded"}, {
+        "client_id": config.client_id, "client_secret": config.client_secret, "refresh_token": refresh_token, "grant_type": "refresh_token"})
+    if status == 200 and (data or {}).get("access_token"):
+        return {"access_token": data["access_token"], "expires_at": time.time() + float(data.get("expires_in", 3600))}
+    if (data or {}).get("error") == "invalid_grant":
+        raise GmailError("REVOKED", "Google reports this access was revoked; reconnect to continue")
+    raise GmailError("TOKEN_EXPIRED", "the access token could not be refreshed")
+
+
+def revoke_token(token: str, transport: Callable) -> bool:
+    """Best-effort revocation at Google. Returns whether Google confirmed it; local deletion happens regardless."""
+    try:
+        status, _, _ = transport("POST", REVOKE_URL, {"Content-Type": "application/x-www-form-urlencoded"}, {"token": token})
+        return status == 200
+    except (TimeoutError, OSError):
+        return False
+
+
+class OAuthStates:
+    """Server-side, single-use, expiring state for the Gmail authorization round trip. Each state is bound to the user and
+    workspace that started it, so a callback cannot attach a mailbox to a different account."""
+
+    def __init__(self, now: Callable[[], float] = time.time, max_pending: int = 500):
+        self._now = now
+        self._items: dict[str, dict] = {}
+        self._max = max_pending
+
+    def issue(self, user_id: str, workspace_id: str, scopes: list[str] | None = None) -> dict:
+        self._sweep()
+        if len(self._items) >= self._max:
+            raise GmailError("RATE_LIMITED", "too many pending connections; try again shortly", retry_after=60)
+        state = secrets.token_urlsafe(32)
+        verifier, challenge = pkce_pair()
+        self._items[state] = {"user_id": user_id, "workspace_id": workspace_id, "verifier": verifier, "scopes": list(scopes or []),
+                              "expires_at": self._now() + OAUTH_STATE_TTL}
+        return {"state": state, "code_challenge": challenge}        # the verifier never leaves the server
+
+    def consume(self, state: str) -> dict:
+        self._sweep()
+        item = self._items.pop(state, None)            # single use: removed on first presentation, valid or not
+        if item is None or self._now() > item["expires_at"]:
+            raise GmailError("STATE_INVALID", "this connection request is unknown or has expired; start again")
+        return item
+
+    def _sweep(self) -> None:
+        now = self._now()
+        for k in [k for k, v in self._items.items() if v["expires_at"] < now]:
+            self._items.pop(k, None)
+
+
+def http_transport(method: str, url: str, headers: dict, body) -> tuple[int, dict, dict]:
+    """The only function that touches the network. Bodies: dict for JSON, or a form for application/x-www-form-urlencoded.
+    Times out after 15 seconds. The caller decides what a timeout means (UNCERTAIN for sends)."""
+    import json as _json
+    import socket
+    import urllib.error
+    import urllib.request
+    from urllib.parse import urlencode as _enc
+    headers = dict(headers)
+    data = None
+    if body is not None:
+        if headers.get("Content-Type", "").startswith("application/x-www-form-urlencoded"):
+            data = _enc(body).encode()
+        else:
+            data = _json.dumps(body).encode()
+            headers.setdefault("Content-Type", "application/json")
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = resp.read()
+            return resp.status, (_json.loads(raw) if raw else {}), dict(resp.headers)
+    except urllib.error.HTTPError as e:
+        raw = e.read()
+        try:
+            payload = _json.loads(raw) if raw else {}
+        except ValueError:
+            payload = {}
+        return e.code, payload, dict(e.headers or {})
+    except (socket.timeout, TimeoutError) as e:
+        raise TimeoutError("provider did not respond in time") from e

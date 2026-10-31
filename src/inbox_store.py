@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import hashlib
 import re
+
+import inbox_intel as ii
 import json
 import sqlite3
 import threading
@@ -21,7 +23,7 @@ from pathlib import Path
 
 from at_rest import SealedStore
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 COMMITMENT_KINDS = ("REQUEST_TO_USER", "PROMISE_BY_USER", "PROMISE_BY_OTHER", "DEPENDENCY", "FOLLOW_UP", "UNRESOLVED_OBLIGATION", "SUGGESTION", "HISTORICAL")
 FOLLOW_UP_TRIGGERS = ("OUTSTANDING_OWN_COMMITMENT", "OTHER_PARTY_PROMISE", "UNANSWERED_THREAD", "DUE_DATE_APPROACHING")
 EMAIL_RE = re.compile(r"^[^@\s<>]{1,64}@[^@\s<>]{1,255}\.[A-Za-z]{2,24}$")
@@ -99,6 +101,9 @@ class InboxStore:
             if 5 not in done:
                 conn.executescript(MIGRATION_5)
                 conn.execute("INSERT INTO schema_migrations VALUES (5, ?)", (time.time(),))
+            if 6 not in done:
+                conn.executescript(MIGRATION_6)
+                conn.execute("INSERT INTO schema_migrations VALUES (6, ?)", (time.time(),))
         finally:
             conn.close()
 
@@ -228,11 +233,21 @@ class InboxStore:
         keeps the previous one in commitment_revisions. An older message never reactivates an old deadline. Repeats are no-ops.
         Returns {"id", "action": CREATED | UNCHANGED | DEADLINE_REVISED | SUPERSEDED_HISTORY}."""
         index = self.sealer.blind_index(user_id, workspace_id, "obligation|" + obligation_key_raw)
+        open_states = "('OPEN','IN_PROGRESS','WAITING','UNCERTAIN','NEEDS_REVIEW')"
         with self._db() as db:
-            cur = db.execute("""SELECT c.*, m.sent_at AS source_sent_at FROM commitments c JOIN email_messages m ON m.id=c.source_message_id
+            cur = db.execute(f"""SELECT c.*, m.sent_at AS source_sent_at FROM commitments c JOIN email_messages m ON m.id=c.source_message_id
                                 WHERE c.user_id=? AND c.workspace_id=? AND c.thread_id=? AND c.kind=? AND c.obligation_key=?
-                                AND c.status IN ('OPEN','IN_PROGRESS','WAITING','UNCERTAIN','NEEDS_REVIEW') ORDER BY m.sent_at DESC LIMIT 1""",
+                                AND c.status IN {open_states} ORDER BY m.sent_at DESC LIMIT 1""",
                              (user_id, workspace_id, thread_id, kind, index)).fetchone()
+            if cur is None:
+                # the same obligation restated or re-dated in a later message: match by content, inside this thread only
+                rows = db.execute(f"""SELECT c.*, m.sent_at AS source_sent_at FROM commitments c JOIN email_messages m ON m.id=c.source_message_id
+                                     WHERE c.user_id=? AND c.workspace_id=? AND c.thread_id=? AND c.kind=? AND c.status IN {open_states}""",
+                                  (user_id, workspace_id, thread_id, kind)).fetchall()
+                for r in rows:
+                    if ii.same_obligation(self._open(r["required_action_sealed"], user_id, workspace_id, r["id"]) or "", new["required_action"]):
+                        cur = r
+                        break
         if cur is None:
             res = self.add_commitment(user_id, workspace_id, new["source_message_id"], kind, new["required_action"], new["evidence_text"],
                                       new.get("requesting_person"), new.get("responsible_person"), new.get("deadline_at"), new.get("deadline_confidence"),
@@ -252,10 +267,10 @@ class InboxStore:
                        (rid, cur["id"], user_id, workspace_id, cur["deadline_at"], cur["deadline_text"], cur["deadline_confidence"],
                         cur["deadline_timezone"], prev_src, "superseded by a newer message with a different explicit deadline", time.time()))
             db.execute("""UPDATE commitments SET deadline_at=?, deadline_confidence=?, deadline_text=?, deadline_timezone=?, deadline_explicit=?,
-                          source_message_id=?, evidence_sealed=?, updated_at=? WHERE id=? AND user_id=? AND workspace_id=?""",
+                          source_message_id=?, evidence_sealed=?, required_action_sealed=?, updated_at=? WHERE id=? AND user_id=? AND workspace_id=?""",
                        (new["deadline_at"], new.get("deadline_confidence"), new.get("deadline_phrase"), new.get("deadline_timezone"),
                         1 if new.get("deadline_explicit") else 0, new["source_message_id"], self._seal(new["evidence_text"], user_id, workspace_id, cur["id"]),
-                        time.time(), cur["id"], user_id, workspace_id))
+                        self._seal(new["required_action"], user_id, workspace_id, cur["id"]), time.time(), cur["id"], user_id, workspace_id))
             self._audit(db, user_id, workspace_id, "commitment.deadline_revised", cur["id"], {"revision": rid})
         return {"id": cur["id"], "action": "DEADLINE_REVISED"}
 
@@ -328,15 +343,20 @@ class InboxStore:
 
     # ---------- voice rules (versioned, reversible)
     def add_voice_rule(self, user_id: str, workspace_id: str, instruction: str, parsed: dict, scope: str, confirmed: bool) -> dict:
+        """A new version of a rule. An UNKNOWN rule is stored for review but is never active, even when confirmed."""
+        unknown = parsed.get("type") == "UNKNOWN"
+        if unknown and confirmed:
+            raise InboxError("an instruction RESOLVE does not recognise cannot be activated; rephrase it or edit the parsed rule", 409)
+        active = bool(confirmed) and not unknown
         with self._lock, self._db() as db:
             rid = self._id("rule")
             prev = db.execute("SELECT COALESCE(MAX(version),0) FROM voice_rules WHERE user_id=? AND workspace_id=?", (user_id, workspace_id)).fetchone()[0]
             db.execute("""INSERT INTO voice_rules(id,user_id,workspace_id,version,instruction_sealed,parsed_json,scope,active,confirmed,created_at)
                           VALUES (?,?,?,?,?,?,?,?,?,?)""",
                        (rid, user_id, workspace_id, prev + 1, self._seal(instruction, user_id, workspace_id, rid), json.dumps(parsed, sort_keys=True),
-                        scope, 1 if confirmed else 0, 1 if confirmed else 0, time.time()))
-            self._audit(db, user_id, workspace_id, "voice_rule.added", rid, {"scope": scope, "version": prev + 1})
-            return {"id": rid, "version": prev + 1, "active": bool(confirmed)}
+                        scope, 1 if active else 0, 1 if confirmed and not unknown else 0, time.time()))
+            self._audit(db, user_id, workspace_id, "voice_rule.added", rid, {"scope": scope, "version": prev + 1, "type": parsed.get("type")})
+            return {"id": rid, "version": prev + 1, "active": active}
 
     def list_voice_rules(self, user_id: str, workspace_id: str) -> list[dict]:
         with self._db() as db:
@@ -347,12 +367,21 @@ class InboxStore:
 
     def set_voice_rule_active(self, user_id: str, workspace_id: str, rule_id: str, active: bool) -> dict:
         with self._lock, self._db() as db:
-            r = db.execute("UPDATE voice_rules SET active=?, confirmed=CASE WHEN ?=1 THEN 1 ELSE confirmed END WHERE id=? AND user_id=? AND workspace_id=?",
-                           (1 if active else 0, 1 if active else 0, rule_id, user_id, workspace_id))
-            if r.rowcount != 1:
+            row = db.execute("SELECT parsed_json FROM voice_rules WHERE id=? AND user_id=? AND workspace_id=?", (rule_id, user_id, workspace_id)).fetchone()
+            if row is None:
                 raise InboxError("rule not found", 404)
+            if active and json.loads(row["parsed_json"]).get("type") == "UNKNOWN":
+                raise InboxError("an instruction RESOLVE does not recognise cannot be activated", 409)
+            db.execute("UPDATE voice_rules SET active=?, confirmed=CASE WHEN ?=1 THEN 1 ELSE confirmed END WHERE id=? AND user_id=? AND workspace_id=?",
+                       (1 if active else 0, 1 if active else 0, rule_id, user_id, workspace_id))
             self._audit(db, user_id, workspace_id, "voice_rule.active", rule_id, {"active": bool(active)})
         return {"id": rule_id, "active": active}
+
+    def get_voice_rule(self, user_id: str, workspace_id: str, rule_id: str) -> dict:
+        for r in self.list_voice_rules(user_id, workspace_id):
+            if r["id"] == rule_id:
+                return r
+        raise InboxError("rule not found", 404)
 
     # ---------- audit (ids, counts, statuses only)
     def audit_log(self, user_id: str, workspace_id: str, limit: int = 200) -> list[dict]:
@@ -573,6 +602,103 @@ class InboxStore:
         return [{"id": r["id"], "commitment_id": r["commitment_id"], "trigger": r["trigger"], "target": r["target"], "status": r["status"],
                  "note": self._open(r["note_sealed"], user_id, workspace_id, r["id"]), "created_at": r["created_at"]} for r in rows]
 
+    # ---------- settings (timezone is never assumed silently: timezone_configured says whether the user set it)
+    def get_settings(self, user_id: str, workspace_id: str) -> dict:
+        with self._db() as db:
+            r = db.execute("SELECT * FROM inbox_settings WHERE user_id=? AND workspace_id=?", (user_id, workspace_id)).fetchone()
+        if r is None:
+            return {"timezone": "UTC", "timezone_configured": False, "signoff": "Best", "tone": "neutral", "replay_anchor": None}
+        return {"timezone": r["timezone"], "timezone_configured": True, "signoff": r["signoff"], "tone": r["tone"], "replay_anchor": r["replay_anchor"]}
+
+    def set_settings(self, user_id: str, workspace_id: str, *, timezone_name: str | None = None, signoff: str | None = None,
+                     tone: str | None = None, replay_anchor: float | None = None) -> dict:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        cur = self.get_settings(user_id, workspace_id)
+        tz = timezone_name if timezone_name is not None else (cur["timezone"] if cur["timezone_configured"] else None)
+        if timezone_name is not None:
+            try:
+                ZoneInfo(timezone_name)
+            except (ZoneInfoNotFoundError, ValueError):
+                raise InboxError("unknown timezone; use an IANA name such as Europe/Berlin", 400)
+        if tz is None:
+            raise InboxError("set your timezone first (an IANA name such as Europe/Berlin)", 400)
+        sign = (signoff if signoff is not None else cur["signoff"]).strip()[:60]
+        tn = (tone if tone is not None else cur["tone"]).strip()[:40]
+        anchor = replay_anchor if replay_anchor is not None else cur["replay_anchor"]
+        with self._lock, self._db() as db:
+            db.execute("""INSERT INTO inbox_settings(user_id,workspace_id,timezone,signoff,tone,replay_anchor,updated_at) VALUES (?,?,?,?,?,?,?)
+                          ON CONFLICT(user_id, workspace_id) DO UPDATE SET timezone=excluded.timezone, signoff=excluded.signoff, tone=excluded.tone,
+                          replay_anchor=excluded.replay_anchor, updated_at=excluded.updated_at""",
+                       (user_id, workspace_id, tz, sign, tn, anchor, time.time()))
+            self._audit(db, user_id, workspace_id, "settings.updated", None, {"timezone": tz})
+        return self.get_settings(user_id, workspace_id)
+
+    # ---------- commitment notes (context added by the user) and user-supplied corrections
+    def add_commitment_note(self, user_id: str, workspace_id: str, commitment_id: str, note: str) -> dict:
+        self.get_commitment(user_id, workspace_id, commitment_id)
+        nid = self._id("note")
+        with self._lock, self._db() as db:
+            db.execute("INSERT INTO commitment_notes(id,commitment_id,user_id,workspace_id,note_sealed,created_at) VALUES (?,?,?,?,?,?)",
+                       (nid, commitment_id, user_id, workspace_id, self._seal(note, user_id, workspace_id, nid), time.time()))
+            self._audit(db, user_id, workspace_id, "commitment.note_added", commitment_id, {})
+        return {"id": nid}
+
+    def list_commitment_notes(self, user_id: str, workspace_id: str, commitment_id: str) -> list[dict]:
+        with self._db() as db:
+            rows = db.execute("SELECT id, note_sealed, created_at FROM commitment_notes WHERE commitment_id=? AND user_id=? AND workspace_id=? ORDER BY created_at",
+                              (commitment_id, user_id, workspace_id)).fetchall()
+        return [{"id": r["id"], "note": self._open(r["note_sealed"], user_id, workspace_id, r["id"]), "created_at": r["created_at"]} for r in rows]
+
+    def update_commitment(self, user_id: str, workspace_id: str, commitment_id: str, *, required_action: str | None = None,
+                          responsible_person: str | None = None, requesting_person: str | None = None,
+                          deadline_at: float | None = None, deadline_text: str | None = None, deadline_timezone: str | None = None,
+                          reason: str = "") -> dict:
+        """User corrections to an extracted commitment. Every change is audited and a deadline change keeps the previous one."""
+        cur = self.get_commitment(user_id, workspace_id, commitment_id)
+        with self._lock, self._db() as db:
+            sets, args = [], []
+            if required_action is not None:
+                sets.append("required_action_sealed=?"); args.append(self._seal(required_action, user_id, workspace_id, commitment_id))
+            if responsible_person is not None:
+                sets.append("responsible_person=?, ownership_state='USER_CORRECTED'"); args.append(responsible_person[:200])
+            if requesting_person is not None:
+                sets.append("requesting_person=?"); args.append(requesting_person[:200])
+            if deadline_at is not None and deadline_at != cur["deadline_at"]:
+                rid = self._id("rev")
+                db.execute("""INSERT INTO commitment_revisions(id,commitment_id,user_id,workspace_id,deadline_at,deadline_text,deadline_confidence,
+                              deadline_timezone,source_message_id,reason,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                           (rid, commitment_id, user_id, workspace_id, cur["deadline_at"], cur["deadline_text"], cur["deadline_confidence"],
+                            cur["deadline_timezone"], cur["source_message_id"], "deadline corrected by the user", time.time()))
+                sets.append("deadline_at=?, deadline_confidence='USER_CONFIRMED', deadline_text=?, deadline_timezone=?, deadline_explicit=1, review_reason=NULL")
+                args += [deadline_at, (deadline_text or "")[:120], deadline_timezone]
+            if not sets:
+                return cur
+            args += [time.time(), commitment_id, user_id, workspace_id]
+            db.execute(f"UPDATE commitments SET {', '.join(sets)}, updated_at=? WHERE id=? AND user_id=? AND workspace_id=?", args)
+            self._audit(db, user_id, workspace_id, "commitment.corrected", commitment_id, {"fields": [x.split('=')[0].strip() for x in sets], "reason": reason[:80]})
+        return self.get_commitment(user_id, workspace_id, commitment_id)
+
+    def draft_executions(self, user_id: str, workspace_id: str, draft_id: str) -> list[dict]:
+        with self._db() as db:
+            rows = db.execute("""SELECT e.id, e.operation, e.state, e.provider_id, e.reason, e.updated_at FROM execution_records e
+                                 JOIN approvals a ON a.id=e.approval_id WHERE a.draft_id=? AND e.user_id=? AND e.workspace_id=? ORDER BY e.created_at""",
+                              (draft_id, user_id, workspace_id)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_execution(self, user_id: str, workspace_id: str, execution_id: str) -> dict:
+        with self._db() as db:
+            r = db.execute("""SELECT e.*, a.draft_id, a.digest, a.approved_at, a.expires_at, a.used_at FROM execution_records e
+                              LEFT JOIN approvals a ON a.id=e.approval_id WHERE e.id=? AND e.user_id=? AND e.workspace_id=?""",
+                           (execution_id, user_id, workspace_id)).fetchone()
+            ver = db.execute("SELECT method, result, evidence, created_at FROM verification_records WHERE execution_id=? ORDER BY created_at",
+                             (execution_id,)).fetchall()
+        if r is None:
+            raise InboxError("execution not found", 404)
+        return {"id": r["id"], "operation": r["operation"], "state": r["state"], "provider_id": r["provider_id"], "reason": r["reason"],
+                "operation_key": r["operation_key"], "draft_id": r["draft_id"], "digest": r["digest"], "approved_at": r["approved_at"],
+                "expires_at": r["expires_at"], "used_at": r["used_at"], "created_at": r["created_at"], "updated_at": r["updated_at"],
+                "timeline": [dict(v) for v in ver]}
+
     # ---------- simulated outbox (REPLAY mode only; never a real delivery)
     def sim_put(self, user_id: str, workspace_id: str, message_id: str, raw: str) -> None:
         with self._lock, self._db() as db:
@@ -594,6 +720,12 @@ class InboxStore:
             if raw and f"Message-ID: <{message_id_header}>".lower() in _b.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)).decode("utf-8", "replace").lower():
                 out.append(r["id"])
         return out
+
+    def thread_by_provider_id(self, user_id: str, workspace_id: str, provider_thread_id: str) -> str | None:
+        with self._db() as db:
+            r = db.execute("SELECT id FROM email_threads WHERE user_id=? AND workspace_id=? AND provider_thread_id=?",
+                           (user_id, workspace_id, provider_thread_id)).fetchone()
+        return None if r is None else r["id"]
 
     def list_drafts(self, user_id: str, workspace_id: str) -> list[dict]:
         with self._db() as db:
@@ -695,13 +827,14 @@ class InboxStore:
         return {"connections": connections, "commitments": self.list_commitments(user_id, workspace_id),
                 "drafts": [self.get_draft(user_id, workspace_id, d["id"]) for d in self.list_drafts(user_id, workspace_id)],
                 "voice_rules": self.list_voice_rules(user_id, workspace_id), "corrections": self.list_corrections(user_id, workspace_id),
-                "sync_runs": self.list_sync_runs(user_id, workspace_id, 100), "audit": self.audit_log(user_id, workspace_id, 10000)}
+                "sync_runs": self.list_sync_runs(user_id, workspace_id, 100), "executions": self.list_executions(user_id, workspace_id),
+                "settings": self.get_settings(user_id, workspace_id), "audit": self.audit_log(user_id, workspace_id, 10000)}
 
     def purge(self, user_id: str, workspace_id: str | None = None) -> int:
         scope = ("user_id=?", (user_id,)) if workspace_id is None else ("user_id=? AND workspace_id=?", (user_id, workspace_id))
         n = 0
         with self._lock, self._db() as db:
-            for table in ("sim_outbox", "follow_ups", "sync_runs", "oauth_tokens", "commitment_status_history", "commitment_revisions",
+            for table in ("commitment_notes", "inbox_settings", "sim_outbox", "follow_ups", "sync_runs", "oauth_tokens", "commitment_status_history", "commitment_revisions",
                           "verification_records", "execution_records", "approvals", "draft_versions", "reply_drafts",
                           "corrections", "commitments", "email_messages", "email_threads", "voice_rules", "audit_events", "email_connections"):
                 try:
@@ -816,4 +949,13 @@ CREATE TABLE triage_decisions (
   category TEXT NOT NULL, priority TEXT NOT NULL, confidence REAL NOT NULL, reasons_json TEXT NOT NULL, evidence_sealed BLOB,
   computed_at REAL NOT NULL);
 CREATE INDEX triage_scope ON triage_decisions(user_id, workspace_id, category);
+"""
+
+MIGRATION_6 = """
+CREATE TABLE inbox_settings (
+  user_id TEXT NOT NULL, workspace_id TEXT NOT NULL, timezone TEXT NOT NULL, signoff TEXT NOT NULL, tone TEXT NOT NULL,
+  replay_anchor REAL, updated_at REAL NOT NULL, PRIMARY KEY(user_id, workspace_id));
+CREATE TABLE commitment_notes (
+  id TEXT PRIMARY KEY, commitment_id TEXT NOT NULL REFERENCES commitments(id) ON DELETE CASCADE, user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL, note_sealed BLOB NOT NULL, created_at REAL NOT NULL);
 """

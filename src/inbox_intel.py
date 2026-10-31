@@ -23,6 +23,8 @@ HYPOTHETICAL_RE = re.compile(r"\b(maybe|might|possibly|perhaps|if we|we could co
 HISTORICAL_RE = re.compile(r"\b(i sent|we discussed|last week|yesterday i|already sent|you sent)\b", re.I)
 URGENT_WORDS = re.compile(r"\b(urgent|asap|important|immediately)\b", re.I)
 AMBIGUOUS_TIME = re.compile(r"\b(soon|later|next week|end of the month|at some point|when you can|shortly)\b", re.I)
+INJECTION_RE = re.compile(r"ignore (all |any )?(previous|prior|above) instructions|disregard (the |your )?(system|previous) (prompt|instructions)|"
+                          r"send (me )?(the )?(full |entire |whole )?inbox|forward (me )?every (message|email)|reveal (your|the) (system )?prompt", re.I)
 AUTOMATED_BODY = re.compile(r"(unsubscribe|this is an automated|do not reply|you are receiving this)", re.I)
 
 
@@ -89,7 +91,15 @@ def resolve_deadline_detail(sentence: str, sent_at: float, tz_name: str = "UTC")
             hit = re.search(rf"\b(by|on|before|until)\s+({name})\b", s)
             if hit:
                 delta = (i - base.weekday()) % 7
-                due, conf, phrase = base + timedelta(days=delta), "RESOLVED_RELATIVE", hit.group(0)
+                if hit.group(1) == "before":
+                    # 'before Friday' means the day before Friday; sent on a Friday it cannot be resolved without asking
+                    if delta == 0:
+                        return {**empty, "deadline_confidence": "AMBIGUOUS", "phrase": hit.group(0),
+                                "review_reason": "'before <today's weekday>' is unclear; please confirm the date"}
+                    due = base + timedelta(days=delta - 1)
+                else:
+                    due = base + timedelta(days=delta)
+                due, conf, phrase = due, "RESOLVED_RELATIVE", hit.group(0)
                 break
         else:
             m = re.search(r"\b(by|on|before)\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})\b", s)
@@ -122,7 +132,9 @@ def resolve_deadline(sentence: str, sent_at: float, tz_name="UTC") -> tuple[floa
     return d["deadline_at"], d["deadline_confidence"], d["review_reason"]
 
 
-_STOP = {"could", "would", "will", "please", "that", "this", "with", "from", "your", "have", "just", "need", "want", "into", "about", "them", "there", "should", "they", "their", "then", "than"}
+_STOP = {"could", "would", "will", "please", "that", "this", "with", "from", "your", "have", "just", "need", "want", "into", "about", "them", "there",
+         "should", "they", "their", "then", "than", "instead", "moved", "legal", "following", "thanks", "thank", "also", "still", "again", "really",
+         "today", "tomorrow", "soon", "when", "what", "which", "where", "while", "hello", "hope", "sorry", "kindly", "ahead", "anyway"}
 _DEADLINE_WORDS = re.compile(r"\b(by|before|until|on|no later than|tomorrow|today|next|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|midnight|at)\b|\d{1,2}(:\d{2})?\s*(am|pm)|\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}\b|\b20\d{2}-\d{2}-\d{2}\b", re.I)
 
 
@@ -133,6 +145,21 @@ def obligation_key(action: str) -> str:
     text = _DEADLINE_WORDS.sub(" ", action.lower())
     words = sorted({w for w in re.findall(r"[a-z0-9]+", text) if len(w) > 2 and w not in _STOP and w not in {"you", "the", "and", "for"}})
     return " ".join(words)[:200]
+
+
+def obligation_words(action: str) -> set[str]:
+    """Content words of an obligation for matching the same obligation across messages (deadlines and filler removed)."""
+    text = _DEADLINE_WORDS.sub(" ", (action or "").lower())
+    return {w for w in re.findall(r"[a-z0-9]+", text) if len(w) > 2 and w not in _STOP and w not in {"you", "the", "and", "for"}}
+
+
+def same_obligation(a: str, b: str, threshold: float = 0.7) -> bool:
+    """Two requests are the same obligation when their content words overlap strongly (Jaccard). Different deliverables in
+    the same thread are kept apart; a restated or re-dated request is matched."""
+    wa, wb = obligation_words(a), obligation_words(b)
+    if not wa or not wb:
+        return False
+    return len(wa & wb) / len(wa | wb) >= threshold
 
 
 def _person(header: str) -> str:
@@ -194,6 +221,11 @@ def triage_thread(messages: list[dict], user_address: str, tz_name="UTC") -> dic
     last = max(messages, key=lambda m: m["sent_at"])
     text = " ".join(m.get("body", "") for m in messages)
     reasons, evidence = [], []
+    # Instruction-like text inside an email is untrusted data. It never changes permissions; it is routed to a human.
+    injected = [sent for m in messages for sent in sentences(m.get("body", "")) if INJECTION_RE.search(sent)]
+    if injected:
+        return _decision("UNCERTAIN_HUMAN_REVIEW", "MEDIUM", 0.5,
+                         ["the message contains instruction-like text; it is treated as data and needs your review"], [injected[0][:300]], messages)
     if AUTOMATED_SENDER.search(last.get("sender", "")) or AUTOMATED_BODY.search(text):
         return _decision("AUTOMATED_LOW_PRIORITY", "LOW", 0.9, ["automated sender or unsubscribe footer"], [last.get("sender", "")], messages)
     from_user_last = bool(user) and user in last.get("sender", "").lower()
@@ -208,6 +240,8 @@ def triage_thread(messages: list[dict], user_address: str, tz_name="UTC") -> dic
     if deadlines and not from_user_last:
         d = min(deadlines, key=lambda c: c["deadline_at"])
         return _decision("DEADLINE_TIME_SENSITIVE", "HIGH", 0.85, ["an explicit deadline is stated in the message"], [d["evidence_text"]], messages)
+    request_texts = {c["evidence_text"] for c in commitments if c["kind"] == "REQUEST_TO_USER"}
+    questions = [q for q in questions if q not in request_texts]       # a request phrased as a question is a request, not an open question
     if questions and not from_user_last:
         return _decision("REPLY_REQUIRED", "NORMAL", 0.8, ["the latest message asks a question"], [questions[0]], messages)
     req = [c for c in commitments if c["kind"] == "REQUEST_TO_USER"]
