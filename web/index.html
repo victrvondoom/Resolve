@@ -422,17 +422,48 @@
         </section>
         <section class="card span8" aria-labelledby="h-doc-edit">
           <h2 id="h-doc-edit">Page tools</h2>
-          <p class="muted small">Select one PDF for rotate or page removal. Select two or more in order to merge.</p>
+          <p class="muted small">Select one PDF to rotate, remove, reorder or extract pages. Select two or more in order to merge. Every change creates a new version; the original is never overwritten.</p>
           <div class="doc-controls">
-            <label for="docOperation">Operation<select id="docOperation"><option value="rotate">Rotate pages</option><option value="delete_pages">Remove pages</option><option value="merge">Merge PDFs</option></select></label>
+            <label for="docOperation">Operation<select id="docOperation"><option value="rotate">Rotate pages</option><option value="delete_pages">Remove pages</option><option value="reorder">Reorder pages</option><option value="extract">Extract page range</option><option value="merge">Merge PDFs</option></select></label>
             <label id="docDegreesWrap" for="docDegrees">Rotation<select id="docDegrees"><option value="90">90° clockwise</option><option value="180">180°</option><option value="270">270° clockwise</option></select></label>
             <label id="docPagesWrap" for="docPages" hidden>Page numbers<input id="docPages" inputmode="numeric" placeholder="e.g. 2, 4"><span class="muted small">One-based page numbers, separated by commas.</span></label>
+            <label id="docOrderWrap" for="docOrder" hidden>New page order<input id="docOrder" inputmode="numeric" placeholder="e.g. 3, 1, 2"><span class="muted small">List every page exactly once, in the order you want.</span></label>
+            <label id="docRangeWrap" for="docRange" hidden>Page range<input id="docRange" placeholder="e.g. 1-3, 5"><span class="muted small">Pages and ranges to keep, in document order.</span></label>
           </div>
           <button class="btn btn-primary" id="docTransform">Create transformed PDF</button>
           <p id="docStatus" class="msg" role="status" aria-live="polite">Select a document to begin.</p>
           <div class="doc-preview-head"><h2>PDF preview</h2><div class="doc-actions"><button class="btn" id="docDownload" disabled title="Select a document to download">Download</button><button class="btn" id="docPrint" disabled title="Select a document to print">Print…</button></div></div>
           <div class="fm-preview-wrap"><iframe id="docPreview" class="doc-preview" title="Selected PDF preview"></iframe><div id="docPreviewEmpty" class="fm-preview-fallback"><p>Select a PDF on the left to preview it here.</p></div></div>
-          <p class="muted small">“Print…” opens your browser's print dialog. RESOLVE cannot confirm that a physical printer completed a job.</p>
+          <h3 class="fm-h" id="h-doc-pages">Pages</h3>
+          <p id="docPageSummary" class="muted small">Page sizes and rotation are read from the selected PDF.</p>
+          <ol id="docPageList" class="doc-page-list" aria-labelledby="h-doc-pages"></ol>
+        </section>
+        <section class="card span6" aria-labelledby="h-doc-print">
+          <div class="card-head"><h2 id="h-doc-print">Print</h2><span class="chip chip-muted" id="docPrintState">No print job</span></div>
+          <p class="muted small">Paper settings and the page range are recorded with the print job. Your browser's print dialog has the final say on settings.</p>
+          <div class="doc-controls">
+            <label for="docPaper">Paper<select id="docPaper"><option value="A4">A4</option><option value="Letter">Letter</option></select></label>
+            <label for="docOrientation">Orientation<select id="docOrientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label>
+            <label for="docPrintRange">Pages<input id="docPrintRange" placeholder="All pages"></label>
+          </div>
+          <div class="doc-actions" id="docPrintReport" hidden>
+            <span class="muted small">After the dialog closed:</span>
+            <button class="btn btn-small" id="docPrintSubmitted" title="Record that you pressed Print. RESOLVE cannot verify it.">I pressed Print</button>
+            <button class="btn btn-small btn-quiet" id="docPrintUnknown">Not sure / cancelled</button>
+            <button class="btn btn-small btn-quiet" id="docPrintFailed">It failed</button>
+          </div>
+          <ol id="docPrintHistory" class="doc-history" aria-label="Print job history"></ol>
+          <p class="muted small">“Print…” opens your browser's print dialog. An opened dialog is not proof of printing, and RESOLVE cannot confirm that a physical printer completed a job, so it never shows “printer confirmed”.</p>
+        </section>
+        <section class="card span6" aria-labelledby="h-doc-compare">
+          <h2 id="h-doc-compare">Compare two PDFs</h2>
+          <p class="muted small">Compares the extracted text page by page. Layout, fonts and images are not compared.</p>
+          <div class="doc-controls doc-controls-2">
+            <label for="docCompareA">First<select id="docCompareA"></select></label>
+            <label for="docCompareB">Second<select id="docCompareB"></select></label>
+          </div>
+          <div class="doc-actions"><button class="btn" id="docCompare">Compare</button></div>
+          <div id="docCompareResult" class="table-scroll" aria-live="polite"></div>
         </section>
         <section class="card span12" aria-labelledby="h-doc-report">
           <h2 id="h-doc-report">Create a report</h2>
