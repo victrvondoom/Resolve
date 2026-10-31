@@ -467,11 +467,64 @@ window.addEventListener('load', () => {
     });
   }
 
+  /* ---------------- mission assurance: real recorded state only ---------------- */
+  const UNCERTAIN_KINDS = { EFFECT_UNCERTAIN: 'The write may or may not have reached storage. Nothing was retried.',
+    EFFECT_RECOVERY_REQUIRED: 'The write is known not to have happened. A new approval is needed before trying again.',
+    EFFECT_REJECTED: 'The write was refused before it reached storage. The reason is recorded below.',
+    VERIFICATION_FAILED: 'The PDF was written but independent checks did not pass. It was not reported as confirmed.' };
+  function renderAssurance(m) {
+    const chip = el('fmAssureChip'), facts = el('fmAssureFacts');
+    if (!m) {
+      chip.textContent = 'NO MISSION'; chip.className = 'chip chip-muted';
+      facts.innerHTML = '<dt>Status</dt><dd>Start a mission to see its assurance record.</dd>';
+      el('fmAssureApproval').textContent = 'Not yet approved.'; el('fmAssureVerify').textContent = 'Runs after approval, when the PDF is written.';
+      el('fmAssureUncertain').textContent = 'No uncertain outcome recorded.';
+      el('fmAssureEvidence').innerHTML = '<li class="muted">No evidence yet.</li>'; el('fmAssureTimeline').innerHTML = '<li class="muted">No events yet.</li>';
+      return;
+    }
+    const events = m.events || [], rev = m.intent_revision;
+    chip.textContent = m.paused ? 'PAUSED' : m.state.replace('_', ' '); chip.className = 'chip ' + (m.paused ? 'chip-warn' : chipClass(m.state));
+    const approval = events.find(e => e.kind === 'PLAN_APPROVED' && e.rev === rev);
+    const src = m.plan && m.plan.source ? m.plan.source : null;
+    facts.innerHTML = [
+      ['Your instruction', esc(m.intent_text)],
+      ['Mission', esc(m.id) + ' · revision ' + esc(String(rev)) + ' · created ' + esc(clock(m.created_at))],
+      ['Source brief', src ? esc(src.name) + ' · sha256 ' + esc(String(src.sha256 || '').slice(0, 16)) + '…' : '—'],
+      ['Target', src ? 'Document id ' + esc(String(m.source_doc_id || '')) + ' (bound by id and hash)' : '—'],
+      ['Mode', m.source === 'voice' ? 'Started from a voice transcript you reviewed' : 'Started from typed text'],
+      ['Steps', esc((m.steps || []).join(' → '))]
+    ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+    el('fmAssureApproval').innerHTML = approval
+      ? `<strong>Approved</strong><br>Digest <code>${esc(approval.detail.plan_digest || '')}</code><br>Revision ${esc(String(approval.detail.intent_revision))} · ${esc(clock(approval.ts))}`
+      : (m.plan ? `Awaiting approval. The approval will bind to digest <code>${esc(m.plan.digest.slice(0, 16))}…</code>.` : 'No plan yet.');
+    const v = m.receipt && m.receipt.verification;
+    if (v) {
+      el('fmAssureVerify').innerHTML = `<strong>${v.passed ? 'Independent checks passed' : 'Checks did not pass'}</strong>` +
+        `<br>Method: the stored PDF is re-read and re-hashed; ${Object.keys(v.checks).length} checks against the bound source and plan.` +
+        `<br>Output sha256 <code>${esc(String(v.output_sha256 || '').slice(0, 16))}…</code> · ${esc(String(v.pages))} pages` +
+        `<br><span class="muted">Not verified: physical printing; the browser's print dialog is not proof of paper output.</span>`;
+    } else el('fmAssureVerify').textContent = 'Runs after approval, when the PDF is written.';
+    const bad = events.filter(e => UNCERTAIN_KINDS[e.kind]).pop();
+    const failed = m.state === 'FAILED' ? `<br>Failure recorded: ${esc(m.error || 'see timeline')}` : '';
+    if (bad) {
+      el('fmAssureUncertain').innerHTML = `<strong>${esc(bad.kind.replace('EFFECT_', '').replace(/_/g, ' '))}</strong><br>${esc(UNCERTAIN_KINDS[bad.kind])}` +
+        `<br>Reason: <code>${esc(String(bad.detail.reason || ''))}</code>` + failed +
+        `<br><span class="muted">Safe next step: review the timeline; approve a new plan to try again.</span>`;
+    } else el('fmAssureUncertain').innerHTML = m.state === 'FAILED' ? `Mission failed${failed}` : 'No uncertain outcome recorded.';
+    const ev = m.evidence || [];
+    el('fmAssureEvidence').innerHTML = ev.length
+      ? ev.map(e => `<li><span class="fm-hist-title">${esc(e.label)}</span><small>${esc(e.kind)} · ${esc(e.mime)} · ${esc(String(e.size_bytes))} bytes · sha256 ${esc(e.sha256.slice(0, 12))}… · rev ${esc(String(e.rev))}</small></li>`).join('')
+      : '<li class="muted">No evidence recorded for this mission.</li>';
+    el('fmAssureTimeline').innerHTML = events.length
+      ? events.map(e => `<li class="fm-tl-${esc(e.kind.toLowerCase())}"><span class="muted small">${esc(clock(e.ts))}</span> <code>${esc(e.kind)}</code> <span class="small">${esc(e.node || '')}${e.worker ? ' · ' + esc(e.worker) : ''}${e.rev != null ? ' · rev ' + esc(String(e.rev)) : ''}</span></li>`).join('')
+      : '<li class="muted">No events yet.</li>';
+  }
+
   function render() {
     const m = mission;
     el('fmState').textContent = m ? (m.paused ? 'PAUSED' : m.state.replace('_', ' ')) : 'NO MISSION';
     el('fmState').className = 'chip ' + (m ? (m.paused ? 'chip-warn' : chipClass(m.state)) : 'chip-muted');
-    renderSteps(m); renderNodes(m); renderComputer(m); renderPlan(m); renderResult(m); updateButtons();
+    renderSteps(m); renderNodes(m); renderComputer(m); renderPlan(m); renderResult(m); renderAssurance(m); updateButtons();
   }
 
   function announce(prev, m) {

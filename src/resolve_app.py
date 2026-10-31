@@ -35,6 +35,8 @@ from document_studio import DocumentStudio, DocumentError
 from brief_mission import BriefMissionStore, MissionError, BUNDLED_PROJECTS, load_bundled
 from command_router import interpret as interpret_command
 from demo_webapp import DemoWebApp
+from write_audit import WriteAudit
+from document_studio import DocumentError
 from computer_tasks import BROWSER_CAPS, ComputerTaskRunner, TaskRefused, browser_services
 from controlled_apps import serve_controlled
 from net_policy import NetPolicy, origin_of
@@ -69,6 +71,8 @@ SECURITY = ServerSecurity.from_env()
 rate_limiter = RateLimiter()
 voice_engine = VoiceEngine()
 demo_webapp = DemoWebApp()
+write_audit = WriteAudit(document_studio.base_dir / 'write_audit.sqlite3')
+privacy_engine.audit_store = write_audit
 tool_registry = default_registry()
 _diag_slots = threading.BoundedSemaphore(2)       # at most two real Chromium diagnostics runs at once
 
@@ -111,6 +115,31 @@ def browser_for(sbx, user):
     if SECURITY.production and not SECURITY.cloud_browser_enabled:
         raise ApiError(503, 'cloud browser is disabled on this deployment: no isolated per-tenant runtime is configured (RESOLVE_CLOUD_BROWSER_ISOLATION)')
     return cloud_browser_pool.get_or_create(sbx.id, user['user_id'], sbx.storage_path)
+
+
+def write_boundary(user: dict, operation: str, target_id, fn, digest_of=None):
+    """Single boundary for direct document writes. Records every attempt: allowed, rejected (wrong tenant, missing
+    document) or failed, with the content hash before and after. The write itself runs only inside this boundary."""
+    uid, wid = user['user_id'], user['workspace_id']
+    before = None
+    if target_id:
+        try:
+            before = document_studio.get_document(uid, wid, target_id)['sha256']
+        except DocumentError:
+            # Not owned by this tenant (or absent): refuse, and do NOT persist the foreign id in this tenant's audit trail.
+            write_audit.record(uid, wid, operation, None, 'REJECTED', reason='target not found in this workspace')
+            raise DocumentError('Document not found', 404)
+    try:
+        result = fn()
+    except DocumentError as exc:
+        write_audit.record(uid, wid, operation, target_id, 'REJECTED', before_sha256=before, reason=str(exc))
+        raise
+    except Exception as exc:
+        write_audit.record(uid, wid, operation, target_id, 'FAILED', before_sha256=before, reason=type(exc).__name__)
+        raise
+    after = digest_of(result) if digest_of else None
+    write_audit.record(uid, wid, operation, target_id, 'ALLOWED', before_sha256=before, after_sha256=after)
+    return result
 
 
 class ApiError(Exception):
@@ -509,6 +538,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header('Content-Length', str(len(data_b)))
                 self.end_headers()
                 return self.wfile.write(data_b)
+            if path == '/api/write-audit':
+                user = self.document_user()
+                return self.send_json(200, {'writes': write_audit.list(user['user_id'], user['workspace_id'])})
             if path == '/api/brief-skills':
                 user = self.document_user()
                 return self.send_json(200, {'skills': brief_missions.list_skills(user['user_id'], user['workspace_id'])})
@@ -621,13 +653,17 @@ class Handler(BaseHTTPRequestHandler):
                 except (ValueError, binascii.Error):
                     raise ApiError(400, 'invalid base64 PDF')
                 require(len(raw) <= 5 * 1024 * 1024, 413, 'PDF exceeds 5 MiB')
-                doc = document_studio.import_pdf(user['user_id'], user['workspace_id'], raw, str(data.get('name', 'document.pdf')))
+                doc = write_boundary(user, 'document.import', None, lambda: {'document': document_studio.import_pdf(user['user_id'], user['workspace_id'], raw, str(data.get('name', 'document.pdf')))},
+                                     digest_of=lambda r: r['document']['sha256'])['document']
                 return self.send_json(201, {'document': doc})
             if path == '/api/documents/transform':
-                doc = document_studio.transform(user['user_id'], user['workspace_id'],
-                    str(data.get('operation', '')), data.get('document_ids', []),
-                    data.get('expected_sha256', {}), degrees=data.get('degrees'), pages=data.get('pages'))
-                return self.send_json(201, {'document': doc})
+                ids = data.get('document_ids', []) if isinstance(data.get('document_ids'), list) else []
+                doc = write_boundary(user, 'document.transform:' + str(data.get('operation', ''))[:20], ids[0] if len(ids) == 1 else None,
+                    lambda: {'document': document_studio.transform(user['user_id'], user['workspace_id'],
+                        str(data.get('operation', '')), ids,
+                        data.get('expected_sha256', {}), degrees=data.get('degrees'), pages=data.get('pages'))},
+                    digest_of=lambda r: r['document']['sha256'])
+                return self.send_json(201, doc)
             if path == '/api/projects/upload':
                 try:
                     raw = base64.b64decode(data.get('content_base64', ''), validate=True)
@@ -640,10 +676,12 @@ class Handler(BaseHTTPRequestHandler):
                 project_store.delete(user['user_id'], user['workspace_id'], m_pd.group(1))
                 return self.send_json(200, {'deleted': m_pd.group(1)})
             if path == '/api/documents/sample-brief':
-                return self.send_json(201, {'document': brief_missions.seed_sample_brief(user['user_id'], user['workspace_id'])})
+                doc = write_boundary(user, 'document.seed_sample', None, lambda: {'document': brief_missions.seed_sample_brief(user['user_id'], user['workspace_id'])},
+                                     digest_of=lambda r: r['document']['sha256'])
+                return self.send_json(201, doc)
             m_dd = re.fullmatch(r'/api/documents/([A-Za-z0-9_-]+)/delete', path)
             if m_dd:
-                document_studio.delete_document(user['user_id'], user['workspace_id'], m_dd.group(1))
+                write_boundary(user, 'document.delete', m_dd.group(1), lambda: document_studio.delete_document(user['user_id'], user['workspace_id'], m_dd.group(1)))
                 return self.send_json(200, {'deleted': m_dd.group(1)})
             if path == '/api/brief-missions':
                 require(rate_limiter.allow('mission', user['user_id'], 10), 429, 'too many missions started; retry shortly')
@@ -689,9 +727,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(200, brief_missions.record_print_dialog(mid, uid, wid))
                 return self.send_json(200, brief_missions.delete(mid, uid, wid, delete_output=data.get('delete_output', True) is not False))
             if path == '/api/documents/report':
-                doc = document_studio.create_report(user['user_id'], user['workspace_id'],
-                    str(data.get('title', 'Report')), str(data.get('text', '')))
-                return self.send_json(201, {'document': doc})
+                doc = write_boundary(user, 'document.report', None, lambda: {'document': document_studio.create_report(user['user_id'], user['workspace_id'],
+                    str(data.get('title', 'Report')), str(data.get('text', '')))}, digest_of=lambda r: r['document']['sha256'])
+                return self.send_json(201, doc)
 
             if path == '/api/auth/logout':
                 tenant_auth_mgr.logout(user['token'])

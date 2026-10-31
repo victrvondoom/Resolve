@@ -349,3 +349,12 @@ textarea,input,select{padding:8px 10px}
   .card{padding:14px 14px}
   .fm-table td{padding:0}
 }
+
+/* ---- mission assurance */
+.fm-assure-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:12px}
+.fm-assure-box{padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--inset);line-height:1.6;min-height:64px;overflow-wrap:anywhere}
+.fm-timeline{list-style:none;margin:0;padding:0;display:grid;gap:4px;max-height:260px;overflow:auto;font-size:13px}
+.fm-timeline li{padding:6px 10px;border-left:3px solid var(--line-2);background:var(--inset);border-radius:0 8px 8px 0}
+.fm-timeline li[class*="uncertain"],.fm-timeline li[class*="rejected"],.fm-timeline li[class*="failed"]{border-left-color:var(--bad)}
+.fm-timeline li[class*="confirmed"],.fm-timeline li[class*="verified"],.fm-timeline li[class*="approved"]{border-left-color:var(--sage)}
+@media (max-width:720px){.fm-assure-grid{grid-template-columns:1fr}}

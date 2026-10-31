@@ -164,6 +164,21 @@
           </div>
           <p class="muted small" id="fmPrintNote">“Print…” opens your browser's print dialog. RESOLVE cannot confirm that a physical printer completed a job.</p>
         </section>
+        <section class="card span12" id="fmAssurance" aria-labelledby="h-fm-assure">
+          <div class="card-head"><h2 id="h-fm-assure">Mission assurance</h2><span id="fmAssureChip" class="chip chip-muted" role="status">NO MISSION</span></div>
+          <p class="muted small fm-sub">Everything below is read from this mission's recorded events, evidence and verification. Nothing here is estimated.</p>
+          <dl class="fm-prov" id="fmAssureFacts"><dt>Status</dt><dd>Start a mission to see its assurance record.</dd></dl>
+          <div class="fm-assure-grid">
+            <div><h3 class="fm-h">Approval</h3><div id="fmAssureApproval" class="fm-assure-box muted small">Not yet approved.</div></div>
+            <div><h3 class="fm-h">Verification</h3><div id="fmAssureVerify" class="fm-assure-box muted small">Runs after approval, when the PDF is written.</div></div>
+          </div>
+          <div class="fm-assure-grid">
+            <div><h3 class="fm-h">Uncertainty and recovery</h3><div id="fmAssureUncertain" class="fm-assure-box muted small">No uncertain outcome recorded.</div></div>
+            <div><h3 class="fm-h">Evidence</h3><ul id="fmAssureEvidence" class="fm-hist" aria-label="Evidence items"><li class="muted">No evidence yet.</li></ul></div>
+          </div>
+          <h3 class="fm-h">Causal timeline (recorded order)</h3>
+          <ol id="fmAssureTimeline" class="fm-timeline" aria-label="Recorded events"><li class="muted">No events yet.</li></ol>
+        </section>
         <section class="card span12" aria-labelledby="h-fm-hist">
           <div class="card-head"><h2 id="h-fm-hist">Your missions</h2><button class="btn btn-small" id="fmHistRefresh">Refresh</button></div>
           <ul id="fmHistory" class="fm-hist" aria-label="Mission history"><li class="muted">No missions yet.</li></ul>

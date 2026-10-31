@@ -48,6 +48,7 @@ class PrivacyEngine:
         self.data_dir = Path(data_dir) if data_dir else ROOT / 'data'
         self.project_store = None   # optional: uploaded source projects are tenant data and are purged with the tenant
         self.mission_store = None   # optional hooks wired by the app: purge missions first so in-flight workers' late results are rejected
+        self.audit_store = None     # write audit trail for direct document writes (tenant data)
         self.browser_pool = None    # optional: close live browser processes before sandbox storage is destroyed
         self.documents = DocumentStudio(Path(os.environ.get('RESOLVE_DOCUMENTS_DIR', self.data_dir / 'documents')))
 
@@ -109,6 +110,8 @@ class PrivacyEngine:
         export_bundle['documents'] = self.documents.list_documents(user_id, workspace_id)
         if self.project_store:
             export_bundle['projects'] = self.project_store.list(user_id, workspace_id)
+        if self.audit_store:
+            export_bundle['write_audit'] = self.audit_store.list(user_id, workspace_id)
         bundle_str = json.dumps(export_bundle, sort_keys=True)
         export_bundle["sha256_checksum"] = hashlib.sha256(bundle_str.encode()).hexdigest()
         return export_bundle
@@ -152,6 +155,8 @@ class PrivacyEngine:
 
         # 3. Delete from tenant database (missions first: running workers then reject their late results)
         missions_removed = self.mission_store.purge(user_id, workspace_id) if self.mission_store else 0
+        if self.audit_store:
+            self.audit_store.purge(user_id, workspace_id)
         projects_removed = self.project_store.purge(user_id, workspace_id) if self.project_store else 0
         self.documents.delete_workspace(user_id, workspace_id)
         self.auth_mgr.delete_workspace(user_id, workspace_id)
@@ -188,6 +193,8 @@ class PrivacyEngine:
 
         # 3. Delete user and sessions from tenant database
         missions_removed = self.mission_store.purge(user_id) if self.mission_store else 0
+        if self.audit_store:
+            self.audit_store.purge(user_id)
         projects_removed = self.project_store.purge(user_id) if self.project_store else 0
         self.documents.delete_user(user_id)
         self.auth_mgr.delete_user(user_id)
