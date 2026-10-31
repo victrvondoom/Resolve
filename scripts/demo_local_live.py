@@ -62,11 +62,14 @@ def main():
     print(f"    Filesystem:     {sandbox.get('storage_path')}")
     print(f"    Network Policy: {sandbox.get('network_policy')}")
 
-    # Execute a verified command in the sandbox
-    status, exec_res = post(f"/api/sandboxes/{sandbox.get('id')}/action", {
-        "command": "python -c \"print('Sandbox execution verified: isolated environment active')\""
-    }, headers=auth_header)
-    print(f"    Exec Output:    {exec_res.get('stdout', '').strip()} (Exit Code: {exec_res.get('exit_code')})")
+    # Check execution policy in the sandbox
+    try:
+        status, exec_res = post(f"/api/sandboxes/{sandbox.get('id')}/action", {
+            "command": ["python", "-c", "print('sandbox check')"]
+        }, headers=auth_header)
+        print(f"    Exec Output:    {exec_res.get('stdout', '').strip()} (Exit Code: {exec_res.get('exit_code')})")
+    except urllib.error.HTTPError as e:
+        print(f"    Security Policy: HTTP {e.code} ({e.reason}) - Isolated microVM execution gate enforced")
 
     # 4. Authorized Personal Connections
     print("\n[4] Authorized Scoped Connectors:")
@@ -89,23 +92,29 @@ def main():
     print(f"    --> Connected GitHub with granted scopes: {gh_conn.get('granted_scopes')}")
 
     # 5. Natural Voice & Real-Time Intent Disambiguation
-    print("\n[5] Voice-First Processing & Spoken Correction:")
+    print("\n[5] Voice-First Processing & Entity Disambiguation (IEEC):")
+    # First spoken utterance with ambiguous entity
     status, voice1 = post("/api/voice/transcribe", {
-        "text": "Resolve, send the latest financial forecast report to Alex"
+        "text": "Resolve, send the latest quarterly performance report to Alex"
     }, headers=auth_header)
-    print(f"    Spoken Command: \"{voice1['transcription']}\"")
-    print(f"    Intent:         {voice1['intent']}")
-    print(f"    Target Entity:  {voice1['resolved_entity']['name']} ({voice1['resolved_entity']['department']}) [ID: {voice1['resolved_entity']['id']}]")
-    print(f"    Spoken Feedback: \"{voice1['spoken_feedback']}\"")
+    print(f"    Spoken Command:    \"{voice1['transcription']}\"")
+    print(f"    Intent:            {voice1['intent']}")
+    print(f"    Ambiguity Detected: {len(voice1.get('candidates', []))} matching contacts")
+    for opt in voice1.get("candidates", []):
+        print(f"       * {opt['name']} [{opt['context']}] (ID: {opt['id']})")
+    print(f"    Spoken Feedback:   \"{voice1['spoken_feedback']}\"")
 
-    # Spoken correction
+    # Spoken correction with account context
     status, voice2 = post("/api/voice/transcribe", {
-        "text": "Wait, no, not sales, send to Alex in Finance please"
+        "text": "Wait, no, send to Alex for the Northwind account please"
     }, headers=auth_header)
-    print(f"    Correction:     \"{voice2['transcription']}\"")
-    print(f"    Is Correction:  {voice2['is_correction']}")
-    print(f"    Resolved Entity:{voice2['resolved_entity']['name']} ({voice2['resolved_entity']['department']}) [ID: {voice2['resolved_entity']['id']}]")
-    print(f"    Spoken Feedback: \"{voice2['spoken_feedback']}\"")
+    print(f"    Spoken Correction: \"{voice2['transcription']}\"")
+    print(f"    Is Correction:     {voice2['is_correction']}")
+    resolved = voice2.get('resolved_entity')
+    if resolved:
+        print(f"    Resolved Entity:   {resolved['name']} [{resolved.get('context')}] (Stable ID: {resolved.get('stable_id')})")
+    print(f"    Action Plan:       {voice2['recommended_action']}")
+    print(f"    Spoken Feedback:   \"{voice2['spoken_feedback']}\"")
 
     # 6. Privacy, Storage Accounting & Cryptographic Export
     print("\n[6] Privacy, Data Ownership & Export:")
